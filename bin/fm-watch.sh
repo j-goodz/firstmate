@@ -46,13 +46,28 @@
 #                          arms it, a validation gate of its own awaiting a
 #                          supervisor decision nobody has answered yet - is
 #                          deferred to that same long recheck cadence instead
-#                          (wedge_wait_evidence), and a pane whose own task
+#                          (wedge_wait_evidence). Consulted next, so it can
+#                          never displace that bounded recheck: a pane whose
+#                          harness-activity marker (the newer of
+#                          state/<id>.progress and state/<id>.turn-ended) was
+#                          touched after its quiet window began has that window
+#                          restarted rather than escalating, publishing no
+#                          re-surface of its own (crew_progress_since_stale),
+#                          because a byte-identical periodic poll pins the pane
+#                          hash exactly as a frozen pane does; a backend that
+#                          writes neither marker keeps the unchanged schedule.
+#                          And a pane whose own task
 #                          worktree was written during the quiet window is
 #                          deferred rather than escalated (wedge_defer_writing),
 #                          because files appearing there are liveness the pane and
 #                          the run step cannot show; that deferral still
-#                          re-surfaces once per PAUSE_RESURFACE_SECS, and a pane
-#                          that writes nothing keeps the unchanged schedule.
+#                          re-surfaces once per PAUSE_RESURFACE_SECS over the
+#                          thresholds that reach it - the progress absorb above
+#                          returns first while markers keep advancing, which
+#                          suspends that cadence without dropping it, because
+#                          the absorb leaves the write chain intact to keep
+#                          ageing - and a pane that writes nothing keeps the
+#                          unchanged schedule.
 #                          A pane whose recorded endpoint holds no agent at all is
 #                          not a wedge and is reported ONCE instead of escalating
 #                          on that cadence forever (wedge_dead_record); only the
@@ -911,10 +926,15 @@ resurface_absorbed() {  # <window> <throttle-marker> <age> <reason> [scope] [min
 # still re-surfaces once every PAUSE_RESURFACE_SECS through the shared
 # resurface_absorbed above - literally the same bounded cadence a declared pause
 # uses, throttled by its own .writing-resurfaced-<key> marker - and a crew whose
-# worktree churns without real progress cannot stay invisible. The escalation
-# counter is left alone: it is neither advanced (this is not an escalation) nor
-# reset (a later genuine escalation must still carry the demand-deep-inspection
-# history it had already earned).
+# worktree churns without real progress cannot stay invisible. That cadence
+# counts only the thresholds that reach this probe: the harness-progress absorb
+# above it in wedge_timer_check returns before it and deliberately leaves the
+# chain alone (it calls no clear_write_tracking), so an open chain keeps ageing
+# across those absorbed thresholds and re-surfaces the moment the probe runs
+# again, while a chain that was never opened publishes nothing until it is.
+# The escalation counter is left alone: it is neither advanced (this is not an
+# escalation) nor reset (a later genuine escalation must still carry the
+# demand-deep-inspection history it had already earned).
 wedge_defer_writing() {  # <window> <since-file> <triage-label> <idle-age>
   local win=$1 since_file=$2 label=$3 age=$4 key wsf wage
   key=$(window_key "$win")
@@ -1153,7 +1173,12 @@ EOF
 
 # Drop a window's write-deferral chain wherever its stale bookkeeping resets, so
 # the bounded re-surface cadence is measured from the CURRENT quiet stretch and a
-# long-finished one cannot make the next deferral resurface immediately.
+# long-finished one cannot make the next deferral resurface immediately. The lone
+# exception is the harness-progress deferral, which sits ABOVE the worktree probe
+# and so must leave the chain alone: clearing it there would restart the chain at
+# zero on every threshold a marker advanced, and because that deferral returns
+# before the probe runs, nothing would ever recreate the marker - putting the
+# write deferral's own bounded re-surface permanently out of reach.
 clear_write_tracking() {  # <window-key>
   local key=$1
   rm -f "$STATE/.writing-since-$key" "$STATE/.writing-resurfaced-$key"
@@ -1233,18 +1258,91 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
 # can be absorbed this way: the plain non-terminal path, and the
 # stale_is_terminal-overridden path (a captain-relevant status-log line that an
 # active run/busy pane outranked).
-# The wait-evidence consult (wedge_wait_evidence), the worktree write probe, and
-# the dead-record probe (wedge_dead_record) run ONLY here, inside the
-# at-threshold branch that is about to escalate: at most one each per window per
-# STALE_ESCALATE_SECS, never on an ordinary poll. The crew-state read
+#
+# A pane whose bytes repeat every poll (a periodic status probe on a fixed
+# cadence, printing the same block each cycle) pins the pane hash exactly like
+# a genuinely frozen pane: the staleness backbone above cannot tell the two
+# apart from rendered bytes alone. crew_progress_since_stale (below) reads
+# cheap, harness-native activity markers and treats one touched after the
+# timer's own since value as proof the harness kept turning during this idle
+# interval, so the timer restarts instead of accruing toward escalation.
+#
+# The wait-evidence consult (wedge_wait_evidence) runs FIRST, ahead of the
+# progress check: a pane whose last status line is a declared `paused:` or a
+# verified `captain-held:` transfer owes firstmate or the captain a bounded
+# re-surface on its own bounded cadence (wedge_defer_wait), and that recheck
+# must stay reachable even while the SAME pane's harness-activity markers keep
+# advancing from continued polling - otherwise the held decision would never
+# re-surface at all, a permanent suppression no other deferral below commits.
+# The progress check runs second because it is otherwise the cheapest (a
+# stat-only mtime comparison) and the harness's own strongest positive
+# evidence when neither of the first check's declared waits apply. The
+# worktree write probe and the dead-record probe run ONLY here, inside the
+# at-threshold branch that is about to escalate: at most one each per window
+# per STALE_ESCALATE_SECS, never on an ordinary poll. The crew-state read
 # wedge_wait_evidence may take under config/wedge-defer-parked-gate keeps that
-# same bound however long the wait lasts, because the deferral it feeds restarts
-# the idle timer like every other deferral below; an unconfigured home never
-# reaches that read at all. The wait consult runs first, because a pane that can
-# account for its own quiet has nothing to prove through its worktree. The dead-record probe
-# runs last of the three, so the two cheaper deferrals keep the panes they
-# already own on their existing bounded cadences and only a pane that would
-# otherwise alarm pays for a backend read.
+# same bound however long the wait lasts, because the deferral it feeds
+# restarts the idle timer like every other deferral below; an unconfigured
+# home never reaches that read at all. The dead-record probe runs last of the
+# four, so the three cheaper deferrals keep the panes they already own on
+# their existing bounded cadences and only a pane that would otherwise alarm
+# pays for a backend read.
+#
+# crew_progress_since_stale takes the ALREADY-PARSED since-epoch (not the
+# since-file path): the wedge timer's own age computation is content-based
+# (the file holds an epoch integer, which a caller may legitimately backdate),
+# so this reads each marker's real mtime and compares it against that same
+# epoch rather than a raw filesystem `-nt`, which would compare wall-clock
+# write times and silently disagree with the age the timer itself is using.
+#
+# It reads BOTH markers rather than only Pi's codex-native
+# state/<id>.progress: that file's sole non-test writer is the Pi extension's
+# codex-native:progress handler in fm-spawn.sh, so it exists for no other
+# backend. state/<id>.turn-ended is the broader one, touched today by claude
+# (Stop), codex (the notify= launch flag), gemini (AfterAgent), opencode
+# (session.idle), pi and pi-signed (turn_end), omp (turn_end), and grok and
+# kimi (their global Stop hook, via this task's token pointer) - observed
+# activity, never a rendered footer - so the newer of the two that exists is
+# the evidence.
+#
+# Reach, stated precisely because it is narrower than the motivating case:
+# turn-ended is a TURN-BOUNDARY marker on claude, codex, gemini, opencode,
+# grok and kimi, so a pane repeating its output inside one long turn defers
+# only once a turn actually ends within the quiet window; pi and omp touch it
+# at every inner turn boundary, and Pi's progress file is the only marker that
+# advances mid-turn. cursor and muse fold their own transcripts as PULL
+# sources with no writer, rovo's eventHooks fire at tool granularity only and
+# are never wired for turn-end, and agy exposes no hook surface at all, so
+# those four write neither marker today: this returns 1 for them and their
+# escalation schedule is unchanged, exactly as before this check existed. No
+# new per-adapter plumbing is added here - both files are written by existing
+# hook wiring - and wiring evidence for those four is separate work.
+#
+# Deliberately EXCLUDES the semantic busy-state record (fm_busy_record_path):
+# that file is a current-STATE snapshot updated only on a busy<->idle
+# transition, not a per-activity marker, so a task armed once and never
+# re-transitioned (the ordinary shape of one long busy turn) carries a real
+# mtime from spawn time that can outrun an artificially-old since value with
+# nothing genuinely new having happened - the busy-turn-age regression this
+# would reintroduce for exactly the pane crew_absorb_class/window_is_busy
+# already classify through a different, deliberately separate path.
+crew_progress_since_stale() {  # <task> <since-epoch>
+  local task=$1 since=$2 f best=0 mtime
+  for f in \
+    "$STATE/$task.progress" \
+    "$STATE/$task.turn-ended"
+  do
+    [ -f "$f" ] || continue
+    mtime=$(stat_mtime "$f") || continue
+    case "$mtime" in ''|*[!0-9]*) continue ;; esac
+    [ "$mtime" -le "$best" ] || best=$mtime
+  done
+  # Equality does not count as advancing: it must be observed STRICTLY after
+  # the timer started, so one touch cannot satisfy two consecutive checks
+  # without the harness genuinely progressing again in between.
+  [ "$best" -gt "$since" ]
+}
+
 wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-file> <task> <pane-hash>
   local win=$1 since_file=$2 label=$3 escalation_file=$4 task=$5 hash=$6 since age n reason evidence
   since=$(cat "$since_file" 2>/dev/null || true)
@@ -1261,6 +1359,11 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
       if [ "$age" -ge "$STALE_ESCALATE_SECS" ]; then
         if evidence=$(wedge_wait_evidence "$task") &&
            wedge_defer_wait "$win" "$since_file" "$label" "$age" "$evidence"; then
+          return 0
+        fi
+        if crew_progress_since_stale "$task" "$since"; then
+          date +%s > "$since_file"
+          triage_log "absorbed $label timer reset (harness progress observed since the last check, despite a repeating pane): $win"
           return 0
         fi
         if crew_worktree_written_since "$task" "$STATE" "$since_file"; then
