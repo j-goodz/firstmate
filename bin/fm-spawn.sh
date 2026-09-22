@@ -274,7 +274,9 @@
 #   The session-cycle exclusion NEXUS_CACHE_MODE=off that ship and scout launches
 #   carry is deliberately NOT on this floor: the launch command exports it
 #   itself, inside the filtered environment, so an enabled allowlist neither
-#   forwards nor removes it and a secondmate keeps the machine default.
+#   forwards nor removes it for a worker. A secondmate carries no such export,
+#   so it inherits the pane's own value with the allowlist absent and starts
+#   with the name unset under an enabled one.
 #   An enabled task trace also retains TRACEPARENT. Explicit Firstmate launch
 #   assignments still apply inside the filtered environment. Raw commands must
 #   be POSIX sh compatible under this opt-in; the absent-file path is unchanged.
