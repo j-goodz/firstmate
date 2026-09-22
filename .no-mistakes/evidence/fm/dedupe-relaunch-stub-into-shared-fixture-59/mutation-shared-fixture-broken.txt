@@ -1,0 +1,22 @@
+FM_TEST_BEGIN 2026-09-22T15:45:15Z tests/fm-spawn-cache-mode-excl.test.sh family=backend-dispatch expected_gate_skip=none
+ok - ship and scout launches start their agent with the cache-cycle exclusion on, in both allowlist postures
+ok - a compound raw launch-command still starts its agent with the cache-cycle exclusion on
+ok - a secondmate launch leaves the machine and project cache-mode defaults in force
+ok - a secondmate launch under an enabled allowlist is still not excluded from the cycle
+not ok - ship relaunch should succeed: warning: /tmp/fm-spawn-cache-mode-excl.6d02fh/relaunch-ship/home/data/relaunch-ship-a1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: the replacement agent for relaunch-ship-a1 did not come up within 0.05s (endpoint reads 'dead')
+error: relaunch-ship-a1 was relaunched on codex but no running agent could be confirmed; its work is preserved at /tmp/fm-spawn-cache-mode-excl.6d02fh/relaunch-ship/wt: expected exit 0, got 1
+FM_TEST_END 2026-09-22T15:45:43Z tests/fm-spawn-cache-mode-excl.test.sh exit=1 duration_ms=27415 gate_skip=false
+FM_TEST_BEGIN 2026-09-22T15:45:43Z tests/fm-spawn-compact-adviser-disable.test.sh family=backend-dispatch expected_gate_skip=none
+ok - ship launch with no allowlist starts its agent with the compact-adviser switch on
+ok - ship launch under an enabled allowlist keeps the compact-adviser switch through the cleared environment
+ok - the launch command sets the switch on its own, whichever allowlist posture is in force
+ok - a secondmate launch carries the compact-adviser switch in both allowlist postures
+not ok - relaunch with allowlist=absent should succeed: warning: /tmp/fm-spawn-compact-adviser.PL6ozs/relaunch-absent/home/data/relaunch-absent-a1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: the replacement agent for relaunch-absent-a1 did not come up within 0.05s (endpoint reads 'dead')
+error: relaunch-absent-a1 was relaunched on codex but no running agent could be confirmed; its work is preserved at /tmp/fm-spawn-compact-adviser.PL6ozs/relaunch-absent/wt: expected exit 0, got 1
+FM_TEST_END 2026-09-22T15:46:08Z tests/fm-spawn-compact-adviser-disable.test.sh exit=1 duration_ms=24803 gate_skip=false
+FM_TEST_SUMMARY total=2 failed=2 skipped_gate=0 duration_ms=52371
+FM_TEST_SUMMARY_FAMILY family=backend-dispatch count=2 duration_ms=52218 failed=2
+FM_TEST_SLOWEST rank=1 script=tests/fm-spawn-cache-mode-excl.test.sh duration_ms=27415
+FM_TEST_SLOWEST rank=2 script=tests/fm-spawn-compact-adviser-disable.test.sh duration_ms=24803
