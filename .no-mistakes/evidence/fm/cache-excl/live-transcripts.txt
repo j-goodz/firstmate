@@ -1,0 +1,102 @@
+################ ship-absent ################
+--- captain runs the spawn (fm-spawn.sh stdout) ---
+warning: /tmp/fm-cachemode-live/ship-absent/home/data/ship-absent-a1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+spawned ship-absent-a1 harness=codex kind=ship mode=no-mistakes yolo=off window=ship-absent:fm-ship-absent-a1 worktree=/tmp/fm-cachemode-live/ship-absent/wt
+--- captain runs the relaunch (fm-control.sh <id> relaunch stdout) ---
+error: task ship-absent-a1's endpoint reads 'ambiguous' rather than a positively classified state; refusing to send a lifecycle command into an unattributed endpoint
+error: relaunch of ship-absent-a1 failed while stopping the old agent and its state is 'ambiguous', so it was not proven stopped; its original instructions were restored and the durable record was retained for recovery
+--- environment the agent process recorded at start ---
+NEXUS_CACHE_MODE=off
+COMPACT_ADVISER_DISABLE=1
+FM_TASK_ID=ship-absent-a1
+cwd=/tmp/fm-cachemode-live/ship-absent/wt
+--- environment the REPLACEMENT agent recorded after relaunch ---
+
+################ scout-absent ################
+--- captain runs the spawn (fm-spawn.sh stdout) ---
+spawned scout-absent-a1 harness=codex kind=scout window=scout-absent:fm-scout-absent-a1 worktree=/tmp/fm-cachemode-live/scout-absent/wt
+--- environment the agent process recorded at start ---
+NEXUS_CACHE_MODE=off
+COMPACT_ADVISER_DISABLE=1
+FM_TASK_ID=scout-absent-a1
+cwd=/tmp/fm-cachemode-live/scout-absent/wt
+
+################ secondmate-absent ################
+--- captain runs the spawn (fm-spawn.sh stdout) ---
+warning: secondmate secondmate-absent-a1 sync skipped before launch: primary default-branch commit cannot be resolved
+spawned secondmate-absent-a1 harness=codex kind=secondmate mode=secondmate yolo=off window=secondmate-absent:fm-secondmate-absent-a1 worktree=/tmp/fm-cachemode-live/secondmate-absent/secondmate-home
+--- environment the agent process recorded at start ---
+NEXUS_CACHE_MODE=auto
+COMPACT_ADVISER_DISABLE=1
+FM_TASK_ID=<unset>
+cwd=/tmp/fm-cachemode-live/secondmate-absent/secondmate-home
+
+################ ship-enabled ################
+--- captain runs the spawn (fm-spawn.sh stdout) ---
+warning: /tmp/fm-cachemode-live/ship-enabled/home/data/ship-enabled-a1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+spawned ship-enabled-a1 harness=codex kind=ship mode=no-mistakes yolo=off window=ship-enabled:fm-ship-enabled-a1 worktree=/tmp/fm-cachemode-live/ship-enabled/wt
+--- environment the agent process recorded at start ---
+NEXUS_CACHE_MODE=off
+COMPACT_ADVISER_DISABLE=1
+FM_TASK_ID=ship-enabled-a1
+cwd=/tmp/fm-cachemode-live/ship-enabled/wt
+
+################ secondmate-enabled ################
+--- captain runs the spawn (fm-spawn.sh stdout) ---
+warning: secondmate secondmate-enabled-a1 sync skipped before launch: primary default-branch commit cannot be resolved
+spawned secondmate-enabled-a1 harness=codex kind=secondmate mode=secondmate yolo=off window=secondmate-enabled:fm-secondmate-enabled-a1 worktree=/tmp/fm-cachemode-live/secondmate-enabled/secondmate-home
+--- environment the agent process recorded at start ---
+NEXUS_CACHE_MODE=<unset>
+COMPACT_ADVISER_DISABLE=1
+FM_TASK_ID=<unset>
+cwd=/tmp/fm-cachemode-live/secondmate-enabled/secondmate-home
+
+################ ship-raw ################
+--- captain runs the spawn (fm-spawn.sh stdout) ---
+warning: /tmp/fm-cachemode-live/ship-raw/home/data/ship-raw-a1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+spawned ship-raw-a1 harness=cd kind=ship mode=no-mistakes yolo=off window=ship-raw:fm-ship-raw-a1 worktree=/tmp/fm-cachemode-live/ship-raw/wt
+--- environment the agent process recorded at start ---
+NEXUS_CACHE_MODE=off
+COMPACT_ADVISER_DISABLE=1
+cwd=/tmp/fm-cachemode-live/ship-raw/agent-cwd
+
+################ ship-relaunch2 ################
+--- captain runs the spawn (fm-spawn.sh stdout) ---
+warning: /tmp/fm-cachemode-live/ship-relaunch2/home/data/ship-relaunch2-a1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+spawned ship-relaunch2-a1 harness=codex kind=ship mode=no-mistakes yolo=off window=ship-relaunch2:fm-ship-relaunch2-a1 worktree=/tmp/fm-cachemode-live/ship-relaunch2/wt
+--- captain runs the relaunch (fm-control.sh <id> relaunch stdout) ---
+warning: /tmp/fm-cachemode-live/ship-relaunch2/home/data/ship-relaunch2-a1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+relaunched ship-relaunch2-a1 harness=codex from=codex model=default effort=default backend=tmux endpoint=ship-relaunch2:fm-ship-relaunch2-a1 worktree=/tmp/fm-cachemode-live/ship-relaunch2/wt
+--- environment the agent process recorded at start ---
+NEXUS_CACHE_MODE=off
+COMPACT_ADVISER_DISABLE=1
+FM_TASK_ID=ship-relaunch2-a1
+cwd=/tmp/fm-cachemode-live/ship-relaunch2/wt
+--- environment the REPLACEMENT agent recorded after relaunch ---
+NEXUS_CACHE_MODE=off
+COMPACT_ADVISER_DISABLE=1
+FM_TASK_ID=ship-relaunch2-a1
+cwd=/tmp/fm-cachemode-live/ship-relaunch2/wt
+
+################ sm-relaunch2 ################
+--- captain runs the spawn (fm-spawn.sh stdout) ---
+warning: secondmate sm-relaunch2-a1 sync skipped before launch: primary default-branch commit cannot be resolved
+fm-config-inherit: warning: skipped crew-harness for /tmp/fm-cachemode-live/sm-relaunch2/secondmate-home/config: destination does not allow inherited item (not gitignored or guard failed)
+spawned sm-relaunch2-a1 harness=codex kind=secondmate mode=secondmate yolo=off window=sm-relaunch2:fm-sm-relaunch2-a1 worktree=/tmp/fm-cachemode-live/sm-relaunch2/secondmate-home
+--- captain runs the relaunch (fm-control.sh <id> relaunch stdout) ---
+warning: secondmate sm-relaunch2-a1 sync skipped before launch: primary default-branch commit cannot be resolved
+fm-config-inherit: warning: skipped crew-harness for /tmp/fm-cachemode-live/sm-relaunch2/secondmate-home/config: destination does not allow inherited item (not gitignored or guard failed)
+relaunched sm-relaunch2-a1 harness=codex from=codex model=default effort=default backend=tmux endpoint=sm-relaunch2:fm-sm-relaunch2-a1 worktree=/tmp/fm-cachemode-live/sm-relaunch2/secondmate-home
+--- environment the agent process recorded at start ---
+NEXUS_CACHE_MODE=auto
+COMPACT_ADVISER_DISABLE=1
+FM_TASK_ID=<unset>
+cwd=/tmp/fm-cachemode-live/sm-relaunch2/secondmate-home
+--- environment the REPLACEMENT agent recorded after relaunch ---
+NEXUS_CACHE_MODE=auto
+COMPACT_ADVISER_DISABLE=1
+FM_TASK_ID=<unset>
+cwd=/tmp/fm-cachemode-live/sm-relaunch2/secondmate-home
+
+################ captain (brain) session, same tmux session as the ship-absent worker ################
+captain session NEXUS_CACHE_MODE=auto

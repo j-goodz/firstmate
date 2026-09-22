@@ -1,0 +1,9 @@
+bash-5.3$ treehouse get
+bash-5.3$ export GOTMPDIR=/tmp/fm-scout-absent-a1/gotmp
+bash-5.3$ export COMPACT_ADVISER_DISABLE=1
+bash-5.3$ export FM_TASK_ID=scout-absent-a1
+bash-5.3$ . '/tmp/fm-scout-absent-a1+cb8abe640fff7c7c06aab97f7a7ae8db6e612fe3017a41e42fdac72f5e40b5f7/launch.s1790086760.170546.28338.sh'
+=== lab agent (scout-absent) started ===
+NEXUS_CACHE_MODE=off
+COMPACT_ADVISER_DISABLE=1
+cwd=/tmp/fm-cachemode-live/scout-absent/wt

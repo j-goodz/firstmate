@@ -1,0 +1,7 @@
+bash-5.3$ export GOTMPDIR=/tmp/fm-secondmate-enabled-a1/gotmp
+bash-5.3$ export COMPACT_ADVISER_DISABLE=1
+bash-5.3$ . '/tmp/fm-secondmate-enabled-a1+a1afa2aa2bf8e8717f20c5ea18e0aeab1939cec7d11fe8f486ae3c3ba61ef54d/launch.s1790086791.212165.25350.sh'
+=== lab agent (secondmate-enabled) started ===
+NEXUS_CACHE_MODE=<unset>
+COMPACT_ADVISER_DISABLE=1
+cwd=/tmp/fm-cachemode-live/secondmate-enabled/secondmate-home

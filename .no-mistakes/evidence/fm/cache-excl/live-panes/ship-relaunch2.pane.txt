@@ -1,0 +1,21 @@
+bash-5.3$ treehouse get
+bash-5.3$ export GOTMPDIR=/tmp/fm-ship-relaunch2-a1/gotmp
+bash-5.3$ export COMPACT_ADVISER_DISABLE=1
+bash-5.3$ export FM_TASK_ID=ship-relaunch2-a1
+bash-5.3$ . '/tmp/fm-ship-relaunch2-a1+f353f20ae7f093223e5f68c4073d3daaa2697d49083d2842df7a11bd42c45a84/launch.s1790086956.414585.5552.sh'
+=== lab agent (ship-relaunch2) started ===
+NEXUS_CACHE_MODE=off
+COMPACT_ADVISER_DISABLE=1
+cwd=/tmp/fm-cachemode-live/ship-relaunch2/wt
+› /quit
+bash-5.3$
+bash-5.3$
+bash-5.3$ export GOTMPDIR=/tmp/fm-ship-relaunch2-a1/gotmp
+bash-5.3$ export COMPACT_ADVISER_DISABLE=1
+bash-5.3$ export FM_TASK_ID=ship-relaunch2-a1
+bash-5.3$ . '/tmp/fm-ship-relaunch2-a1+f353f20ae7f093223e5f68c4073d3daaa2697d49083d2842df7a11bd42c45a84/launch.s1790086970.431793.21198.sh'
+=== lab agent (ship-relaunch2) started ===
+NEXUS_CACHE_MODE=off
+COMPACT_ADVISER_DISABLE=1
+cwd=/tmp/fm-cachemode-live/ship-relaunch2/wt
+›

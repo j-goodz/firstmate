@@ -1,0 +1,18 @@
+bash-5.3$ export GOTMPDIR=/tmp/fm-sm-relaunch2-a1/gotmp
+bash-5.3$ export COMPACT_ADVISER_DISABLE=1
+bash-5.3$ . '/tmp/fm-sm-relaunch2-a1+8084128f3290ad05db76dbf25a3a82c8103722ee1843eade960479d8724b3e24/launch.s1790087005.475763.4110.sh'
+=== lab agent (sm-relaunch2) started ===
+NEXUS_CACHE_MODE=auto
+COMPACT_ADVISER_DISABLE=1
+cwd=/tmp/fm-cachemode-live/sm-relaunch2/secondmate-home
+› /quit
+bash-5.3$
+bash-5.3$
+bash-5.3$ export GOTMPDIR=/tmp/fm-sm-relaunch2-a1/gotmp
+bash-5.3$ export COMPACT_ADVISER_DISABLE=1
+bash-5.3$ . '/tmp/fm-sm-relaunch2-a1+8084128f3290ad05db76dbf25a3a82c8103722ee1843eade960479d8724b3e24/launch.s1790087015.490189.6783.sh'
+=== lab agent (sm-relaunch2) started ===
+NEXUS_CACHE_MODE=auto
+COMPACT_ADVISER_DISABLE=1
+cwd=/tmp/fm-cachemode-live/sm-relaunch2/secondmate-home
+›

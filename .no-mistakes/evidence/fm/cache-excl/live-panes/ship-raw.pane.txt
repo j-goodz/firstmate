@@ -1,0 +1,8 @@
+bash-5.3$ treehouse get
+bash-5.3$ export GOTMPDIR=/tmp/fm-ship-raw-a1/gotmp
+bash-5.3$ export COMPACT_ADVISER_DISABLE=1
+bash-5.3$ export FM_TASK_ID=ship-raw-a1
+bash-5.3$ . '/tmp/fm-ship-raw-a1+758845bb99298e18c8c86a1df07578e70890682d4acbd7a3d6bbf3ebf090b209/launch.s1790086805.227494.11284.sh'
+=== lab raw agent (ship-raw) started ===
+NEXUS_CACHE_MODE=off
+cwd=/tmp/fm-cachemode-live/ship-raw/agent-cwd
