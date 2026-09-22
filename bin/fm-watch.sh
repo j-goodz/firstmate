@@ -1296,12 +1296,12 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
 # only once a turn actually ends within the quiet window; pi and omp touch it
 # at every inner turn boundary, and Pi's progress file is the only marker that
 # advances mid-turn. cursor and muse fold their own transcripts as PULL
-# sources with no writer, and rovo and agy expose no hook surface at all, so
-# those four publish no activity evidence today: this returns 1 for them and
-# their escalation schedule is unchanged, exactly as before this check
-# existed. No new per-adapter plumbing is added here - both files are written
-# by existing hook wiring - and wiring evidence for those four is separate
-# work.
+# sources with no writer, rovo's eventHooks fire at tool granularity only and
+# are never wired for turn-end, and agy exposes no hook surface at all, so
+# those four write neither marker today: this returns 1 for them and their
+# escalation schedule is unchanged, exactly as before this check existed. No
+# new per-adapter plumbing is added here - both files are written by existing
+# hook wiring - and wiring evidence for those four is separate work.
 #
 # Deliberately EXCLUDES the semantic busy-state record (fm_busy_record_path):
 # that file is a current-STATE snapshot updated only on a busy<->idle
