@@ -176,6 +176,70 @@ SH
   chmod +x "$fakebin/tmux"
 }
 
+# fm_test_fake_tmux_relaunch <fakebin>
+# Relaunch-world tmux: models just enough pane lifecycle for
+# bin/fm-control.sh relaunch, which stops the agent and rebuilds the launch
+# through bin/fm-spawn.sh --relaunch. The harness exit command leaves a bare
+# shell behind (command -> zsh), and a staged launch-brief encode literal
+# starts the harness again (command -> codex). Pair with
+# fm_test_fake_sleep_noop for the sleep calls fm-control.sh issues between
+# stop and relaunch. Reads/writes under $FM_FAKE_DIR: literal (send-keys -l
+# payloads, staged files resolved), keys (send-keys text-line payloads),
+# command (pane_current_command), cwd (pane_current_path), windows
+# (list-windows).
+fm_test_fake_tmux_relaunch() {
+  local fakebin=$1
+  mkdir -p "$fakebin"
+  cat > "$fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+set -u
+D=$FM_FAKE_DIR
+case "${1:-}" in
+  send-keys)
+    shift
+    literal=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -t) shift 2 ;;
+        -l) literal=1; shift ;;
+        *) break ;;
+      esac
+    done
+    payload=${1:-}
+    if [ "$literal" = 1 ]; then
+      case "$payload" in
+        ". '"*"'")
+          staged=${payload#". '"}
+          staged=${staged%"'"}
+          [ ! -f "$staged" ] || payload=$(cat "$staged")
+          ;;
+      esac
+      printf '%s\n' "$payload" >> "$D/literal"
+      case "$payload" in
+        /exit|/quit) printf 'zsh' > "$D/command" ;;
+        *'encode launch-brief'*) printf 'codex' > "$D/command" ;;
+      esac
+    else
+      printf '%s\n' "$payload" >> "$D/keys"
+    fi
+    exit 0 ;;
+  display-message)
+    for a in "$@"; do
+      case "$a" in
+        *cursor_y*) printf '1\n'; exit 0 ;;
+        *pane_current_command*) cat "$D/command"; printf '\n'; exit 0 ;;
+        *pane_current_path*) cat "$D/cwd"; printf '\n'; exit 0 ;;
+      esac
+    done
+    printf 'fakepane\n'; exit 0 ;;
+  capture-pane) printf '╭────╮\n│    │\n╰────╯\n'; exit 0 ;;
+  list-windows) [ -f "$D/windows" ] && cat "$D/windows"; exit 0 ;;
+esac
+exit 0
+SH
+  chmod +x "$fakebin/tmux"
+}
+
 # fm_test_fake_tmux_send <fakebin>
 # Send-world tmux: logs send-keys -l payloads to FM_SEND_LOG, reports a numeric
 # cursor_y, and renders an empty bordered composer so the submit path reads
