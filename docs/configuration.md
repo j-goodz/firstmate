@@ -446,6 +446,14 @@ Firstmate provides no configuration or flag to change this value.
 This applies only to agents Firstmate launches; the captain's own primary Firstmate session is never given the variable.
 [`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns the delivery mechanics, with focused regression coverage in [`tests/fm-spawn-compact-adviser-disable.test.sh`](../tests/fm-spawn-compact-adviser-disable.test.sh) and [`tests/fm-spawn-compact-adviser-disable-remote.test.sh`](../tests/fm-spawn-compact-adviser-disable-remote.test.sh).
 
+Every crewmate and scout Firstmate launches starts with `NEXUS_CACHE_MODE=off` in its environment, on a fresh spawn and on a relaunch alike, so nexus's session cycler never clears a fanned-out worker mid-build.
+This guarantee also covers raw launch commands and does not depend on the destination environment already containing the variable; Firstmate provides no configuration or flag to change it.
+Secondmates are deliberately excluded from this guarantee: a secondmate is a persistent Firstmate home rather than a worker torn down at completion, so its launch leaves the machine and project cache-mode defaults in force, exactly as the captain's own primary Firstmate session does.
+Unlike `COMPACT_ADVISER_DISABLE`, the name is deliberately absent from the cleared-environment floor list used by `config/launch-env-allowlist`, so the launch command's own export is the single delivery for a worker in either allowlist posture.
+A secondmate inherits whatever value its pane already carries; only under an enabled allowlist, where the cleared environment drops every unlisted name, does it start without the variable set at all.
+The exclusion is the cache-mode control rather than a cycler-side worker rule, so a worker also forgoes the keep-alive nudge and the cold-snapshot path that only run while the mode is `auto`; losing a warm cache is the accepted cost of never clearing a build mid-flight.
+[`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns the delivery mechanics, with focused regression coverage in [`tests/fm-spawn-cache-mode-excl.test.sh`](../tests/fm-spawn-cache-mode-excl.test.sh).
+
 Every claude launch's inline `--settings` JSON also carries `"attribution":{"commit":"","pr":"","sessionUrl":false}`, so a spawned worker never writes a Co-Authored-By trailer, Claude-Session link, or generated-with line into a commit or PR body regardless of which settings scopes end up loaded.
 
 ## Crew dispatch profiles (config/crew-dispatch.json)
