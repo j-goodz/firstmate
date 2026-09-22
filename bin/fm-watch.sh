@@ -46,7 +46,17 @@
 #                          arms it, a validation gate of its own awaiting a
 #                          supervisor decision nobody has answered yet - is
 #                          deferred to that same long recheck cadence instead
-#                          (wedge_wait_evidence), and a pane whose own task
+#                          (wedge_wait_evidence). Consulted next, so it can
+#                          never displace that bounded recheck: a pane whose
+#                          harness-activity marker (the newer of
+#                          state/<id>.progress and state/<id>.turn-ended) was
+#                          touched after its quiet window began has that window
+#                          restarted rather than escalating, publishing no
+#                          re-surface of its own (crew_progress_since_stale),
+#                          because a byte-identical periodic poll pins the pane
+#                          hash exactly as a frozen pane does; a backend that
+#                          writes neither marker keeps the unchanged schedule.
+#                          And a pane whose own task
 #                          worktree was written during the quiet window is
 #                          deferred rather than escalated (wedge_defer_writing),
 #                          because files appearing there are liveness the pane and
@@ -1292,7 +1302,7 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
 # would reintroduce for exactly the pane crew_absorb_class/window_is_busy
 # already classify through a different, deliberately separate path.
 crew_progress_since_stale() {  # <task> <since-epoch>
-  local task=$1 since=$2 f best=0 mtime found=1
+  local task=$1 since=$2 f best=0 mtime
   for f in \
     "$STATE/$task.progress" \
     "$STATE/$task.turn-ended"
@@ -1300,10 +1310,8 @@ crew_progress_since_stale() {  # <task> <since-epoch>
     [ -f "$f" ] || continue
     mtime=$(stat_mtime "$f") || continue
     case "$mtime" in ''|*[!0-9]*) continue ;; esac
-    found=0
     [ "$mtime" -le "$best" ] || best=$mtime
   done
-  [ "$found" -eq 0 ] || return 1
   # Equality does not count as advancing: it must be observed STRICTLY after
   # the timer started, so one touch cannot satisfy two consecutive checks
   # without the harness genuinely progressing again in between.
