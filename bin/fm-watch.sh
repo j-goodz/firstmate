@@ -61,8 +61,13 @@
 #                          deferred rather than escalated (wedge_defer_writing),
 #                          because files appearing there are liveness the pane and
 #                          the run step cannot show; that deferral still
-#                          re-surfaces once per PAUSE_RESURFACE_SECS, and a pane
-#                          that writes nothing keeps the unchanged schedule.
+#                          re-surfaces once per PAUSE_RESURFACE_SECS over the
+#                          thresholds that reach it - the progress absorb above
+#                          returns first while markers keep advancing, which
+#                          suspends that cadence without dropping it, because
+#                          the absorb leaves the write chain intact to keep
+#                          ageing - and a pane that writes nothing keeps the
+#                          unchanged schedule.
 #                          A pane whose recorded endpoint holds no agent at all is
 #                          not a wedge and is reported ONCE instead of escalating
 #                          on that cadence forever (wedge_dead_record); only the
@@ -921,10 +926,15 @@ resurface_absorbed() {  # <window> <throttle-marker> <age> <reason> [scope] [min
 # still re-surfaces once every PAUSE_RESURFACE_SECS through the shared
 # resurface_absorbed above - literally the same bounded cadence a declared pause
 # uses, throttled by its own .writing-resurfaced-<key> marker - and a crew whose
-# worktree churns without real progress cannot stay invisible. The escalation
-# counter is left alone: it is neither advanced (this is not an escalation) nor
-# reset (a later genuine escalation must still carry the demand-deep-inspection
-# history it had already earned).
+# worktree churns without real progress cannot stay invisible. That cadence
+# counts only the thresholds that reach this probe: the harness-progress absorb
+# above it in wedge_timer_check returns before it and deliberately leaves the
+# chain alone (it calls no clear_write_tracking), so an open chain keeps ageing
+# across those absorbed thresholds and re-surfaces the moment the probe runs
+# again, while a chain that was never opened publishes nothing until it is.
+# The escalation counter is left alone: it is neither advanced (this is not an
+# escalation) nor reset (a later genuine escalation must still carry the
+# demand-deep-inspection history it had already earned).
 wedge_defer_writing() {  # <window> <since-file> <triage-label> <idle-age>
   local win=$1 since_file=$2 label=$3 age=$4 key wsf wage
   key=$(window_key "$win")
