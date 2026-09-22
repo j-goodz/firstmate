@@ -4687,13 +4687,20 @@ if [ "$LAVISH_AXI_HOST_CONFIG_PRESENT" = 1 ]; then
   LAUNCH="export LAVISH_AXI_HOST=$(shell_quote "$LAVISH_AXI_HOST"); $LAUNCH"
 fi
 LAUNCH="export COMPACT_ADVISER_DISABLE=1; $LAUNCH"
-# Every agent this fleet launches is a fanned-out worker that runs to
-# completion and is torn down, so clearing its context mid-build only loses
-# the build state it is holding - never a net gain. Exclude every worker from
-# nexus's session cycler unconditionally, the same way and at the same site as
-# the compact-adviser switch above, leaving the machine and project cache-mode
-# defaults (and the long-lived brain session's own auto-cycling) untouched.
-LAUNCH="export NEXUS_CACHE_MODE=off; $LAUNCH"
+# A ship or scout is a fanned-out worker that runs to completion and is then
+# torn down, so clearing its context mid-build only loses the build state it is
+# holding - never a net gain. Exclude those workers from nexus's session
+# cycler, gated on kind exactly as the FM_TASK_ID pane export below. A
+# secondmate is a persistent firstmate home, the same long-lived shape as the
+# brain session that keeps auto-cycling, so it is not excluded and keeps the
+# machine and project cache-mode defaults. Delivered at the same site as the
+# compact-adviser switch above, so a compound raw launch and the relaunch
+# rebuild both carry it; the name is deliberately absent from the
+# LAUNCH_ENV_PREFIX floor list below, so under an enabled allowlist this
+# in-LAUNCH export is the whole delivery.
+if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
+  LAUNCH="export NEXUS_CACHE_MODE=off; $LAUNCH"
+fi
 if [ -z "$SPAWN_TRACEPARENT" ] && [ "$RELAUNCH" -eq 1 ]; then
   LAUNCH="unset TRACEPARENT; $LAUNCH"
 fi
@@ -4733,10 +4740,13 @@ spawn_send_text_line "$T" "export GOTMPDIR=$TASK_TMP/gotmp"
 # command independently establishes the value for the agent process itself.
 spawn_send_text_line "$T" "export COMPACT_ADVISER_DISABLE=1"
 # Export the cache-cycle exclusion into the pane shell through the same
-# pre-launch channel, so later commands in that shell inherit it too. The
-# launch command independently establishes the value for the agent process
-# itself.
-spawn_send_text_line "$T" "export NEXUS_CACHE_MODE=off"
+# pre-launch channel, so later commands in that shell inherit it too. Gated on
+# the same worker kinds as the launch-side export above, so a secondmate pane
+# keeps the machine and project cache-mode defaults. The launch command
+# independently establishes the value for the agent process itself.
+if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
+  spawn_send_text_line "$T" "export NEXUS_CACHE_MODE=off"
+fi
 if [ "$LAVISH_AXI_HOST_CONFIG_PRESENT" = 1 ]; then
   spawn_send_text_line "$T" "export LAVISH_AXI_HOST=$(shell_quote "$LAVISH_AXI_HOST")"
 fi
