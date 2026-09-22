@@ -1233,46 +1233,81 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
 # can be absorbed this way: the plain non-terminal path, and the
 # stale_is_terminal-overridden path (a captain-relevant status-log line that an
 # active run/busy pane outranked).
+#
 # A pane whose bytes repeat every poll (a periodic status probe on a fixed
 # cadence, printing the same block each cycle) pins the pane hash exactly like
 # a genuinely frozen pane: the staleness backbone above cannot tell the two
-# apart from rendered bytes alone. crew_progress_since_stale reads the cheap,
-# harness-native busy-state progress marker (state/<task>.progress, touched by
-# the adapter hooks on OBSERVED activity - a real tool/model turn, never a
-# rendered footer) and treats a marker touched after the timer's own since
-# value as proof the harness kept turning during this idle interval, so the
-# timer restarts instead of accruing toward escalation. It is checked first,
-# ahead of the three probes below: a stat-only mtime comparison, cheaper than
-# all of them, and the harness's own strongest positive evidence when it exists.
+# apart from rendered bytes alone. crew_progress_since_stale (below) reads
+# cheap, harness-native activity markers and treats one touched after the
+# timer's own since value as proof the harness kept turning during this idle
+# interval, so the timer restarts instead of accruing toward escalation.
 #
-# The wait-evidence consult (wedge_wait_evidence), the worktree write probe, and
-# the dead-record probe (wedge_dead_record) run ONLY here, inside the
-# at-threshold branch that is about to escalate: at most one each per window per
-# STALE_ESCALATE_SECS, never on an ordinary poll. The crew-state read
+# The wait-evidence consult (wedge_wait_evidence) runs FIRST, ahead of the
+# progress check: a pane whose last status line is a declared `paused:` or a
+# verified `captain-held:` transfer owes firstmate or the captain a bounded
+# re-surface on its own bounded cadence (wedge_defer_wait), and that recheck
+# must stay reachable even while the SAME pane's harness-activity markers keep
+# advancing from continued polling - otherwise the held decision would never
+# re-surface at all, a permanent suppression no other deferral below commits.
+# The progress check runs second because it is otherwise the cheapest (a
+# stat-only mtime comparison) and the harness's own strongest positive
+# evidence when neither of the first check's declared waits apply. The
+# worktree write probe and the dead-record probe run ONLY here, inside the
+# at-threshold branch that is about to escalate: at most one each per window
+# per STALE_ESCALATE_SECS, never on an ordinary poll. The crew-state read
 # wedge_wait_evidence may take under config/wedge-defer-parked-gate keeps that
-# same bound however long the wait lasts, because the deferral it feeds restarts
-# the idle timer like every other deferral below; an unconfigured home never
-# reaches that read at all. The wait consult runs first, because a pane that can
-# account for its own quiet has nothing to prove through its worktree. The dead-record probe
-# runs last of the three, so the two cheaper deferrals keep the panes they
-# already own on their existing bounded cadences and only a pane that would
-# otherwise alarm pays for a backend read.
-# Takes the ALREADY-PARSED since-epoch (not the since-file path): the wedge
-# timer's own age computation is content-based (the file holds an epoch
-# integer, which a caller may legitimately backdate), so this reads the
-# progress marker's real mtime and compares it against that same epoch rather
-# than a raw filesystem `-nt`, which would compare wall-clock write times and
-# silently disagree with the age the timer itself is using.
+# same bound however long the wait lasts, because the deferral it feeds
+# restarts the idle timer like every other deferral below; an unconfigured
+# home never reaches that read at all. The dead-record probe runs last of the
+# four, so the three cheaper deferrals keep the panes they already own on
+# their existing bounded cadences and only a pane that would otherwise alarm
+# pays for a backend read.
+#
+# crew_progress_since_stale takes the ALREADY-PARSED since-epoch (not the
+# since-file path): the wedge timer's own age computation is content-based
+# (the file holds an epoch integer, which a caller may legitimately backdate),
+# so this reads each marker's real mtime and compares it against that same
+# epoch rather than a raw filesystem `-nt`, which would compare wall-clock
+# write times and silently disagree with the age the timer itself is using.
+#
+# It checks every in-turn activity marker a converted adapter already writes,
+# rather than only Pi's codex-native state/<id>.progress: that file exists
+# for no other backend (its sole non-test writer is the Pi extension's
+# codex-native:progress handler in fm-spawn.sh), so a byte-identical poller on
+# claude, omp, cursor, kimi, or gemini would otherwise still escalate every
+# STALE_ESCALATE_SECS unchanged. state/<id>.turn-ended is touched by every
+# converted adapter's OWN Stop/AfterAgent/turn_end hook at a real turn
+# boundary - observed activity, never a rendered footer - so the newer of the
+# two markers that exists is the evidence. No new per-adapter plumbing is
+# added here: both files are written today by existing hook wiring; a backend
+# with neither (unverified/unhooked) still returns 1 and keeps its unchanged
+# escalation schedule, exactly as before this check existed.
+#
+# Deliberately EXCLUDES the semantic busy-state record (fm_busy_record_path):
+# that file is a current-STATE snapshot updated only on a busy<->idle
+# transition, not a per-activity marker, so a task armed once and never
+# re-transitioned (the ordinary shape of one long busy turn) carries a real
+# mtime from spawn time that can outrun an artificially-old since value with
+# nothing genuinely new having happened - the busy-turn-age regression this
+# would reintroduce for exactly the pane crew_absorb_class/window_is_busy
+# already classify through a different, deliberately separate path.
 crew_progress_since_stale() {  # <task> <since-epoch>
-  local task=$1 since=$2 progress mtime
-  progress="$STATE/$task.progress"
-  [ -f "$progress" ] || return 1
-  mtime=$(stat_mtime "$progress") || return 1
-  case "$mtime" in ''|*[!0-9]*) return 1 ;; esac
+  local task=$1 since=$2 f best=0 mtime found=1
+  for f in \
+    "$STATE/$task.progress" \
+    "$STATE/$task.turn-ended"
+  do
+    [ -f "$f" ] || continue
+    mtime=$(stat_mtime "$f") || continue
+    case "$mtime" in ''|*[!0-9]*) continue ;; esac
+    found=0
+    [ "$mtime" -le "$best" ] || best=$mtime
+  done
+  [ "$found" -eq 0 ] || return 1
   # Equality does not count as advancing: it must be observed STRICTLY after
   # the timer started, so one touch cannot satisfy two consecutive checks
   # without the harness genuinely progressing again in between.
-  [ "$mtime" -gt "$since" ]
+  [ "$best" -gt "$since" ]
 }
 
 wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-file> <task> <pane-hash>
@@ -1289,13 +1324,14 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
     *)
       age=$(( $(date +%s) - since ))
       if [ "$age" -ge "$STALE_ESCALATE_SECS" ]; then
-        if crew_progress_since_stale "$task" "$since"; then
-          date +%s > "$since_file"
-          triage_log "absorbed $label timer reset (harness progress observed since the last check, despite a repeating pane): $win"
-          return 0
-        fi
         if evidence=$(wedge_wait_evidence "$task") &&
            wedge_defer_wait "$win" "$since_file" "$label" "$age" "$evidence"; then
+          return 0
+        fi
+        if crew_progress_since_stale "$task" "$since"; then
+          date +%s > "$since_file"
+          clear_write_tracking "$(window_key "$win")"
+          triage_log "absorbed $label timer reset (harness progress observed since the last check, despite a repeating pane): $win"
           return 0
         fi
         if crew_worktree_written_since "$task" "$STATE" "$since_file"; then

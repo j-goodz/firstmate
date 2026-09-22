@@ -4146,6 +4146,104 @@ test_paused_authoritative_working_preserves_wedge_timer() {
   pass "a paused status overridden by authoritative working preserves its wedge timer, is rechecked rather than wedge-escalated while the declaration stands, and escalates once it is lifted"
 }
 
+# --- the declared-wait recheck stays reachable even while the harness-activity
+#     markers keep advancing on the SAME pane -----------------------------------
+# Review regression (F1, 2026-09-22): crew_progress_since_stale ran ahead of
+# wedge_wait_evidence, so a captain-held or paused pane whose repeating pane
+# also kept touching an activity marker (the exact shape of a crewmate polling
+# no-mistakes on a fixed cadence) had its held decision permanently suppressed
+# instead of re-surfaced on the existing bounded cadence. wedge_wait_evidence
+# must win this race: assert the triage log shows the wait-evidence absorb,
+# never the progress-reset absorb, even with a freshly touched progress marker.
+test_wedge_wait_evidence_recheck_reachable_despite_fresh_progress() {
+  local dir state fakebin out capture_file window key pane_hash sig pid
+  dir=$(make_case paused-progress-recheck-reachable); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; capture_file="$dir/pane.txt"; window="test:fm-paused-progress"
+  printf 'idle awaiting external' > "$capture_file"
+  printf 'window=%s\nkind=ship\n' "$window" > "$state/paused-progress.meta"
+  printf 'paused: awaiting the upstream release\n' > "$state/paused-progress.status"
+  sig=$(seen_sig "$state/paused-progress.status"); printf '%s' "$sig" > "$state/.seen-paused-progress_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  pane_hash=$(hash_text "idle awaiting external")
+  printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
+  printf '1\n' > "$state/.count-$key"
+  : > "$state/.paused-$key"
+  echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
+  # The pane keeps polling and touching its activity marker, exactly the
+  # scenario the progress deferral exists for - but a declared wait is active,
+  # so THAT recheck must fire, not a silent progress-only absorb.
+  touch "$state/paused-progress.progress"
+  export FM_FAKE_CREW_STATE='state: working · source: run-step · validating (running)'
+
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_STALE_ESCALATE_SECS=240 \
+    FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  if ! wait_poll_cycle "$state" "$pid"; then
+    reap "$pid"; fail "a declared wait with a fresh progress marker still escalated: $(cat "$out")"
+  fi
+  grep -F "possible wedge" "$out" >/dev/null && fail "a declared wait was reported as a possible wedge: $(cat "$out")"
+  grep -F 'harness progress observed' "$state/.watch-triage.log" >/dev/null \
+    && { reap "$pid"; fail "the progress deferral pre-empted the declared-wait recheck: $(cat "$state/.watch-triage.log")"; }
+  grep -F 'explains the quiet' "$state/.watch-triage.log" >/dev/null \
+    || { reap "$pid"; fail "the declared-wait recheck did not run ahead of the progress deferral: $(cat "$state/.watch-triage.log")"; }
+  reap "$pid"
+  unset FM_FAKE_CREW_STATE
+  pass "a fresh progress marker on a declared-wait pane never pre-empts its own bounded re-surface"
+}
+
+# --- non-Pi backends: crew_progress_since_stale defers on turn-ended freshness
+#     when no state/<id>.progress file exists ------------------------------------
+# Review regression (F3, 2026-09-22): state/<id>.progress is written only by
+# Pi's codex-native extension, so the original fix had no effect for claude,
+# omp, cursor, kimi or gemini crewmates - the exact backend behind the
+# motivating incident. crew_progress_since_stale now also reads
+# state/<id>.turn-ended, which every converted adapter's own hooks touch at a
+# turn boundary, so a repeating pane on a claude-backed task still defers.
+test_nonterminal_stale_claude_turnended_defers_wedge_escalation() {
+  local dir state fakebin out capture_file window key pane_hash sig pid since_before since_after
+  dir=$(make_case nonterminal-stale-claude-turnended); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; capture_file="$dir/pane.txt"
+  window="test:fm-claudepoll"
+  printf 'polling: no-mistakes axi status' > "$capture_file"
+  printf 'window=%s\nkind=ship\nharness=claude\n' "$window" > "$state/claudepoll.meta"
+  printf 'working: driving no-mistakes\n' > "$state/claudepoll.status"
+  sig=$(seen_sig "$state/claudepoll.status"); printf '%s' "$sig" > "$state/.seen-claudepoll_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  pane_hash=$(hash_text "polling: no-mistakes axi status")
+  printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
+  since_before=$(( $(date +%s) - 500 ))
+  echo "$since_before" > "$state/.stale-since-$key"
+  # No state/claudepoll.progress ever exists for a claude-backed task - only
+  # turn-ended, touched by the claude adapter's own Stop hook at a turn
+  # boundary, is available here. Prime its seen-signature so the unrelated
+  # turn-end signal scan does not intercept this fixture-created touch as a
+  # fresh turn-end event.
+  touch "$state/claudepoll.turn-ended"
+  prime_turnend_seen "$state/claudepoll.turn-ended"
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available'
+
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  if ! wait_poll_cycle "$state" "$pid"; then
+    reap "$pid"; fail "a claude-backed repeating pane escalated despite fresh turn-ended activity: $(cat "$out")"
+  fi
+  [ ! -s "$out" ] || fail "claude-backend turn-ended activity still printed a wake reason"
+  [ ! -s "$state/.wake-queue" ] || fail "claude-backend turn-ended activity still enqueued a wake"
+  [ -s "$state/.stale-since-$key" ] || fail "the wedge timer was cleared instead of reset on turn-ended activity"
+  since_after=$(cat "$state/.stale-since-$key" 2>/dev/null || echo 0)
+  [ "$since_after" -gt "$since_before" ] || fail "the wedge timer was not restarted on claude-backend turn-ended activity"
+  reap "$pid"
+  unset FM_FAKE_CREW_STATE
+  pass "a claude-backed repeating pane defers wedge escalation on turn-ended freshness with no progress file"
+}
+
 # --- consecutive wedge escalations on the same pane demand deep inspection ----
 # Root cause of the PR #252 incident's ~20 minutes of unnoticed green: each
 # wedge escalation fires, gets classified as "still validating" one poll later
@@ -6137,6 +6235,8 @@ test_secondmate_unpause_clears_pause_tracking
 test_nonterminal_stale_pause_transitions_reclassify_unchanged_hash
 test_nonterminal_paused_rechecks_authoritative_state
 test_paused_authoritative_working_preserves_wedge_timer
+test_wedge_wait_evidence_recheck_reachable_despite_fresh_progress
+test_nonterminal_stale_claude_turnended_defers_wedge_escalation
 test_nonterminal_stale_repairs_missing_or_corrupt_timer
 test_wedge_escalation_deferred_while_worktree_is_written
 test_write_deferral_resurfaces_on_the_bounded_cadence
