@@ -1280,18 +1280,28 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
 # epoch rather than a raw filesystem `-nt`, which would compare wall-clock
 # write times and silently disagree with the age the timer itself is using.
 #
-# It checks every in-turn activity marker a converted adapter already writes,
-# rather than only Pi's codex-native state/<id>.progress: that file exists
-# for no other backend (its sole non-test writer is the Pi extension's
-# codex-native:progress handler in fm-spawn.sh), so a byte-identical poller on
-# claude, omp, cursor, kimi, or gemini would otherwise still escalate every
-# STALE_ESCALATE_SECS unchanged. state/<id>.turn-ended is touched by every
-# converted adapter's OWN Stop/AfterAgent/turn_end hook at a real turn
-# boundary - observed activity, never a rendered footer - so the newer of the
-# two markers that exists is the evidence. No new per-adapter plumbing is
-# added here: both files are written today by existing hook wiring; a backend
-# with neither (unverified/unhooked) still returns 1 and keeps its unchanged
-# escalation schedule, exactly as before this check existed.
+# It reads BOTH markers rather than only Pi's codex-native
+# state/<id>.progress: that file's sole non-test writer is the Pi extension's
+# codex-native:progress handler in fm-spawn.sh, so it exists for no other
+# backend. state/<id>.turn-ended is the broader one, touched today by claude
+# (Stop), codex (the notify= launch flag), gemini (AfterAgent), opencode
+# (session.idle), pi and pi-signed (turn_end), omp (turn_end), and grok and
+# kimi (their global Stop hook, via this task's token pointer) - observed
+# activity, never a rendered footer - so the newer of the two that exists is
+# the evidence.
+#
+# Reach, stated precisely because it is narrower than the motivating case:
+# turn-ended is a TURN-BOUNDARY marker on claude, codex, gemini, opencode,
+# grok and kimi, so a pane repeating its output inside one long turn defers
+# only once a turn actually ends within the quiet window; pi and omp touch it
+# at every inner turn boundary, and Pi's progress file is the only marker that
+# advances mid-turn. cursor and muse fold their own transcripts as PULL
+# sources with no writer, and rovo and agy expose no hook surface at all, so
+# those four publish no activity evidence today: this returns 1 for them and
+# their escalation schedule is unchanged, exactly as before this check
+# existed. No new per-adapter plumbing is added here - both files are written
+# by existing hook wiring - and wiring evidence for those four is separate
+# work.
 #
 # Deliberately EXCLUDES the semantic busy-state record (fm_busy_record_path):
 # that file is a current-STATE snapshot updated only on a busy<->idle
