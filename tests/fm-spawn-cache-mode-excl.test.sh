@@ -22,6 +22,7 @@ set -u
 # shellcheck source=tests/fixtures.sh
 . "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 
+CONTROL="$ROOT/bin/fm-control.sh"
 TMP_ROOT=$(fm_test_tmproot fm-spawn-cache-mode-excl)
 
 # A synthetic pane value a worker launch must override rather than inherit: the
@@ -260,8 +261,133 @@ test_secondmate_launch_under_allowlist_is_not_excluded() {
   pass "a secondmate launch under an enabled allowlist is still not excluded from the cycle"
 }
 
+# --- relaunch ---------------------------------------------------------------
+#
+# docs/configuration.md states the guarantee holds on a relaunch as well as a
+# fresh spawn. bin/fm-control.sh relaunch stops the agent and rebuilds the
+# launch through bin/fm-spawn.sh --relaunch, restoring the kind the gate reads
+# from the task's own metadata record, so this drives the operator-facing verb
+# rather than the rebuild alone. The stub below models just enough pane
+# lifecycle for that transaction: the harness exit command leaves a bare shell
+# behind, and the launch literal starts the harness again.
+make_relaunch_stub() {  # <case-dir>
+  local fb="$1/fakebin"
+  mkdir -p "$fb"
+  cat > "$fb/tmux" <<'SH'
+#!/usr/bin/env bash
+set -u
+D=$FM_FAKE_DIR
+case "${1:-}" in
+  send-keys)
+    shift
+    literal=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -t) shift 2 ;;
+        -l) literal=1; shift ;;
+        *) break ;;
+      esac
+    done
+    payload=${1:-}
+    if [ "$literal" = 1 ]; then
+      case "$payload" in
+        ". '"*"'")
+          staged=${payload#". '"}
+          staged=${staged%"'"}
+          [ ! -f "$staged" ] || payload=$(cat "$staged")
+          ;;
+      esac
+      printf '%s\n' "$payload" >> "$D/literal"
+      case "$payload" in
+        /exit|/quit) printf 'zsh' > "$D/command" ;;
+        *'encode launch-brief'*) printf 'codex' > "$D/command" ;;
+      esac
+    else
+      printf '%s\n' "$payload" >> "$D/keys"
+    fi
+    exit 0 ;;
+  display-message)
+    for a in "$@"; do
+      case "$a" in
+        *cursor_y*) printf '1\n'; exit 0 ;;
+        *pane_current_command*) cat "$D/command"; printf '\n'; exit 0 ;;
+        *pane_current_path*) cat "$D/cwd"; printf '\n'; exit 0 ;;
+      esac
+    done
+    printf 'fakepane\n'; exit 0 ;;
+  capture-pane) printf '╭────╮\n│    │\n╰────╯\n'; exit 0 ;;
+  list-windows) [ -f "$D/windows" ] && cat "$D/windows"; exit 0 ;;
+esac
+exit 0
+SH
+  chmod +x "$fb/tmux"
+  cat > "$fb/sleep" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+  chmod +x "$fb/sleep"
+}
+
+test_relaunch_rebuilds_the_exclusion() {
+  local kind dir home proj wt id out status seen launch
+  for kind in ship scout; do
+    id="relaunch-$kind-a1"
+    dir="$TMP_ROOT/relaunch-$kind"
+    home="$dir/home"
+    proj="$dir/proj"
+    wt="$dir/wt"
+    mkdir -p "$home/state" "$home/data" "$home/config" "$home/projects" "$dir/fake"
+    touch "$home/state/.last-watcher-beat"
+    make_relaunch_stub "$dir"
+    fm_git_worktree "$proj" "$wt" "wt-relaunch-$kind"
+    fm_test_spawn_brief "$home" "$id"
+    : > "$dir/fake/literal"
+    : > "$dir/fake/keys"
+    printf 'codex' > "$dir/fake/command"
+    printf '%s\n' "fm-$id" > "$dir/fake/windows"
+    printf '%s' "$wt" > "$dir/fake/cwd"
+    {
+      echo "window=fmses:fm-$id"
+      echo "endpoint_task_id=$id"
+      echo "worktree=$wt"
+      echo "project=$proj"
+      echo "harness=codex"
+      echo "kind=$kind"
+      echo "mode=no-mistakes"
+      echo "yolo=off"
+      echo "tasktmp=$dir/tasktmp"
+      echo "model=default"
+      echo "effort=default"
+    } > "$home/state/$id.meta"
+
+    mkdir -p "$dir/user-home"
+    out=$(env PATH="$dir/fakebin:$PATH" FM_HOME="$home" FM_FAKE_DIR="$dir/fake" \
+      HOME="$dir/user-home" CLAUDE_CONFIG_DIR='' FM_SPAWN_NO_GUARD=1 \
+      FM_CONTROL_POLL=0.01 FM_CONTROL_EXIT_WAIT=0.05 FM_CONTROL_LAUNCH_WAIT=0.05 \
+      "$CONTROL" "$id" relaunch --note 'replacement continues the same task' 2>&1)
+    status=$?
+    expect_code 0 "$status" "$kind relaunch should succeed: $out"
+
+    grep -qx 'export NEXUS_CACHE_MODE=off' "$dir/fake/keys" \
+      || fail "$kind relaunch did not re-export the cache-cycle exclusion into the pane"
+    launch=$(grep 'encode launch-brief' "$dir/fake/literal" | tail -1)
+    [ -n "$launch" ] || fail "$kind relaunch sent no replacement launch command"
+    install_env_probe "$dir/fakebin" codex
+    # No pane preamble: the replacement launch alone has to carry the
+    # exclusion, exactly as the fresh-spawn case demands.
+    seen=$(env -i HOME="$dir/user-home" PATH="$dir/fakebin:$PATH" TERM=xterm \
+      TMUX=synthetic-pane NEXUS_CACHE_MODE="$CONTRARY" \
+      /bin/sh -c "$launch") \
+      || fail "$kind relaunch: the replacement launch failed to run"
+    assert_equals off "$seen" \
+      "a relaunched $kind must start with the cache-cycle exclusion on, exactly as a fresh spawn does"
+  done
+  pass "relaunch rebuilds the cache-cycle exclusion for the replacement worker, kind restored from its task record"
+}
+
 test_worker_launch_excludes_cache
 test_launch_command_carries_the_switch_without_the_pane_export
 test_raw_compound_launch_command_carries_the_switch
 test_secondmate_launch_keeps_the_ambient_cache_mode
 test_secondmate_launch_under_allowlist_is_not_excluded
+test_relaunch_rebuilds_the_exclusion

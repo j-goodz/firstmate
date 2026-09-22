@@ -4686,7 +4686,6 @@ fi
 if [ "$LAVISH_AXI_HOST_CONFIG_PRESENT" = 1 ]; then
   LAUNCH="export LAVISH_AXI_HOST=$(shell_quote "$LAVISH_AXI_HOST"); $LAUNCH"
 fi
-LAUNCH="export COMPACT_ADVISER_DISABLE=1; $LAUNCH"
 # A ship or scout is a fanned-out worker that runs to completion and is then
 # torn down, so clearing its context mid-build only loses the build state it is
 # holding - never a net gain. Exclude those workers from nexus's session
@@ -4694,13 +4693,15 @@ LAUNCH="export COMPACT_ADVISER_DISABLE=1; $LAUNCH"
 # secondmate is a persistent firstmate home, the same long-lived shape as the
 # brain session that keeps auto-cycling, so it is not excluded and keeps the
 # machine and project cache-mode defaults. Delivered at the same site as the
-# compact-adviser switch above, so a compound raw launch and the relaunch
-# rebuild both carry it; the name is deliberately absent from the
-# LAUNCH_ENV_PREFIX floor list below, so under an enabled allowlist this
-# in-LAUNCH export is the whole delivery.
+# compact-adviser switch, and inside it so that switch stays the leading token
+# of every launch string, so a compound raw launch and the relaunch rebuild
+# both carry it; the name is deliberately absent from the LAUNCH_ENV_PREFIX
+# floor list below, so under an enabled allowlist this in-LAUNCH export is the
+# whole delivery.
 if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
   LAUNCH="export NEXUS_CACHE_MODE=off; $LAUNCH"
 fi
+LAUNCH="export COMPACT_ADVISER_DISABLE=1; $LAUNCH"
 if [ -z "$SPAWN_TRACEPARENT" ] && [ "$RELAUNCH" -eq 1 ]; then
   LAUNCH="unset TRACEPARENT; $LAUNCH"
 fi
