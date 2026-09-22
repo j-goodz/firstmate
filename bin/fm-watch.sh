@@ -1163,7 +1163,12 @@ EOF
 
 # Drop a window's write-deferral chain wherever its stale bookkeeping resets, so
 # the bounded re-surface cadence is measured from the CURRENT quiet stretch and a
-# long-finished one cannot make the next deferral resurface immediately.
+# long-finished one cannot make the next deferral resurface immediately. The lone
+# exception is the harness-progress deferral, which sits ABOVE the worktree probe
+# and so must leave the chain alone: clearing it there would restart the chain at
+# zero on every threshold a marker advanced, and because that deferral returns
+# before the probe runs, nothing would ever recreate the marker - putting the
+# write deferral's own bounded re-surface permanently out of reach.
 clear_write_tracking() {  # <window-key>
   local key=$1
   rm -f "$STATE/.writing-since-$key" "$STATE/.writing-resurfaced-$key"
@@ -1348,7 +1353,6 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
         fi
         if crew_progress_since_stale "$task" "$since"; then
           date +%s > "$since_file"
-          clear_write_tracking "$(window_key "$win")"
           triage_log "absorbed $label timer reset (harness progress observed since the last check, despite a repeating pane): $win"
           return 0
         fi
