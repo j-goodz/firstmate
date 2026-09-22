@@ -89,10 +89,8 @@ emitted_launch_env() {
 $launch"
 }
 
-# The launch command ALONE, with no pane preamble replayed. The pane export and
-# the in-LAUNCH export are two independent deliveries, and replaying the
-# preamble would let either one alone satisfy the assertion; this isolates the
-# launch-side delivery so removing it fails the suite.
+# The launch command ALONE, for the raw-command case whose agent never reaches
+# the pane's pre-launch exports.
 #   launch_only_env <fakebin> <launch-log>
 launch_only_env() {
   local fakebin=$1 launchlog=$2 launch
@@ -100,22 +98,6 @@ launch_only_env() {
   env -i HOME="$TMP_ROOT/pane-home" PATH="$fakebin:$PATH" TERM=xterm \
     TMUX=synthetic-pane NEXUS_CACHE_MODE="$CONTRARY" \
     /bin/sh -c "$launch"
-}
-
-pane_export_lines() { grep -c '^export NEXUS_CACHE_MODE=off$' "$1" || true; }
-
-assert_pane_export_precedes_launch() {  # <pane-log> <label>
-  local panelog=$1 label=$2 gotmp switch
-  [ "$(pane_export_lines "$panelog")" = 1 ] \
-    || fail "$label: the pane shell should receive exactly one cache-mode export, got $(pane_export_lines "$panelog")"
-  # Ordering: the export must ride the same pre-launch site as GOTMPDIR, which
-  # is what makes it set before the agent process starts.
-  gotmp=$(grep -n '^export GOTMPDIR=' "$panelog" | tail -1 | cut -d: -f1)
-  switch=$(grep -n '^export NEXUS_CACHE_MODE=off$' "$panelog" | tail -1 | cut -d: -f1)
-  [ -n "$gotmp" ] && [ -n "$switch" ] \
-    || fail "$label: the pane log is missing the pre-launch exports"
-  [ "$switch" -gt "$gotmp" ] \
-    || fail "$label: the cache-mode export must ride the GOTMPDIR pre-launch site (gotmp=$gotmp switch=$switch)"
 }
 
 # run_worker_case <name> <kind> <allowlist-setting>
@@ -139,7 +121,6 @@ test_worker_launch_excludes_cache() {
   for kind in ship scout; do
     for setting in absent enabled; do
       run_worker_case "$kind-$setting" "$kind" "$setting"
-      assert_pane_export_precedes_launch "$PANE_LOG" "$kind, allowlist $setting"
       if [ "$setting" = enabled ]; then
         launch=$(cat "$LAUNCH_LOG")
         assert_contains "$launch" '/usr/bin/env -i' \
@@ -153,26 +134,6 @@ test_worker_launch_excludes_cache() {
     done
   done
   pass "ship and scout launches start their agent with the cache-cycle exclusion on, in both allowlist postures"
-}
-
-# The exclusion must not depend on the pane export having landed: a pane whose
-# export was lost, and an enabled allowlist whose cleared environment drops the
-# name outright, both still have to launch the agent with the exclusion on.
-# Replaying the launch alone under a contrary ambient value is that case, and
-# it is the only assertion here that fails if the in-LAUNCH export is removed.
-test_launch_command_carries_the_switch_without_the_pane_export() {
-  local kind setting seen
-  for kind in ship scout; do
-    for setting in absent enabled; do
-      run_worker_case "$kind-nopane-$setting" "$kind" "$setting"
-      install_env_probe "$FAKEBIN_DIR" codex
-      seen=$(launch_only_env "$FAKEBIN_DIR" "$LAUNCH_LOG") \
-        || fail "$kind, allowlist=$setting: the emitted launch failed to run without the pane exports"
-      assert_equals off "$seen" \
-        "$kind, allowlist=$setting: the launch command alone must set the cache-cycle exclusion, overriding a contrary pane value"
-    done
-  done
-  pass "the launch command sets the exclusion on its own for ship and scout, whichever allowlist posture is in force"
 }
 
 # A command-prefix assignment only covers the first simple command. A raw
@@ -218,8 +179,8 @@ make_secondmate_home() {
 }
 
 # A secondmate is a persistent home, not a fanned-out worker, so its launch
-# must leave the cache mode exactly as the pane presents it: no pane export,
-# and a live ambient value survives into the agent untouched.
+# must leave the cache mode exactly as the pane presents it: a live ambient
+# value survives into the agent untouched.
 test_secondmate_launch_keeps_the_ambient_cache_mode() {
   local rec sm out status seen
   rec=$(make_case secondmate-absent codex sm-absent)
@@ -228,8 +189,6 @@ test_secondmate_launch_keeps_the_ambient_cache_mode() {
   out=$(run_case_spawn sm-absent "$sm" --secondmate)
   status=$?
   expect_code 0 "$status" "secondmate spawn should succeed: $out"
-  [ "$(pane_export_lines "$PANE_LOG")" = 0 ] \
-    || fail "a secondmate pane must not receive the worker cache-mode export"
   install_env_probe "$FAKEBIN_DIR" codex
   seen=$(emitted_launch_env "$FAKEBIN_DIR" "$LAUNCH_LOG" "$PANE_LOG") \
     || fail "secondmate: the emitted launch failed to run"
@@ -251,8 +210,6 @@ test_secondmate_launch_under_allowlist_is_not_excluded() {
   out=$(run_case_spawn sm-enabled "$sm" --secondmate)
   status=$?
   expect_code 0 "$status" "secondmate spawn under an allowlist should succeed: $out"
-  [ "$(pane_export_lines "$PANE_LOG")" = 0 ] \
-    || fail "a secondmate pane under an allowlist must not receive the worker cache-mode export"
   install_env_probe "$FAKEBIN_DIR" codex
   seen=$(emitted_launch_env "$FAKEBIN_DIR" "$LAUNCH_LOG" "$PANE_LOG") \
     || fail "secondmate under an allowlist: the emitted launch failed to run"
@@ -329,8 +286,11 @@ SH
 }
 
 test_relaunch_rebuilds_the_exclusion() {
-  local kind dir home proj wt id out status seen launch
-  for kind in ship scout; do
+  local kind dir home proj wt id out status seen launch want
+  # secondmate is the iteration that proves the kind actually comes from the
+  # task record: bin/fm-spawn.sh falls back to ship on an empty read, so only a
+  # kind that must NOT be excluded can detect a broken restore.
+  for kind in ship scout secondmate; do
     id="relaunch-$kind-a1"
     dir="$TMP_ROOT/relaunch-$kind"
     home="$dir/home"
@@ -350,15 +310,38 @@ test_relaunch_rebuilds_the_exclusion() {
       echo "window=fmses:fm-$id"
       echo "endpoint_task_id=$id"
       echo "worktree=$wt"
-      echo "project=$proj"
       echo "harness=codex"
       echo "kind=$kind"
-      echo "mode=no-mistakes"
       echo "yolo=off"
-      echo "tasktmp=$dir/tasktmp"
       echo "model=default"
       echo "effort=default"
     } > "$home/state/$id.meta"
+    if [ "$kind" = secondmate ]; then
+      # A secondmate relaunches from its own seeded firstmate home, whose
+      # durable child records fm-control.sh proves readable before it stops the
+      # agent.
+      mkdir -p "$wt/state" "$wt/data" "$wt/bin"
+      # A secondmate relaunch re-resolves its durable configured harness pin
+      # rather than freezing the running one, so pin it to the adapter this
+      # case probes.
+      printf 'codex\n' > "$home/config/secondmate-harness"
+      printf '%s\n' "$id" > "$wt/.fm-secondmate-home"
+      printf '# Firstmate\n' > "$wt/AGENTS.md"
+      printf 'charter for %s\n' "$id" > "$wt/data/charter.md"
+      {
+        echo "project=$wt"
+        echo "home=$wt"
+        echo "mode=secondmate"
+      } >> "$home/state/$id.meta"
+      want=$CONTRARY
+    else
+      {
+        echo "project=$proj"
+        echo "mode=no-mistakes"
+        echo "tasktmp=$dir/tasktmp"
+      } >> "$home/state/$id.meta"
+      want=off
+    fi
 
     mkdir -p "$dir/user-home"
     out=$(env PATH="$dir/fakebin:$PATH" FM_HOME="$home" FM_FAKE_DIR="$dir/fake" \
@@ -368,25 +351,20 @@ test_relaunch_rebuilds_the_exclusion() {
     status=$?
     expect_code 0 "$status" "$kind relaunch should succeed: $out"
 
-    grep -qx 'export NEXUS_CACHE_MODE=off' "$dir/fake/keys" \
-      || fail "$kind relaunch did not re-export the cache-cycle exclusion into the pane"
     launch=$(grep 'encode launch-brief' "$dir/fake/literal" | tail -1)
     [ -n "$launch" ] || fail "$kind relaunch sent no replacement launch command"
     install_env_probe "$dir/fakebin" codex
-    # No pane preamble: the replacement launch alone has to carry the
-    # exclusion, exactly as the fresh-spawn case demands.
     seen=$(env -i HOME="$dir/user-home" PATH="$dir/fakebin:$PATH" TERM=xterm \
       TMUX=synthetic-pane NEXUS_CACHE_MODE="$CONTRARY" \
       /bin/sh -c "$launch") \
       || fail "$kind relaunch: the replacement launch failed to run"
-    assert_equals off "$seen" \
-      "a relaunched $kind must start with the cache-cycle exclusion on, exactly as a fresh spawn does"
+    assert_equals "$want" "$seen" \
+      "a relaunched $kind must reach its agent with NEXUS_CACHE_MODE=$want, exactly as a fresh spawn of that kind does"
   done
-  pass "relaunch rebuilds the cache-cycle exclusion for the replacement worker, kind restored from its task record"
+  pass "relaunch rebuilds the cache-cycle exclusion for workers and withholds it from a secondmate, kind restored from the task record"
 }
 
 test_worker_launch_excludes_cache
-test_launch_command_carries_the_switch_without_the_pane_export
 test_raw_compound_launch_command_carries_the_switch
 test_secondmate_launch_keeps_the_ambient_cache_mode
 test_secondmate_launch_under_allowlist_is_not_excluded

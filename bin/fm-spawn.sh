@@ -271,6 +271,10 @@
 #   compact-adviser kill switch COMPACT_ADVISER_DISABLE, which the floor also
 #   pins to 1 with a literal assignment so it survives the cleared environment
 #   even on a host that never had it set.
+#   The session-cycle exclusion NEXUS_CACHE_MODE=off that ship and scout launches
+#   carry is deliberately NOT on this floor: the launch command exports it
+#   itself, inside the filtered environment, so an enabled allowlist neither
+#   forwards nor removes it and a secondmate keeps the machine default.
 #   An enabled task trace also retains TRACEPARENT. Explicit Firstmate launch
 #   assignments still apply inside the filtered environment. Raw commands must
 #   be POSIX sh compatible under this opt-in; the absent-file path is unchanged.
@@ -4692,12 +4696,12 @@ fi
 # cycler, gated on kind exactly as the FM_TASK_ID pane export below. A
 # secondmate is a persistent firstmate home, the same long-lived shape as the
 # brain session that keeps auto-cycling, so it is not excluded and keeps the
-# machine and project cache-mode defaults. Delivered at the same site as the
-# compact-adviser switch, and inside it so that switch stays the leading token
-# of every launch string, so a compound raw launch and the relaunch rebuild
-# both carry it; the name is deliberately absent from the LAUNCH_ENV_PREFIX
-# floor list below, so under an enabled allowlist this in-LAUNCH export is the
-# whole delivery.
+# machine and project cache-mode defaults. This export is the single delivery
+# site: it sits at the same place as the compact-adviser switch, and inside it
+# so that switch stays the leading token of every launch string, so a compound
+# raw launch and the relaunch rebuild both carry it. The name is deliberately
+# absent from the LAUNCH_ENV_PREFIX floor list below, so an enabled allowlist
+# changes nothing about how the worker receives it.
 if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
   LAUNCH="export NEXUS_CACHE_MODE=off; $LAUNCH"
 fi
@@ -4740,14 +4744,6 @@ spawn_send_text_line "$T" "export GOTMPDIR=$TASK_TMP/gotmp"
 # pre-launch channel, so later commands in that shell inherit it too. The launch
 # command independently establishes the value for the agent process itself.
 spawn_send_text_line "$T" "export COMPACT_ADVISER_DISABLE=1"
-# Export the cache-cycle exclusion into the pane shell through the same
-# pre-launch channel, so later commands in that shell inherit it too. Gated on
-# the same worker kinds as the launch-side export above, so a secondmate pane
-# keeps the machine and project cache-mode defaults. The launch command
-# independently establishes the value for the agent process itself.
-if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
-  spawn_send_text_line "$T" "export NEXUS_CACHE_MODE=off"
-fi
 if [ "$LAVISH_AXI_HOST_CONFIG_PRESENT" = 1 ]; then
   spawn_send_text_line "$T" "export LAVISH_AXI_HOST=$(shell_quote "$LAVISH_AXI_HOST")"
 fi
