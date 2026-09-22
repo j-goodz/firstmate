@@ -1233,6 +1233,18 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
 # can be absorbed this way: the plain non-terminal path, and the
 # stale_is_terminal-overridden path (a captain-relevant status-log line that an
 # active run/busy pane outranked).
+# A pane whose bytes repeat every poll (a periodic status probe on a fixed
+# cadence, printing the same block each cycle) pins the pane hash exactly like
+# a genuinely frozen pane: the staleness backbone above cannot tell the two
+# apart from rendered bytes alone. crew_progress_since_stale reads the cheap,
+# harness-native busy-state progress marker (state/<task>.progress, touched by
+# the adapter hooks on OBSERVED activity - a real tool/model turn, never a
+# rendered footer) and treats a marker touched after the timer's own since
+# value as proof the harness kept turning during this idle interval, so the
+# timer restarts instead of accruing toward escalation. It is checked first,
+# ahead of the three probes below: a stat-only mtime comparison, cheaper than
+# all of them, and the harness's own strongest positive evidence when it exists.
+#
 # The wait-evidence consult (wedge_wait_evidence), the worktree write probe, and
 # the dead-record probe (wedge_dead_record) run ONLY here, inside the
 # at-threshold branch that is about to escalate: at most one each per window per
@@ -1245,6 +1257,24 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
 # runs last of the three, so the two cheaper deferrals keep the panes they
 # already own on their existing bounded cadences and only a pane that would
 # otherwise alarm pays for a backend read.
+# Takes the ALREADY-PARSED since-epoch (not the since-file path): the wedge
+# timer's own age computation is content-based (the file holds an epoch
+# integer, which a caller may legitimately backdate), so this reads the
+# progress marker's real mtime and compares it against that same epoch rather
+# than a raw filesystem `-nt`, which would compare wall-clock write times and
+# silently disagree with the age the timer itself is using.
+crew_progress_since_stale() {  # <task> <since-epoch>
+  local task=$1 since=$2 progress mtime
+  progress="$STATE/$task.progress"
+  [ -f "$progress" ] || return 1
+  mtime=$(stat_mtime "$progress") || return 1
+  case "$mtime" in ''|*[!0-9]*) return 1 ;; esac
+  # Equality does not count as advancing: it must be observed STRICTLY after
+  # the timer started, so one touch cannot satisfy two consecutive checks
+  # without the harness genuinely progressing again in between.
+  [ "$mtime" -gt "$since" ]
+}
+
 wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-file> <task> <pane-hash>
   local win=$1 since_file=$2 label=$3 escalation_file=$4 task=$5 hash=$6 since age n reason evidence
   since=$(cat "$since_file" 2>/dev/null || true)
@@ -1259,6 +1289,11 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
     *)
       age=$(( $(date +%s) - since ))
       if [ "$age" -ge "$STALE_ESCALATE_SECS" ]; then
+        if crew_progress_since_stale "$task" "$since"; then
+          date +%s > "$since_file"
+          triage_log "absorbed $label timer reset (harness progress observed since the last check, despite a repeating pane): $win"
+          return 0
+        fi
         if evidence=$(wedge_wait_evidence "$task") &&
            wedge_defer_wait "$win" "$since_file" "$label" "$age" "$evidence"; then
           return 0

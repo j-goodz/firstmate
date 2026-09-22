@@ -2099,6 +2099,99 @@ test_nonterminal_stale_provably_working_absorbed_then_escalated() {
   pass "provably-working non-terminal stale is absorbed on first sight, then wedge-escalated past the threshold"
 }
 
+# --- non-terminal stale, byte-identical periodic poll output, but the harness
+#     busy-state progress marker keeps advancing: the wedge timer must reset
+#     instead of escalating -----------------------------------------------------
+# Regression for the 2026-09-22 false-wedge incident: a worker that polls on a
+# fixed cadence (sleep N; no-mistakes axi status) prints the SAME block every
+# cycle, so once the tail40 viewport fills with repeats the pane hash never
+# changes and wedge_timer_check's since-file timer accrues toward escalation
+# even though the harness is demonstrably still turning between polls. The
+# crew-state verdict here is deliberately NOT working, so this exercises
+# crew_progress_since_stale alone rather than the crew_absorb_class path a
+# provably-working crew already takes.
+test_nonterminal_stale_progress_advance_defers_wedge_escalation() {
+  local dir state fakebin out capture_file window key pane_hash sig pid since_before since_after
+  dir=$(make_case nonterminal-stale-progress-advances); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; capture_file="$dir/pane.txt"
+  window="test:fm-identicalpoll"
+  printf 'polling: no-mistakes axi status' > "$capture_file"
+  printf 'window=%s\nkind=ship\n' "$window" > "$state/identicalpoll.meta"
+  printf 'working: driving no-mistakes\n' > "$state/identicalpoll.status"
+  sig=$(seen_sig "$state/identicalpoll.status"); printf '%s' "$sig" > "$state/.seen-identicalpoll_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  pane_hash=$(hash_text "polling: no-mistakes axi status")
+  printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+  # Already classified stale on a prior poll, and its wedge timer already
+  # crossed the escalation threshold.
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
+  since_before=$(( $(date +%s) - 500 ))
+  echo "$since_before" > "$state/.stale-since-$key"
+  # The harness observably progressed (a real tool call) AFTER the timer
+  # started, even though the rendered pane bytes never changed.
+  touch "$state/identicalpoll.progress"
+  # Not provably working, so only crew_progress_since_stale can defer this.
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available'
+
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  if ! wait_poll_cycle "$state" "$pid"; then
+    reap "$pid"; fail "watcher escalated a repeating pane despite fresh harness progress: $(cat "$out")"
+  fi
+  [ ! -s "$out" ] || fail "harness progress since the timer started still printed a wake reason"
+  [ ! -s "$state/.wake-queue" ] || fail "harness progress since the timer started still enqueued a wake"
+  [ -s "$state/.stale-since-$key" ] || fail "the wedge timer was cleared instead of reset on progress"
+  since_after=$(cat "$state/.stale-since-$key" 2>/dev/null || echo 0)
+  [ "$since_after" -gt "$since_before" ] || fail "the wedge timer was not restarted on observed harness progress"
+  reap "$pid"
+  unset FM_FAKE_CREW_STATE
+  pass "a repeating pane whose harness progress marker keeps advancing defers wedge escalation"
+}
+
+# --- inverse: byte-identical periodic poll output AND a stale progress marker
+#     from an earlier turn (nothing observed since the timer started): the
+#     wedge timer must still escalate -----------------------------------------
+# Proves the fix is bounded: crew_progress_since_stale only defers on a marker
+# touched AFTER the timer started. A progress marker left over from an earlier
+# turn, with the harness now genuinely frozen, must not immunize the pane
+# forever - a real wedge still surfaces.
+test_nonterminal_stale_stale_progress_still_wedge_escalates() {
+  local dir state fakebin out drain_out capture_file window key pane_hash sig pid
+  dir=$(make_case nonterminal-stale-progress-stale); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; drain_out="$dir/drain.out"; capture_file="$dir/pane.txt"
+  window="test:fm-frozenpoll"
+  printf 'polling: no-mistakes axi status' > "$capture_file"
+  printf 'window=%s\nkind=ship\n' "$window" > "$state/frozenpoll.meta"
+  printf 'working: driving no-mistakes\n' > "$state/frozenpoll.status"
+  sig=$(seen_sig "$state/frozenpoll.status"); printf '%s' "$sig" > "$state/.seen-frozenpoll_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  pane_hash=$(hash_text "polling: no-mistakes axi status")
+  printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
+  echo $(( $(date +%s) - 500 )) > "$state/.stale-since-$key"
+  # A progress marker exists, but from long before this quiet interval's timer
+  # started - not proof of anything observed since.
+  touch -t 200001010000 "$state/frozenpoll.progress"
+  export FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available'
+
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_STALE_ESCALATE_SECS=240 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  wait_for_exit "$pid" 100 || fail "watcher did not escalate a repeating pane with a stale progress marker"
+  grep -F "stale: $window" "$out" >/dev/null || fail "escalation did not print a stale wake"
+  grep -F "possible wedge" "$out" >/dev/null || fail "escalation did not flag a possible wedge"
+  [ ! -e "$state/.stale-since-$key" ] || fail "stale-since timer was not cleared after escalation"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$drain_out" 2>/dev/null || fail "drain after the wedge escalation failed"
+  grep "$(printf '\tstale\t')" "$drain_out" | grep -F "$window" >/dev/null || fail "wedge escalation was not queued"
+  unset FM_FAKE_CREW_STATE
+  pass "a repeating pane with only a stale, pre-timer progress marker still wedge-escalates"
+}
+
 # --- non-terminal stale, crew NOT provably working: surfaced immediately ------
 # The key requirement: a crew with no running pipeline that has gone quiet (and is
 # not busy) has stopped - it may be done via interactive menus, waiting, or wedged.
@@ -6002,6 +6095,8 @@ test_permission_recovery_surfaces_preserved_status
 test_terminal_stale_surfaced
 test_stale_terminal_status_overridden_by_active_run
 test_nonterminal_stale_provably_working_absorbed_then_escalated
+test_nonterminal_stale_progress_advance_defers_wedge_escalation
+test_nonterminal_stale_stale_progress_still_wedge_escalates
 test_wedge_escalation_marks_demand_deep_inspection_after_threshold
 test_wedge_escalation_resets_when_pane_becomes_active
 test_gone_endpoint_reports_once_instead_of_escalating_forever
