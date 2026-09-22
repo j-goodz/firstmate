@@ -1,0 +1,64 @@
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+

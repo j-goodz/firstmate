@@ -1,0 +1,22 @@
+# Wedge/stale/paused triage results (bash tests/fm-watch-triage.test.sh)
+# 111 tests completed in the main pass before a 1500s wrapper timeout cut it at test 112;
+# the 3 remaining test_paused_until_* cases were then run separately (see fm-watch-triage-paused-until-tail.log).
+# zero failures in either pass.
+
+ok - provably-working non-terminal stale is absorbed on first sight, then wedge-escalated past the threshold
+ok - a repeating pane whose harness progress marker keeps advancing defers wedge escalation
+ok - a repeating pane with only a stale, pre-timer progress marker still wedge-escalates
+ok - consecutive wedge escalations on the same pane accumulate and demand deep inspection at the threshold
+ok - a busy worker below the turn-age bound remains working with no escalation
+ok - a busy worker with a stable pane hash still escalates once its completed-turn age reaches the bound
+ok - a busy worker whose pane hash changes every poll still escalates once its completed-turn age reaches the bound
+ok - a declared pause is absorbed on first sight, then re-surfaced as a recheck past the threshold, never wedge-escalated
+ok - a declared wait is not wedge-escalated by a working verdict, while an elapsed declaration and an undeclared lane both keep the unchanged ladder
+ok - a declared paused secondmate re-surfaces on the bounded normal-mode cadence
+ok - a declared pause is periodically rechecked against authoritative active-run state
+ok - a fresh progress marker on a declared-wait pane never pre-empts its own bounded re-surface
+ok - a claude-backed repeating pane defers wedge escalation on turn-ended freshness with no progress file
+ok - a write deferral re-surfaces once on the bounded pause cadence, so a churning worktree cannot stay invisible
+ok - a declared wait naming a near-future until time stays quiet until that time
+ok - a wrong-year declared time cannot silence the watcher beyond the recheck cadence
+ok - a declared wait whose until time has passed is rechecked at once, then held to the cadence

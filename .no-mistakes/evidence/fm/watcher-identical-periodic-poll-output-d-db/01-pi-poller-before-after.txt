@@ -1,0 +1,74 @@
+############ BEFORE (base commit 887c07e, no fix) ############
+scenario:        poll-progress
+watcher under test: /tmp/fmlab-base-bin/fm-watch.sh (md5 54a1e0957ed28963b8eb047529f9673f)
+tmux session:    fm-lab-wedge-poll-progress (private socket /tmp/fmlab-base-pollprogress/tmuxtmp)
+harness:         pi
+pane capture hash over three poll cycles (the wedge signal itself):
+  29f0ba8ce4450fd9ecc222fa72827fa0
+  6cbfd6cc50f3723045900b9ee4488a51
+  6cbfd6cc50f3723045900b9ee4488a51
+  => NOT pinned (scenario setup failed)
+
+watcher rounds run: 7 over 150s (escalation threshold 20s)
+
+--- every reason the watcher printed (what firstmate would be woken for) ---
+stale: fm-lab-wedge-poll-progress:crewpollprogress
+stale: fm-lab-wedge-poll-progress:crewpollprogress (idle 20s, possible wedge, escalation 1)
+stale: fm-lab-wedge-poll-progress:crewpollprogress (idle 20s, possible wedge, escalation 2)
+stale: fm-lab-wedge-poll-progress:crewpollprogress (idle 20s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone)
+stale: fm-lab-wedge-poll-progress:crewpollprogress (idle 21s, possible wedge, escalation 4, demand-deep-inspection: same pane has wedge-escalated 4 times in a row - do not re-absorb on the run-step/pane state alone)
+stale: fm-lab-wedge-poll-progress:crewpollprogress (idle 21s, possible wedge, escalation 5, demand-deep-inspection: same pane has wedge-escalated 5 times in a row - do not re-absorb on the run-step/pane state alone)
+
+--- wedge escalations ---
+possible-wedge wakes: 5
+
+--- watcher triage log (its own record of each absorb decision) ---
+[2026-09-22T18:01:23+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-poll-progress:crewpollprogress
+[2026-09-22T18:01:48+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-poll-progress:crewpollprogress
+[2026-09-22T18:02:14+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-poll-progress:crewpollprogress
+[2026-09-22T18:02:39+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-poll-progress:crewpollprogress
+[2026-09-22T18:03:04+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-poll-progress:crewpollprogress
+[2026-09-22T18:03:30+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-poll-progress:crewpollprogress
+
+--- durable state left behind ---
+.stale-since-fm-lab-wedge-poll-progress_crewpollprogress: present (content=1790100210, age=15s)
+.wedge-escalations-fm-lab-wedge-poll-progress_crewpollprogress: present (content=5, age=20s)
+.writing-since-fm-lab-wedge-poll-progress_crewpollprogress: absent
+.writing-resurfaced-fm-lab-wedge-poll-progress_crewpollprogress: absent
+.paused-resurfaced-fm-lab-wedge-poll-progress_crewpollprogress: absent
+
+############ AFTER (target commit 2e45248) ############
+scenario:        poll-progress
+watcher under test: /home/justin/.no-mistakes/worktrees/c7804fcd202d/01M34XZN4KMTPTQQKZSSQYDHG0/bin/fm-watch.sh (md5 6f683f0b83c871b96b0ac5160b66211a)
+tmux session:    fm-lab-wedge-poll-progress (private socket /tmp/fmlab-fix-pollprogress/tmuxtmp)
+harness:         pi
+pane capture hash over three poll cycles (the wedge signal itself):
+  29f0ba8ce4450fd9ecc222fa72827fa0
+  6cbfd6cc50f3723045900b9ee4488a51
+  6cbfd6cc50f3723045900b9ee4488a51
+  => NOT pinned (scenario setup failed)
+
+watcher rounds run: 2 over 150s (escalation threshold 20s)
+
+--- every reason the watcher printed (what firstmate would be woken for) ---
+stale: fm-lab-wedge-poll-progress:crewpollprogress
+
+--- wedge escalations ---
+possible-wedge wakes: 0
+0
+
+--- watcher triage log (its own record of each absorb decision) ---
+[2026-09-22T18:01:23+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-poll-progress:crewpollprogress
+[2026-09-22T18:01:43+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-poll-progress:crewpollprogress
+[2026-09-22T18:02:04+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-poll-progress:crewpollprogress
+[2026-09-22T18:02:24+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-poll-progress:crewpollprogress
+[2026-09-22T18:02:44+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-poll-progress:crewpollprogress
+[2026-09-22T18:03:05+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-poll-progress:crewpollprogress
+[2026-09-22T18:03:25+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-poll-progress:crewpollprogress
+
+--- durable state left behind ---
+.stale-since-fm-lab-wedge-poll-progress_crewpollprogress: present (content=1790100205, age=20s)
+.wedge-escalations-fm-lab-wedge-poll-progress_crewpollprogress: absent
+.writing-since-fm-lab-wedge-poll-progress_crewpollprogress: absent
+.writing-resurfaced-fm-lab-wedge-poll-progress_crewpollprogress: absent
+.paused-resurfaced-fm-lab-wedge-poll-progress_crewpollprogress: absent

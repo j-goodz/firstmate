@@ -1,0 +1,105 @@
+############ AFTER (target commit 2e45248) ############
+scenario:        write-chain
+watcher under test: /home/justin/.no-mistakes/worktrees/c7804fcd202d/01M34XZN4KMTPTQQKZSSQYDHG0/bin/fm-watch.sh (md5 6f683f0b83c871b96b0ac5160b66211a)
+tmux session:    fm-lab-wedge-write-chain (private socket /tmp/fmlab-fix-writechain/tmuxtmp)
+harness:         pi
+pane capture hash over three poll cycles (the wedge signal itself):
+  6cbfd6cc50f3723045900b9ee4488a51
+  6cbfd6cc50f3723045900b9ee4488a51
+  6cbfd6cc50f3723045900b9ee4488a51
+  => byte-identical: the pane hash is pinned, exactly as a frozen pane pins it
+
+--- what the pane actually shows (live tmux capture, last 12 rows) ---
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+
+
+crew-state reader: /home/justin/.no-mistakes/worktrees/c7804fcd202d/01M34XZN4KMTPTQQKZSSQYDHG0/bin/fm-crew-state.sh
+
+watcher rounds run: 2 over 180s (escalation threshold 20s)
+
+--- every reason the watcher printed (what firstmate would be woken for) ---
+stale: fm-lab-wedge-write-chain:crewwritechain
+
+--- wedge escalations ---
+possible-wedge wakes: 0
+0
+
+--- watcher triage log (its own record of each absorb decision) ---
+[2026-09-22T18:16:29+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:16:50+0000] absorbed non-terminal stale (worktree written since the idle window opened, idle 21s): fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:17:11+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:17:32+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:17:54+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:18:15+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:18:36+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:18:58+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-write-chain:crewwritechain
+
+--- durable state left behind ---
+.stale-since-fm-lab-wedge-write-chain_crewwritechain: present (content=1790101138, age=25s)
+.wedge-escalations-fm-lab-wedge-write-chain_crewwritechain: absent
+.writing-since-fm-lab-wedge-write-chain_crewwritechain: present (content=1790101010, age=153s)
+.writing-resurfaced-fm-lab-wedge-write-chain_crewwritechain: absent
+.paused-resurfaced-fm-lab-wedge-write-chain_crewwritechain: absent
+
+############ BEFORE the review-2 fix (commit 8740603) ############
+scenario:        write-chain
+watcher under test: /tmp/fmlab-prev-bin/fm-watch.sh (md5 306c6bb6e90d0f266a613f63ad571a05)
+tmux session:    fm-lab-wedge-write-chain (private socket /tmp/fmlab-prev-writechain/tmuxtmp)
+harness:         pi
+pane capture hash over three poll cycles (the wedge signal itself):
+  6cbfd6cc50f3723045900b9ee4488a51
+  6cbfd6cc50f3723045900b9ee4488a51
+  6cbfd6cc50f3723045900b9ee4488a51
+  => byte-identical: the pane hash is pinned, exactly as a frozen pane pins it
+
+--- what the pane actually shows (live tmux capture, last 12 rows) ---
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+no-mistakes axi status
+  run 01M34XZN4KMTPTQQKZSSQYDHG0  running  step=test
+  gate: none pending
+
+
+crew-state reader: /tmp/fmlab-prev-bin/fm-crew-state.sh
+
+watcher rounds run: 2 over 180s (escalation threshold 20s)
+
+--- every reason the watcher printed (what firstmate would be woken for) ---
+stale: fm-lab-wedge-write-chain:crewwritechain
+
+--- wedge escalations ---
+possible-wedge wakes: 0
+0
+
+--- watcher triage log (its own record of each absorb decision) ---
+[2026-09-22T18:16:29+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:16:50+0000] absorbed non-terminal stale (worktree written since the idle window opened, idle 21s): fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:17:11+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:17:32+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:17:54+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:18:15+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:18:36+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-write-chain:crewwritechain
+[2026-09-22T18:18:58+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): fm-lab-wedge-write-chain:crewwritechain
+
+--- durable state left behind ---
+.stale-since-fm-lab-wedge-write-chain_crewwritechain: present (content=1790101138, age=24s)
+.wedge-escalations-fm-lab-wedge-write-chain_crewwritechain: absent
+.writing-since-fm-lab-wedge-write-chain_crewwritechain: absent
+.writing-resurfaced-fm-lab-wedge-write-chain_crewwritechain: absent
+.paused-resurfaced-fm-lab-wedge-write-chain_crewwritechain: absent

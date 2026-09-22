@@ -1,0 +1,37 @@
+
+========== D1  repeating pane + harness activity observed since the quiet window began ==========
+pane (byte-identical every cycle):
+    │ no-mistakes axi status → validate: running (attempt 3)
+    │ sleeping 60swedge timer (.stale-since) before: 1790102085  (age 500s, threshold 240s)
+watcher still running after a full poll cycle: yes
+watcher stdout (a wake reason would appear here): []
+wake queue: []
+wedge timer after: 1790102587
+triage log:
+    [2026-09-22T18:43:07+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): test:fm-poller
+
+========== D2  repeating pane, marker left over from an earlier turn (genuinely frozen) ==========
+progress marker mtime: Sat Jan  1 12:00:00 AM UTC 2000
+watcher exited (escalated): yes
+watcher stdout:
+    stale: test:fm-frozen (idle 502s, possible wedge, escalation 1)
+queued wake:
+    1790102590	1	stale	test:fm-frozen	stale: test:fm-frozen (idle 502s, possible wedge, escalation 1)
+
+========== D3  claude-backed pane: no .progress file, turn-ended touched in this window ==========
+.progress exists: no
+watcher still running: yes
+watcher stdout: []
+wedge timer before/after: 1790102093 / 1790102595
+triage log:
+    [2026-09-22T18:43:15+0000] absorbed non-terminal stale timer reset (harness progress observed since the last check, despite a repeating pane): test:fm-claudepoll
+
+========== D4  declared wait (paused) + a freshly touched marker: the held decision still owns the recheck ==========
+watcher still running: yes
+watcher stdout: []
+triage log:
+    [2026-09-22T18:43:18+0000] absorbed non-terminal stale (provably working after a declared pause) (declared wait explains the quiet, idle 502s): test:fm-pausedpoll
+    [2026-09-22T18:43:18+0000] absorbed non-terminal stale (provably working): test:fm-pausedpoll
+progress-deferral line present (must be absent): 0
+declared-wait recheck line present (must be 1+): 1
+

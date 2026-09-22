@@ -1,0 +1,3 @@
+ok - a declared wait naming a near-future until time stays quiet until that time
+ok - a wrong-year declared time cannot silence the watcher beyond the recheck cadence
+ok - a declared wait whose until time has passed is rechecked at once, then held to the cadence

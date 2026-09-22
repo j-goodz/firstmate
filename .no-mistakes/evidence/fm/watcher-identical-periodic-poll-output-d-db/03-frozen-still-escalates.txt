@@ -1,0 +1,109 @@
+############ genuinely frozen pane, no harness marker at all ############
+scenario:        frozen
+watcher under test: /home/justin/.no-mistakes/worktrees/c7804fcd202d/01M34XZN4KMTPTQQKZSSQYDHG0/bin/fm-watch.sh (md5 6f683f0b83c871b96b0ac5160b66211a)
+tmux session:    fm-lab-wedge-frozen (private socket /tmp/fmlab-fix-frozen/tmuxtmp)
+harness:         cursor
+pane capture hash over three poll cycles (the wedge signal itself):
+  fa47ff6ff84281ae84e4c92acd72e4d9
+  fa47ff6ff84281ae84e4c92acd72e4d9
+  fa47ff6ff84281ae84e4c92acd72e4d9
+  => byte-identical: the pane hash is pinned, exactly as a frozen pane pins it
+
+--- what the pane actually shows (live tmux capture, last 12 rows) ---
+
+
+
+
+
+
+
+
+
+
+
+
+
+crew-state reader: /home/justin/.no-mistakes/worktrees/c7804fcd202d/01M34XZN4KMTPTQQKZSSQYDHG0/bin/fm-crew-state.sh
+
+watcher rounds run: 7 over 150s (escalation threshold 20s)
+
+--- every reason the watcher printed (what firstmate would be woken for) ---
+stale: fm-lab-wedge-frozen:crewfrozen
+stale: fm-lab-wedge-frozen:crewfrozen (idle 21s, possible wedge, escalation 1)
+stale: fm-lab-wedge-frozen:crewfrozen (idle 21s, possible wedge, escalation 2)
+stale: fm-lab-wedge-frozen:crewfrozen (idle 20s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone)
+stale: fm-lab-wedge-frozen:crewfrozen (idle 21s, possible wedge, escalation 4, demand-deep-inspection: same pane has wedge-escalated 4 times in a row - do not re-absorb on the run-step/pane state alone)
+stale: fm-lab-wedge-frozen:crewfrozen (idle 21s, possible wedge, escalation 5, demand-deep-inspection: same pane has wedge-escalated 5 times in a row - do not re-absorb on the run-step/pane state alone)
+
+--- wedge escalations ---
+possible-wedge wakes: 5
+
+--- watcher triage log (its own record of each absorb decision) ---
+[2026-09-22T18:06:43+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-frozen:crewfrozen
+[2026-09-22T18:07:09+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-frozen:crewfrozen
+[2026-09-22T18:07:35+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-frozen:crewfrozen
+[2026-09-22T18:08:00+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-frozen:crewfrozen
+[2026-09-22T18:08:26+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-frozen:crewfrozen
+[2026-09-22T18:08:52+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-frozen:crewfrozen
+
+--- durable state left behind ---
+.stale-since-fm-lab-wedge-frozen_crewfrozen: present (content=1790100532, age=13s)
+.wedge-escalations-fm-lab-wedge-frozen_crewfrozen: present (content=5, age=17s)
+.writing-since-fm-lab-wedge-frozen_crewfrozen: absent
+.writing-resurfaced-fm-lab-wedge-frozen_crewfrozen: absent
+.paused-resurfaced-fm-lab-wedge-frozen_crewfrozen: absent
+
+############ frozen pane carrying a marker from an earlier turn ############
+scenario:        frozen-oldmarker
+watcher under test: /home/justin/.no-mistakes/worktrees/c7804fcd202d/01M34XZN4KMTPTQQKZSSQYDHG0/bin/fm-watch.sh (md5 6f683f0b83c871b96b0ac5160b66211a)
+tmux session:    fm-lab-wedge-frozen-oldmarker (private socket /tmp/fmlab-fix-frozen-oldmarker/tmuxtmp)
+harness:         cursor
+pane capture hash over three poll cycles (the wedge signal itself):
+  fa47ff6ff84281ae84e4c92acd72e4d9
+  fa47ff6ff84281ae84e4c92acd72e4d9
+  fa47ff6ff84281ae84e4c92acd72e4d9
+  => byte-identical: the pane hash is pinned, exactly as a frozen pane pins it
+
+--- what the pane actually shows (live tmux capture, last 12 rows) ---
+
+
+
+
+
+
+
+
+
+
+
+
+
+crew-state reader: /home/justin/.no-mistakes/worktrees/c7804fcd202d/01M34XZN4KMTPTQQKZSSQYDHG0/bin/fm-crew-state.sh
+
+watcher rounds run: 7 over 150s (escalation threshold 20s)
+
+--- every reason the watcher printed (what firstmate would be woken for) ---
+stale: fm-lab-wedge-frozen-oldmarker:crewfrozenoldmarker
+stale: fm-lab-wedge-frozen-oldmarker:crewfrozenoldmarker (idle 21s, possible wedge, escalation 1)
+stale: fm-lab-wedge-frozen-oldmarker:crewfrozenoldmarker (idle 21s, possible wedge, escalation 2)
+stale: fm-lab-wedge-frozen-oldmarker:crewfrozenoldmarker (idle 20s, possible wedge, escalation 3, demand-deep-inspection: same pane has wedge-escalated 3 times in a row - do not re-absorb on the run-step/pane state alone)
+stale: fm-lab-wedge-frozen-oldmarker:crewfrozenoldmarker (idle 21s, possible wedge, escalation 4, demand-deep-inspection: same pane has wedge-escalated 4 times in a row - do not re-absorb on the run-step/pane state alone)
+stale: fm-lab-wedge-frozen-oldmarker:crewfrozenoldmarker (idle 21s, possible wedge, escalation 5, demand-deep-inspection: same pane has wedge-escalated 5 times in a row - do not re-absorb on the run-step/pane state alone)
+
+--- wedge escalations ---
+possible-wedge wakes: 5
+
+--- watcher triage log (its own record of each absorb decision) ---
+[2026-09-22T18:06:43+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-frozen-oldmarker:crewfrozenoldmarker
+[2026-09-22T18:07:09+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-frozen-oldmarker:crewfrozenoldmarker
+[2026-09-22T18:07:35+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-frozen-oldmarker:crewfrozenoldmarker
+[2026-09-22T18:08:00+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-frozen-oldmarker:crewfrozenoldmarker
+[2026-09-22T18:08:26+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-frozen-oldmarker:crewfrozenoldmarker
+[2026-09-22T18:08:53+0000] absorbed non-terminal stale timer reset: fm-lab-wedge-frozen-oldmarker:crewfrozenoldmarker
+
+--- durable state left behind ---
+.stale-since-fm-lab-wedge-frozen-oldmarker_crewfrozenoldmarker: present (content=1790100533, age=13s)
+.wedge-escalations-fm-lab-wedge-frozen-oldmarker_crewfrozenoldmarker: present (content=5, age=18s)
+.writing-since-fm-lab-wedge-frozen-oldmarker_crewfrozenoldmarker: absent
+.writing-resurfaced-fm-lab-wedge-frozen-oldmarker_crewfrozenoldmarker: absent
+.paused-resurfaced-fm-lab-wedge-frozen-oldmarker_crewfrozenoldmarker: absent
