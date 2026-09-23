@@ -887,8 +887,9 @@ done
 [ ! -e "$HOME_DIR/state/abort-a.meta" ] && [ ! -e "$HOME_DIR/state/abort-b.meta" ] \
   || fail "post-create abort fixtures published task metadata before launch"
 rm -rf "$POST_CREATE_ABORT_CONTROL"
-rm -f "$HOME_DIR/state/abort-a.herdr-presentation" "$HOME_DIR/state/abort-b.herdr-presentation"
-pass "real Herdr lab: concurrent post-create abort cleanup stays serialized with exact focus restoration"
+[ ! -e "$HOME_DIR/state/abort-a.herdr-presentation" ] && [ ! -e "$HOME_DIR/state/abort-b.herdr-presentation" ] \
+  || fail "post-create abort cleanup left a presentation journal that would push a retry off the projection"
+pass "real Herdr lab: concurrent post-create abort cleanup stays serialized with exact focus restoration and retires its journals"
 
 SHAPE_CLEANUP_AUDIT_START=$(focus_audit_line_count)
 teardown_task shape "$HOME_DIR" > "$TMP_ROOT/on-teardown.out" 2> "$TMP_ROOT/on-teardown.err" \

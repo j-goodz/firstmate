@@ -87,15 +87,18 @@
 #   A backend spawn refusal (missing dependency, version gate, unauthenticated
 #   socket, or unsupported secondmate mode) is terminal for that selected backend;
 #   callers must surface it instead of silently retrying another backend.
-#   A herdr crewmate or scout is placed in the exact workspace of the firstmate
-#   or secondmate process launching it, resolved from that process's own herdr
-#   pane rather than from a workspace label (herdr enforces no label uniqueness,
-#   so a label cannot tell two "firstmate" workspaces apart). A claimed parent
-#   identity that is unreadable, contradictory, stale, or from another herdr
-#   session stops the spawn before any worker endpoint exists. A launcher
-#   outside herdr has no workspace to inherit and uses this home's own labeled
-#   workspace, which must then match exactly one. --secondmate is the deliberate
-#   exception: it stands up that secondmate home's own workspace.
+#   A herdr crewmate or scout never lands as a tab inside its supervisor's own
+#   workspace. The launcher's exact workspace is resolved from that process's
+#   own herdr pane rather than from a workspace label (herdr enforces no label
+#   uniqueness); it is the presentation projection's parent below, and without
+#   the projection the worker gets a flat workspace of its own labeled
+#   fm-<id> (bin/backends/herdr.sh fm_backend_herdr_workspace_ensure task-own
+#   owns adoption and refusals). A claimed parent identity that is unreadable,
+#   contradictory, stale, or from another herdr session stops the spawn before
+#   any worker endpoint exists. A launcher outside herdr has no workspace of its
+#   own to crowd and uses this home's labeled worker workspace, which must then
+#   match exactly one. --secondmate is the deliberate exception: it stands up
+#   that secondmate home's own workspace.
 #   Herdr additionally uses a presentation-only layout by default when the
 #   selected client and running server meet the Herdr 0.8.0 floor. The local
 #   config/herdr-presentation-spaces file can say off to disable it or on to
@@ -108,8 +111,10 @@
 #   plus authoritative metadata may replace one exact agent-free husk in place.
 #   The journal, visible token, and labels alone are never endpoint or ownership
 #   authority, and every ambiguous recovery stays on the flat fallback after
-#   duplicate-agent risk is independently absent. Treehouse allocation and task
-#   metadata are unchanged.
+#   duplicate-agent risk is independently absent. A spawn that aborts before
+#   launch, and a later spawn that finds a journal with no task record, retire
+#   that journal once no workspace still carries its token, so the retry
+#   projects afresh. Treehouse allocation and task metadata are unchanged.
 #   A clean projected create or exact resume makes one bounded attempt to hold
 #   the one session-scoped presentation-order lock (keyed by named session plus
 #   canonical socket, outside any home's state/) through launch handoff. Lock
@@ -1091,6 +1096,9 @@ HERDR_PROJECTION_ABORT_CLEANUP=0
 HERDR_PROJECTION_ABORT_SESSION=
 HERDR_PROJECTION_ABORT_TASK_PANE=
 HERDR_PROJECTION_ABORT_SEEDED_PANE=
+HERDR_PROJECTION_JOURNAL_ATTEMPT=0
+HERDR_PROJECTION_ATTEMPT_SESSION=
+HERDR_PRESENTATION_JOURNAL=
 HERDR_PRESENTATION_ORDER_LOCK=
 HERDR_PRESENTATION_ORDER_LOCK_HELD=0
 SPAWN_TASK_LOCK=
@@ -1169,11 +1177,12 @@ spawn_abort_cleanup() {
       fi
     fi
   fi
-  if [ "$HERDR_PROJECTION_ABORT_CLEANUP" = 1 ] &&
+  if { [ "$HERDR_PROJECTION_ABORT_CLEANUP" = 1 ] || [ "$HERDR_PROJECTION_JOURNAL_ATTEMPT" = 1 ]; } &&
     [ "$HERDR_PRESENTATION_ORDER_LOCK_HELD" != 1 ]; then
-    if ! spawn_herdr_presentation_order_lock_acquire "${HERDR_PROJECTION_ABORT_SESSION:-}"; then
+    if ! spawn_herdr_presentation_order_lock_acquire "${HERDR_PROJECTION_ABORT_SESSION:-$HERDR_PROJECTION_ATTEMPT_SESSION}"; then
       echo "warning: herdr presentation focus lock unavailable; retaining the projection journal and refusing concurrent abort cleanup" >&2
       HERDR_PROJECTION_ABORT_CLEANUP=0
+      HERDR_PROJECTION_JOURNAL_ATTEMPT=0
     fi
   fi
   if [ "$HERDR_PROJECTION_ABORT_CLEANUP" = 1 ]; then
@@ -1182,6 +1191,17 @@ spawn_abort_cleanup() {
       "$HERDR_PROJECTION_ABORT_SESSION" \
       "$HERDR_PROJECTION_ABORT_TASK_PANE" \
       "$HERDR_PROJECTION_ABORT_SEEDED_PANE" || true
+  fi
+  # An aborted attempt retires its journal once no workspace still carries the
+  # token, so the next spawn of this id projects afresh rather than meeting a
+  # quarantined journal. A surviving token match keeps the journal quarantined.
+  if [ "$HERDR_PROJECTION_JOURNAL_ATTEMPT" = 1 ]; then
+    HERDR_PROJECTION_JOURNAL_ATTEMPT=0
+    if [ -e "$HERDR_PRESENTATION_JOURNAL" ] || [ -L "$HERDR_PRESENTATION_JOURNAL" ]; then
+      fm_backend_herdr_projection_journal_retire_unmatched \
+        "$HERDR_PROJECTION_ATTEMPT_SESSION" "$HERDR_PRESENTATION_JOURNAL" "$ID" ||
+        echo "warning: herdr presentation for aborted spawn $ID is still visible or unreadable; its journal stays quarantined" >&2
+    fi
   fi
   if [ "$HERDR_PRESENTATION_ORDER_LOCK_HELD" = 1 ]; then
     HERDR_PRESENTATION_ORDER_LOCK_HELD=0
@@ -3181,7 +3201,8 @@ if [ "$RELAUNCH" -eq 1 ]; then
     # presentation projection: projection is a presentation-only layout that is
     # never endpoint or ownership authority, and flat is already the documented
     # fallback for every recovery it cannot bind exactly
-    # (docs/herdr-backend.md "Presentation spaces").
+    # (docs/herdr-backend.md "Presentation spaces"). Flat means the task's own
+    # fm-<id> workspace, never a tab beside the launching supervisor.
     #
     # KNOWN LIMITATION (bead fm-herdr-rebind-leak-20260913): the tab minted
     # below is registered with no abort cleanup, so a later refusal leaves that
@@ -3197,7 +3218,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
     # self-consistent but wrong record.
     HERDR_REBIND_SES=${RELAUNCH_TARGET%%:*}
     HERDR_CONTAINER_RAW=$(HERDR_PANE_ID="$RELAUNCH_LAUNCHER_PANE_ID" \
-      fm_backend_herdr_container_ensure "$PROJ_ABS" launcher-home "$HERDR_REBIND_SES") || {
+      fm_backend_herdr_container_ensure "$PROJ_ABS" task-own "$HERDR_REBIND_SES" "$W") || {
       # container_ensure returns 1 for several unrelated reasons - a failed
       # version check, a server that will not start, an ambiguous workspace
       # label, a cross-session launcher identity, a failed workspace create -
@@ -3263,14 +3284,14 @@ else
     # after each prefixed simple-command call) so the secondmate's tab lands
     # in the secondmate's own workspace, not the primary's "firstmate" one.
     #
-    # Placement, separately from labeling: a crewmate/scout belongs in the
-    # EXACT herdr workspace this launching process is itself running in, which
-    # only its own herdr pane identity can name (a same-labeled sibling
-    # workspace must never be adopted). A --secondmate launch is the exception -
+    # Placement, separately from labeling: a crewmate/scout never joins the
+    # launching supervisor's workspace as an extra tab. The projection below
+    # gives it a disposable child workspace; the flat path gives it its own
+    # fm-<id> workspace (task-own). A --secondmate launch is the exception -
     # it stands up a DIFFERENT home's own workspace by design - so it asks for
-    # the per-home container instead of inheriting this launcher's.
+    # the per-home container instead.
     HERDR_LABEL_HOME=$FM_HOME
-    HERDR_LAUNCHER_RELATIONSHIP=launcher-home
+    HERDR_LAUNCHER_RELATIONSHIP=task-own
     if [ "$KIND" = secondmate ]; then
       HERDR_LABEL_HOME=$PROJ_ABS
       HERDR_LAUNCHER_RELATIONSHIP=other-home
@@ -3280,6 +3301,17 @@ else
     if [ "$KIND" != secondmate ] && fm_backend_herdr_presentation_enabled "$CONFIG" "$STATE"; then
       HERDR_SES=$(fm_backend_herdr_session)
       HERDR_PARENT_LABEL=$(FM_HOME="$HERDR_LABEL_HOME" fm_backend_herdr_workspace_label)
+      # A journal with no task record is a spawn attempt that never launched.
+      # When no workspace still carries its token it describes nothing, so it
+      # is retired and this spawn projects afresh instead of falling back.
+      if { [ -e "$HERDR_PRESENTATION_JOURNAL" ] || [ -L "$HERDR_PRESENTATION_JOURNAL" ]; } &&
+        [ ! -e "$STATE/$ID.meta" ] && [ ! -L "$STATE/$ID.meta" ] &&
+        fm_backend_herdr_server_ensure "$HERDR_SES" &&
+        spawn_herdr_presentation_order_lock_acquire "$HERDR_SES"; then
+        fm_backend_herdr_projection_journal_retire_unmatched \
+          "$HERDR_SES" "$HERDR_PRESENTATION_JOURNAL" "$ID" || true
+        spawn_herdr_presentation_order_lock_release
+      fi
       if [ -e "$HERDR_PRESENTATION_JOURNAL" ] || [ -L "$HERDR_PRESENTATION_JOURNAL" ]; then
         fm_backend_herdr_server_ensure "$HERDR_SES" || {
           echo "error: herdr presentation recovery could not ensure its exact named session" >&2
@@ -3313,6 +3345,8 @@ else
             HERDR_PROJECTION_ABORT_SESSION=$HERDR_SES
             HERDR_PROJECTION_ABORT_TASK_PANE=$HERDR_PANE_ID
             HERDR_PROJECTION_ABORT_SEEDED_PANE=""
+            HERDR_PROJECTION_JOURNAL_ATTEMPT=1
+            HERDR_PROJECTION_ATTEMPT_SESSION=$HERDR_SES
             ;;
           2)
             spawn_herdr_presentation_order_lock_release
@@ -3354,6 +3388,8 @@ else
             spawn_herdr_presentation_order_lock_release
           else
             HERDR_PROJECTION_ID=$(fm_backend_herdr_projection_journal_create "$STATE" "$ID") || exit 1
+            HERDR_PROJECTION_JOURNAL_ATTEMPT=1
+            HERDR_PROJECTION_ATTEMPT_SESSION=$HERDR_SES
             HERDR_PROJECTION_LABEL=$(fm_backend_herdr_projection_workspace_label "$ID" "$HERDR_PROJECTION_ID")
             if ! FM_HOME="$HERDR_LABEL_HOME" fm_backend_herdr_projection_create_task \
               "$PROJ_ABS" "$HERDR_PROJECTION_LABEL" "$W"; then
@@ -3398,7 +3434,7 @@ else
       fi
     fi
     if [ "$HERDR_PROJECTED" -ne 1 ]; then
-      HERDR_CONTAINER_RAW=$(FM_HOME="$HERDR_LABEL_HOME" fm_backend_herdr_container_ensure "$PROJ_ABS" "$HERDR_LAUNCHER_RELATIONSHIP") || exit 1
+      HERDR_CONTAINER_RAW=$(FM_HOME="$HERDR_LABEL_HOME" fm_backend_herdr_container_ensure "$PROJ_ABS" "$HERDR_LAUNCHER_RELATIONSHIP" "" "$W") || exit 1
       # fm_backend_herdr_container_ensure echoes "<session>:<workspace_id>\t<seeded_default_tab_id>"
       # (the second field empty when this call ADOPTED a pre-existing workspace
       # rather than creating a fresh one). Split on the guaranteed single tab
@@ -4859,6 +4895,7 @@ spawn_send_literal "$T" ". $(shell_quote "$LAUNCH_FILE")"
 sleep 0.3
 if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
   HERDR_PROJECTION_ABORT_CLEANUP=0
+  HERDR_PROJECTION_JOURNAL_ATTEMPT=0
   spawn_herdr_presentation_order_lock_release
 fi
 spawn_send_key "$T" Enter
