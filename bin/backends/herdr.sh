@@ -1949,6 +1949,19 @@ fm_backend_herdr_workspace_prune_seeded_default_tab() {  # <session> <workspace_
 #   other-home    - a --secondmate launch, which stands up a DIFFERENT home's
 #                   own per-home workspace by design. The launcher's workspace
 #                   is deliberately not inherited here.
+#   task-own      - a crewmate or scout on the ordinary flat path. When the
+#                   caller is itself running in a herdr pane, the worker gets
+#                   a workspace of its own labeled exactly <task-label> (4th
+#                   arg), so it never appears as an extra tab beside its
+#                   supervisor. Exactly one existing workspace with that label
+#                   is adopted, which is what lets fm_backend_herdr_create_task
+#                   replace a restored husk tab or refuse a live duplicate;
+#                   two or more refuse, and an adopted workspace that is the
+#                   launcher's own refuses rather than placing the worker
+#                   there. A launcher pane that is claimed but cannot be
+#                   resolved exactly refuses. A caller with no herdr ancestry
+#                   has no workspace of its own for a worker to crowd, so it
+#                   keeps the per-home worker workspace below.
 # With no herdr ancestry at all there is no launcher workspace to inherit, so
 # the per-home label lookup below stays the resolver - but it must then resolve
 # to exactly ONE workspace. Two same-labeled home workspaces with no launcher
@@ -1957,10 +1970,53 @@ fm_backend_herdr_workspace_prune_seeded_default_tab() {  # <session> <workspace_
 #
 # Returns 0 on success, 3 for a refusal whose exact reason is already on
 # stderr, and 1 for a failed or unparseable herdr call.
-fm_backend_herdr_workspace_ensure() {  # <session> <cwd> [<launcher-relationship>]
-  local session=$1 cwd=$2 relationship=${3:-launcher-home} wsid out label matches count status
+fm_backend_herdr_workspace_ensure() {  # <session> <cwd> [<launcher-relationship>] [<task-label>]
+  local session=$1 cwd=$2 relationship=${3:-launcher-home} wsid out label matches count status list
+  local launcher_ws=
   FM_BACKEND_HERDR_WS_ID=""
   FM_BACKEND_HERDR_WS_SEEDED_TAB_ID=""
+  if [ "$relationship" = task-own ]; then
+    label=${4:-}
+    [ -n "$label" ] || {
+      echo "error: a task-own herdr workspace needs the task's own label" >&2
+      return 3
+    }
+    fm_backend_herdr_launcher_identity "$session" && status=0 || status=$?
+    case "$status" in
+      0) launcher_ws=$FM_BACKEND_HERDR_LAUNCHER_WORKSPACE_ID ;;
+      2) relationship=other-home ;;
+      *) return 3 ;;
+    esac
+  fi
+  if [ "$relationship" = task-own ]; then
+    list=$(fm_backend_herdr_cli "$session" workspace list 2>/dev/null) || return 1
+    printf '%s' "$list" | jq -e '(.result.workspaces | type) == "array"' >/dev/null 2>&1 || return 1
+    matches=$(printf '%s' "$list" | jq -r --arg want "$label" \
+      '.result.workspaces[] | select(.label == $want) | .workspace_id' 2>/dev/null) || return 1
+    count=$(printf '%s' "$matches" | grep -c '[^[:space:]]' || true)
+    if [ "$count" -gt 1 ]; then
+      echo "error: ${count} herdr workspaces in session '$session' are labeled '$label' (${matches//$'\n'/ }); rename or close the extras before this task can be placed in its own workspace" >&2
+      return 3
+    fi
+    wsid=${matches%%$'\n'*}
+    if [ -n "$wsid" ]; then
+      if [ "$wsid" = "$launcher_ws" ]; then
+        echo "error: herdr workspace '$label' ($wsid) is the launching supervisor's own workspace; refusing to place a worker beside its supervisor" >&2
+        return 3
+      fi
+      FM_BACKEND_HERDR_WS_ID=$wsid
+      printf '%s' "$wsid"
+      return 0
+    fi
+    out=$(fm_backend_herdr_cli "$session" workspace create --cwd "$cwd" --label "$label" --no-focus 2>/dev/null) || return 1
+    wsid=$(printf '%s' "$out" | jq -r '.result.workspace.workspace_id // empty' 2>/dev/null)
+    [ -n "$wsid" ] || return 1
+    FM_BACKEND_HERDR_WS_ID=$wsid
+    # Same seeded-tab contract as the per-home create below.
+    FM_BACKEND_HERDR_WS_SEEDED_TAB_ID=$(printf '%s' "$out" | jq -r '.result.tab.tab_id // empty' 2>/dev/null)
+    printf '%s' "$wsid"
+    return 0
+  fi
   if [ "$relationship" = launcher-home ]; then
     fm_backend_herdr_launcher_identity "$session" && status=0 || status=$?
     case "$status" in
@@ -2020,17 +2076,22 @@ fm_backend_herdr_workspace_ensure() {  # <session> <cwd> [<launcher-relationship
 # fm_backend_herdr_launcher_identity compares the launcher's own ambient session
 # against this one, and shadowing would make that half of its cross-session
 # guard compare the pinned value with itself and pass vacuously.
-fm_backend_herdr_container_ensure() {  # <cwd-for-a-fresh-workspace> [<launcher-relationship>] [<session>]
-  local cwd=${1:-$PWD} relationship=${2:-launcher-home} session=${3:-} label status
+# <task-label> is required for, and only read by, the task-own relationship.
+fm_backend_herdr_container_ensure() {  # <cwd-for-a-fresh-workspace> [<launcher-relationship>] [<session>] [<task-label>]
+  local cwd=${1:-$PWD} relationship=${2:-launcher-home} session=${3:-} task_label=${4:-} label status
   fm_backend_herdr_version_check || return 1
   [ -n "$session" ] || session=$(fm_backend_herdr_session)
   fm_backend_herdr_server_ensure "$session" || return 1
-  fm_backend_herdr_workspace_ensure "$session" "$cwd" "$relationship" >/dev/null && status=0 || status=$?
+  fm_backend_herdr_workspace_ensure "$session" "$cwd" "$relationship" "$task_label" >/dev/null && status=0 || status=$?
   # A 3 already reported the exact placement it refused to guess at; adding the
   # generic message here would bury it.
   [ "$status" -ne 3 ] || return 1
   if [ "$status" -ne 0 ] || [ -z "$FM_BACKEND_HERDR_WS_ID" ]; then
-    label=$(fm_backend_herdr_workspace_label)
+    if [ "$relationship" = task-own ]; then
+      label=$task_label
+    else
+      label=$(fm_backend_herdr_workspace_label)
+    fi
     echo "error: failed to ensure herdr workspace '$label' in session '$session'" >&2
     return 1
   fi
@@ -2629,12 +2690,39 @@ fm_backend_herdr_projection_create_task() {  # <cwd> <workspace-label> <task-lab
 # fm_backend_herdr_projection_cleanup_exact: same-process abort cleanup for a
 # projection whose create calls returned complete exact IDs.
 # It performs no lookup and never calls workspace close.
+# A pane that already reads structured not-found needs no close: the seeded
+# pane is normally pruned during create, and closing the task pane empties and
+# removes the workspace. Returns 0 only when every named pane is confirmed gone.
 fm_backend_herdr_projection_cleanup_exact() {  # <session> <task-pane> <seeded-pane>
-  local session=$1 task_pane=$2 seeded_pane=$3
-  [ -z "$task_pane" ] || fm_backend_herdr_projection_close_pane_focus_preserving "$session" "$task_pane" || true
-  if [ -n "$seeded_pane" ] && [ "$seeded_pane" != "$task_pane" ]; then
-    fm_backend_herdr_projection_close_pane_focus_preserving "$session" "$seeded_pane" || true
-  fi
+  local session=$1 task_pane=$2 seeded_pane=$3 pane status=0
+  [ "$seeded_pane" != "$task_pane" ] || seeded_pane=
+  for pane in "$task_pane" "$seeded_pane"; do
+    [ -n "$pane" ] || continue
+    [ "$(fm_backend_herdr_pane_presence_state "$session" "$pane")" != dead ] || continue
+    fm_backend_herdr_projection_close_pane_focus_preserving "$session" "$pane" || true
+    [ "$(fm_backend_herdr_pane_presence_state "$session" "$pane")" = dead ] || status=1
+  done
+  return "$status"
+}
+
+# fm_backend_herdr_projection_journal_retire_unmatched: remove one task's
+# presentation journal only when a parsed workspace list proves that no
+# workspace in <session> carries its token, so the journal describes nothing
+# that still exists. Caller holds the session presentation lock.
+# Returns 0 when retired, 1 when the journal is retained (a token match
+# remains, the journal is malformed, or Herdr could not be read).
+fm_backend_herdr_projection_journal_retire_unmatched() {  # <session> <journal> <task-id>
+  local session=$1 journal=$2 id=$3 token list matches
+  token=$(fm_backend_herdr_projection_journal_token "$journal" "$id") || return 1
+  list=$(fm_backend_herdr_cli "$session" workspace list 2>/dev/null) || return 1
+  matches=$(printf '%s' "$list" | jq -er --arg suffix " · p:$token" '
+    select((.result.workspaces | type) == "array")
+    | [.result.workspaces[] | select((.label | type) == "string" and (.label | endswith($suffix)))]
+    | length
+  ' 2>/dev/null) || return 1
+  [ "$matches" = 0 ] || return 1
+  [ "$(fm_backend_herdr_projection_journal_token "$journal" "$id" 2>/dev/null)" = "$token" ] || return 1
+  rm -f -- "$journal"
 }
 
 # fm_backend_herdr_projection_parent_workspace_exact: resolve one exact parent
