@@ -1129,7 +1129,7 @@ crew_dispatch_validate() {
   [ -n "$typed_key" ] || typed_key=$(fmx_env_get TYPESAFE_API_KEY "$FM_HOME/.env")
   if [ -z "$typed_key" ]; then
     typed_key=$AI_GATEWAY_API_KEY_PRIVATE
-    [ -n "$typed_key" ] || typed_key=$(fmx_env_get AI_GATEWAY_API_KEY "$FM_HOME/.env")
+    [ -n "$typed_key" ] || typed_key=$(fmx_ai_gateway_key "$FM_HOME/.env")
   fi
   [ -z "$typed_key" ] || typed_active=true
   if $typed_active; then

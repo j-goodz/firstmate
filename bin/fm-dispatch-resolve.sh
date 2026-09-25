@@ -8,8 +8,9 @@
 # Opt-in gate: TYPESAFE_API_KEY non-empty in this process environment, else a
 #   TYPESAFE_API_KEY= line in $FM_HOME/.env read with fmx_env_get, the same
 #   accessor as FMX_PAIRING_TOKEN (bin/fm-env-lib.sh); that direct typesafe.ai
-#   path wins when present. Otherwise AI_GATEWAY_API_KEY, resolved the same
-#   way (environment first, then $FM_HOME/.env), routes the identical rule
+#   path wins when present. Otherwise AI_GATEWAY_API_KEY, resolved from the
+#   environment, then $FM_HOME/.env, then ~/.env.vercel-ai-gateway (the
+#   host-rendered file; only that one key is read), routes the identical rule
 #   Choice question through Jev on Vercel's AI Gateway instead. The
 #   environment wins over .env for each key independently. Absent in both:
 #   one "dispatch-resolve: off" line on stderr, nothing on stdout, exit 0, no
@@ -124,7 +125,7 @@ if [ -z "$TYPESAFE_API_KEY_PRIVATE" ]; then
   TYPESAFE_API_KEY_PRIVATE=$(fmx_env_get TYPESAFE_API_KEY "$FM_HOME/.env")
 fi
 if [ -z "$AI_GATEWAY_API_KEY_PRIVATE" ]; then
-  AI_GATEWAY_API_KEY_PRIVATE=$(fmx_env_get AI_GATEWAY_API_KEY "$FM_HOME/.env")
+  AI_GATEWAY_API_KEY_PRIVATE=$(fmx_ai_gateway_key "$FM_HOME/.env")
 fi
 RESOLVER_PROVIDER=''
 if [ -n "$TYPESAFE_API_KEY_PRIVATE" ]; then
@@ -132,7 +133,7 @@ if [ -n "$TYPESAFE_API_KEY_PRIVATE" ]; then
 elif [ -n "$AI_GATEWAY_API_KEY_PRIVATE" ]; then
   RESOLVER_PROVIDER=vercel
 else
-  echo "dispatch-resolve: off (TYPESAFE_API_KEY and AI_GATEWAY_API_KEY absent from the environment and $FM_HOME/.env)" >&2
+  echo "dispatch-resolve: off (TYPESAFE_API_KEY and AI_GATEWAY_API_KEY absent from the environment, $FM_HOME/.env, and ~/.env.vercel-ai-gateway)" >&2
   exit 0
 fi
 

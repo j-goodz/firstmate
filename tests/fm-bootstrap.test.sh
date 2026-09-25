@@ -1087,6 +1087,7 @@ SH
 test_crew_dispatch_active_rules_are_verbose_bootstrap_info() {
   local case_dir fakebin out expect
   case_dir="$TMP_ROOT/dispatch-active"
+  local -x HOME="$case_dir/user-home"
   mkdir -p "$case_dir/home/config"
   printf '%s\n' manual > "$case_dir/home/config/backlog-backend"
   printf '%s\n' '{"rules":[{"when":"fresh news","use":{"harness":"grok"},"why":"current context"},{"when":"big feature","use":[{"harness":"claude","model":"claude-sonnet-5","effort":"high"},{"harness":"codex","model":"gpt-5.5","effort":"high"}]},{"when":"legacy feature","use":[{"harness":"claude"},{"harness":"codex"}],"select":"quota-balanced"}],"default":[{"harness":"pi","model":"anthropic/claude-sonnet-5","effort":"high"},{"harness":"grok","model":"grok-4.5","effort":"high"}]}' > "$case_dir/home/config/crew-dispatch.json"
@@ -1107,6 +1108,8 @@ test_crew_dispatch_active_rules_are_verbose_bootstrap_info() {
 
 test_crew_dispatch_validation() {
   local label body expect mode case_dir fakebin out child_env n
+  local -x HOME="$TMP_ROOT/dispatch-user-home"
+  mkdir -p "$HOME"
   n=0
   while IFS='^' read -r label body mode expect; do
     [ -n "$label" ] || continue
@@ -1218,6 +1221,13 @@ ROWS
     FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
   [ "$out" = 'CREW_DISPATCH: invalid config/crew-dispatch.json - use profile model and effort must be non-empty strings, and provider must match ^[a-z0-9]+(-[a-z0-9]+)*\z when present' ] \
     || fail "typed .env AI_GATEWAY_API_KEY must also activate resolver-field validation, got: $out"
+  rm -f "$case_dir/home/.env"
+  printf '%s\n' 'AI_GATEWAY_API_KEY=test-gw-key' > "$HOME/.env.vercel-ai-gateway"
+  out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
+    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+  rm -f "$HOME/.env.vercel-ai-gateway"
+  [ "$out" = 'CREW_DISPATCH: invalid config/crew-dispatch.json - use profile model and effort must be non-empty strings, and provider must match ^[a-z0-9]+(-[a-z0-9]+)*\z when present' ] \
+    || fail "rendered ~/.env.vercel-ai-gateway must also activate resolver-field validation, got: $out"
 
   rm -f "$case_dir/home/.env"
   printf '%s\n' '{"rules":[{"when":"gemini work","use":{"harness":"gemini","model":"gemini-3.8-flash-high","provider":"google"}}]}' > "$case_dir/home/config/crew-dispatch.json"

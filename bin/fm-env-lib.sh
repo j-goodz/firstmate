@@ -3,8 +3,8 @@
 # Usage: . bin/fm-env-lib.sh
 #
 # This file is the single owner of the one-key .env read: the Relay pairing
-# token (bin/fm-x-lib.sh and its callers) and the optional typesafe.ai
-# dispatch key (bin/fm-dispatch-resolve.sh) both resolve their value through
+# token (bin/fm-x-lib.sh and its callers) and the optional typesafe.ai and
+# AI Gateway dispatch keys (bin/fm-dispatch-resolve.sh) all resolve their value through
 # fmx_env_get, so those opt-in secrets in $FM_HOME/.env are parsed by one rule.
 # (bin/fm-mail.sh loads its whole .env block itself under the same env-wins
 # contract.) The value is printed to the caller's command substitution only;
@@ -27,5 +27,18 @@ fmx_env_get() {
     \"*\") val=${val#\"}; val=${val%\"} ;;
     \'*\') val=${val#\'}; val=${val%\'} ;;
   esac
+  printf '%s' "$val"
+}
+
+# fmx_ai_gateway_key <env-file>
+# Resolve AI_GATEWAY_API_KEY from <env-file> ($FM_HOME/.env), then from the
+# host-rendered ~/.env.vercel-ai-gateway, reading only that one key. Callers
+# check their own process environment first. Prints nothing when absent.
+fmx_ai_gateway_key() {
+  local val
+  val=$(fmx_env_get AI_GATEWAY_API_KEY "$1")
+  if [ -z "$val" ] && [ -n "${HOME:-}" ]; then
+    val=$(fmx_env_get AI_GATEWAY_API_KEY "$HOME/.env.vercel-ai-gateway")
+  fi
   printf '%s' "$val"
 }
