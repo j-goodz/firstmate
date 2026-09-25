@@ -136,7 +136,8 @@ add_real_jq() {
   cat > "$fakebin/jq" <<SH
 #!/usr/bin/env bash
 if [ -n "\${FM_TEST_CHILD_ENV_LOG:-}" ]; then
-  if [ -n "\${TYPESAFE_API_KEY+x}" ] || [ -n "\${TYPESAFE_API_KEY_PRIVATE+x}" ]; then
+  if [ -n "\${TYPESAFE_API_KEY+x}" ] || [ -n "\${TYPESAFE_API_KEY_PRIVATE+x}" ] \
+    || [ -n "\${AI_GATEWAY_API_KEY+x}" ] || [ -n "\${AI_GATEWAY_API_KEY_PRIVATE+x}" ]; then
     printf 'secret-present\n' >> "\$FM_TEST_CHILD_ENV_LOG"
   else
     printf 'clean\n' >> "\$FM_TEST_CHILD_ENV_LOG"
@@ -1209,6 +1210,25 @@ ROWS
     FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
   [ "$out" = 'CREW_DISPATCH: invalid config/crew-dispatch.json - use profile model and effort must be non-empty strings, and provider must match ^[a-z0-9]+(-[a-z0-9]+)*\z when present' ] \
     || fail "typed .env key must activate resolver-field validation, got: $out"
+
+  rm -f "$case_dir/home/.env"
+  printf '%s\n' '{"rules":[{"when":"legacy metadata","approval":"firstmate","floor":{"scope":"all_models","min_percent":200,"provider":"CLAUDE"},"use":{"harness":"claude","provider":"Anthropic","floor":{"scope":"all_models"}}}]}' > "$case_dir/home/config/crew-dispatch.json"
+  printf '%s\n' 'AI_GATEWAY_API_KEY=test-gw-key' > "$case_dir/home/.env"
+  out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
+    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+  [ "$out" = 'CREW_DISPATCH: invalid config/crew-dispatch.json - use profile model and effort must be non-empty strings, and provider must match ^[a-z0-9]+(-[a-z0-9]+)*\z when present' ] \
+    || fail "typed .env AI_GATEWAY_API_KEY must also activate resolver-field validation, got: $out"
+
+  rm -f "$case_dir/home/.env"
+  printf '%s\n' '{"rules":[{"when":"gemini work","use":{"harness":"gemini","model":"gemini-3.8-flash-high","provider":"google"}}]}' > "$case_dir/home/config/crew-dispatch.json"
+  : > "$case_dir/child-env.log"
+  out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
+    AI_GATEWAY_API_KEY=test-gw-key FM_TEST_CHILD_ENV_LOG="$case_dir/child-env.log" \
+    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+  [ -z "$out" ] || fail "environment AI_GATEWAY_API_KEY validation should remain silent, got: $out"
+  child_env=$(cat "$case_dir/child-env.log")
+  [ -n "$child_env" ] || fail "bootstrap child environment probe did not run for AI_GATEWAY_API_KEY"
+  assert_not_contains "$child_env" 'secret-present' "bootstrap children never inherit the gateway key"
 
   rm -f "$case_dir/home/.env"
   printf '%s\n' '{"rules":[{"when":"gemini work","use":{"harness":"gemini","model":"gemini-3.8-flash-high","provider":"google"}}]}' > "$case_dir/home/config/crew-dispatch.json"
