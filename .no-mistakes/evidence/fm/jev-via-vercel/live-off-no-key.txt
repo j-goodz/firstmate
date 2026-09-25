@@ -1,0 +1,3 @@
+$ same, HOME=<empty tmp> (no key anywhere)
+dispatch-resolve: off (TYPESAFE_API_KEY and AI_GATEWAY_API_KEY absent from the environment, <tmp>/.env, and ~/.env.vercel-ai-gateway)
+exit=0

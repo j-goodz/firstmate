@@ -1,0 +1,10 @@
+$ env -u TYPESAFE_API_KEY -u AI_GATEWAY_API_KEY FM_HOME=<tmp> bin/fm-dispatch-resolve.sh refactor-brief.md --project demo
+dispatch-resolve:
+  status: escalate
+  model: typesafe-ai/jev   latency_ms: 261   tokens: 467/44
+  rule: rule_2 (The task is a large multi-file backend refactor with new tes)   confidence: 1
+  probabilities: rule_1=0 rule_2=1 default=0
+  reason: no rankable eligible candidate
+  note: rule matched
+  candidate: codex:-  provider=codex  -> eligible, unranked: provider codex unmeasured (unknown): disclosed uncertainty
+exit=0

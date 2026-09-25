@@ -1,0 +1,10 @@
+$ env -u TYPESAFE_API_KEY -u AI_GATEWAY_API_KEY FM_HOME=<tmp> bin/fm-dispatch-resolve.sh brief.md --project demo   (key only in the host-rendered gateway env file)
+dispatch-resolve:
+  status: clear
+  model: typesafe-ai/jev   latency_ms: 580   tokens: 455/44
+  rule: rule_1 (The task is a small documentation or typo fix in markdown fi)   confidence: 1
+  probabilities: rule_1=1 rule_2=0 default=0
+  note: rule matched
+  candidate: claude:sonnet  provider=claude  scope=all_models  remaining=83%  spendPriority=0.4911  runway=projected_exhaustion  -> eligible
+  profile: --harness 'claude' --model 'sonnet'
+exit=0
