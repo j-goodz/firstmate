@@ -7,27 +7,37 @@
 #
 # Opt-in gate: TYPESAFE_API_KEY non-empty in this process environment, else a
 #   TYPESAFE_API_KEY= line in $FM_HOME/.env read with fmx_env_get, the same
-#   accessor as FMX_PAIRING_TOKEN (bin/fm-env-lib.sh). The environment wins.
-#   Absent in both: one "dispatch-resolve: off" line on stderr, nothing on
-#   stdout, exit 0, no network call, so firstmate dispatches exactly as today.
-#   The key lives in one shell variable and reaches curl as a header read from
-#   a file descriptor, never on argv; nothing logs or writes it.
+#   accessor as FMX_PAIRING_TOKEN (bin/fm-env-lib.sh); that direct typesafe.ai
+#   path wins when present. Otherwise AI_GATEWAY_API_KEY, resolved from the
+#   environment, then $FM_HOME/.env, then ~/.env.vercel-ai-gateway (the
+#   host-rendered file; only that one key is read), routes the identical rule
+#   Choice question through Jev on Vercel's AI Gateway instead. The
+#   environment wins over .env for each key independently. Absent in both:
+#   one "dispatch-resolve: off" line on stderr, nothing on stdout, exit 0, no
+#   network call, so firstmate dispatches exactly as today. Whichever key is
+#   used lives in one shell variable and reaches curl as a header read from a
+#   file descriptor, never on argv; nothing logs or writes it.
 #
-# What it does when on with at least one rule: one POST to
-#   https://api.typesafe.ai/v1/systemone with the project name and the whole brief as
-#   state and ONE Choice question whose
-#   options are every rule's `when` from config/crew-dispatch.json plus one
-#   fixed generic none option. Jev returns the matched rule, a probability per
-#   option, and a confidence. Everything after that is jq: the confidence
-#   floor, the rule's declared `approval` and `floor`, each profile's declared
-#   `provider` and `floor`, the quota rows from ONE quota-axi --json snapshot
-#   (schema 5 or 6; each candidate binds to one row through quota_row in
-#   bin/fm-quota-axi-lib.sh, so a Pi lane such as openai-codex-work/...
-#   reads its own account's row and an expanded provider with no row for the
-#   candidate is unmeasured, never blocked), and the spendPriority argmax over
-#   the eligible candidates. The model never
-#   sees quota, catalogs, approvals, `why`, or `use`. With no rules, it returns
-#   a non-clear result so firstmate keeps using the existing intake.
+# What it does when on with at least one rule: one POST, either to
+#   https://api.typesafe.ai/v1/systemone (TYPESAFE_API_KEY) or to
+#   https://ai-gateway.vercel.sh/v4/ai/evaluation-model (AI_GATEWAY_API_KEY,
+#   model selected by the `ai-model-id: typesafe-ai/jev` header rather than a
+#   body field), with the project name and the whole brief as state and ONE
+#   Choice question whose options are every rule's `when` from
+#   config/crew-dispatch.json plus one fixed generic none option. Jev returns
+#   the matched rule, a probability per option, and a confidence (on the
+#   gateway path, confidence rides in providerMetadata.typesafe.confidence and
+#   usage token counts are camelCase; the resolver normalizes both into the
+#   same internal shape as the direct path before resolution runs). Everything
+#   after that is jq: the confidence floor, the rule's declared `approval` and
+#   `floor`, each profile's declared `provider` and `floor`, the quota rows
+#   from ONE quota-axi --json snapshot (schema 5 or 6; each candidate binds to
+#   one row through quota_row in bin/fm-quota-axi-lib.sh, so a Pi lane such as
+#   openai-codex-work/... reads its own account's row and an expanded provider
+#   with no row for the candidate is unmeasured, never blocked), and the
+#   spendPriority argmax over the eligible candidates. The model never sees
+#   quota, catalogs, approvals, `why`, or `use`. With no rules, it returns a
+#   non-clear result so firstmate keeps using the existing intake.
 #   docs/configuration.md "Crew dispatch profiles" owns the declared fields and
 #   "Typed dispatch resolution" owns this tool's operator contract.
 #
@@ -48,7 +58,8 @@
 #   actionable, never selected around.
 #
 # Environment:
-#   TYPESAFE_API_KEY is the only resolver-specific environment setting.
+#   TYPESAFE_API_KEY and AI_GATEWAY_API_KEY are the only resolver-specific
+#   environment settings; TYPESAFE_API_KEY wins when both are set.
 #
 # Authority: this tool never replaces firstmate's judgment, quota-array-dispatch,
 #   the captain-approval gate, or fm-spawn.sh validation; it publishes one
@@ -58,6 +69,10 @@ set -u
 TYPESAFE_API_KEY_PRIVATE=${TYPESAFE_API_KEY:-}
 export -n TYPESAFE_API_KEY_PRIVATE 2>/dev/null || true
 unset TYPESAFE_API_KEY
+
+AI_GATEWAY_API_KEY_PRIVATE=${AI_GATEWAY_API_KEY:-}
+export -n AI_GATEWAY_API_KEY_PRIVATE 2>/dev/null || true
+unset AI_GATEWAY_API_KEY
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
@@ -77,6 +92,9 @@ CONFIDENCE_FLOOR=0.6
 TS_MODEL=jev-latest
 TS_BASE=https://api.typesafe.ai
 TS_TIMEOUT=5
+GW_BASE=https://ai-gateway.vercel.sh
+GW_MODEL_ID=typesafe-ai/jev
+GW_TIMEOUT=5
 DEFAULT_WHEN="No listed rule applies to this task."
 
 die() { printf 'error: %s\n' "$1" >&2; exit 2; }
@@ -106,8 +124,16 @@ done
 if [ -z "$TYPESAFE_API_KEY_PRIVATE" ]; then
   TYPESAFE_API_KEY_PRIVATE=$(fmx_env_get TYPESAFE_API_KEY "$FM_HOME/.env")
 fi
-if [ -z "$TYPESAFE_API_KEY_PRIVATE" ]; then
-  echo "dispatch-resolve: off (TYPESAFE_API_KEY absent from the environment and $FM_HOME/.env)" >&2
+if [ -z "$AI_GATEWAY_API_KEY_PRIVATE" ]; then
+  AI_GATEWAY_API_KEY_PRIVATE=$(fmx_ai_gateway_key "$FM_HOME/.env")
+fi
+RESOLVER_PROVIDER=''
+if [ -n "$TYPESAFE_API_KEY_PRIVATE" ]; then
+  RESOLVER_PROVIDER=typesafe
+elif [ -n "$AI_GATEWAY_API_KEY_PRIVATE" ]; then
+  RESOLVER_PROVIDER=vercel
+else
+  echo "dispatch-resolve: off (TYPESAFE_API_KEY and AI_GATEWAY_API_KEY absent from the environment, $FM_HOME/.env, and ~/.env.vercel-ai-gateway)" >&2
   exit 0
 fi
 
@@ -222,15 +248,15 @@ fi
 
 RESP_FILE=$(mktemp) || die "mktemp failed"
 QUOTA=$(mktemp) || { rm -f "$RESP_FILE"; die "mktemp failed"; }
-trap 'rm -f "$RULES" "$RESP_FILE" "$QUOTA"' EXIT
+NORM_FILE=''
+trap 'rm -f "$RULES" "$RESP_FILE" "$QUOTA" "$NORM_FILE"' EXIT
 LAT_MS=null
 command -v curl >/dev/null 2>&1 || emit_error "curl not installed"
-  REQUEST=$(jq -n --rawfile brief "$BRIEF" --arg project "$PROJECT" --arg model "$TS_MODEL" \
+  REQUEST=$(jq -n --rawfile brief "$BRIEF" --arg project "$PROJECT" \
     --arg none_criterion "$DEFAULT_WHEN" --slurpfile rules "$RULES" '
     ($rules[0]) as $cfg |
     ($cfg.rules | to_entries | map({key: ("rule_" + ((.key + 1) | tostring)), value: .value.when}) | from_entries) as $criteria |
     {
-      model: $model,
       state: {task: {project: $project, brief: $brief}},
       questions: {
         rule: {
@@ -240,14 +266,44 @@ command -v curl >/dev/null 2>&1 || emit_error "curl not installed"
         }
       }
     }')
+  if [ "$RESOLVER_PROVIDER" = typesafe ]; then
+    REQUEST=$(jq --arg model "$TS_MODEL" '. + {model: $model}' <<<"$REQUEST")
+  fi
   T0=$(fm_timing_now_ms)
-  HTTP=$(printf '%s' "$REQUEST" | curl -sS --max-time "$TS_TIMEOUT" -o "$RESP_FILE" -w '%{http_code}' \
-    -X POST "$TS_BASE/v1/systemone" -H 'Content-Type: application/json' \
-    -H @/dev/fd/3 3< <(printf 'Authorization: Bearer %s\n' "$TYPESAFE_API_KEY_PRIVATE") \
-    --data-binary @- 2>/dev/null) || HTTP=000
+  if [ "$RESOLVER_PROVIDER" = typesafe ]; then
+    HTTP=$(printf '%s' "$REQUEST" | curl -sS --max-time "$TS_TIMEOUT" -o "$RESP_FILE" -w '%{http_code}' \
+      -X POST "$TS_BASE/v1/systemone" -H 'Content-Type: application/json' \
+      -H @/dev/fd/3 3< <(printf 'Authorization: Bearer %s\n' "$TYPESAFE_API_KEY_PRIVATE") \
+      --data-binary @- 2>/dev/null) || HTTP=000
+  else
+    HTTP=$(printf '%s' "$REQUEST" | curl -sS --max-time "$GW_TIMEOUT" -o "$RESP_FILE" -w '%{http_code}' \
+      -X POST "$GW_BASE/v4/ai/evaluation-model" \
+      -H 'Content-Type: application/json' \
+      -H 'ai-gateway-protocol-version: 0.0.1' \
+      -H 'ai-gateway-auth-method: api-key' \
+      -H 'ai-evaluation-model-specification-version: 4' \
+      -H "ai-model-id: $GW_MODEL_ID" \
+      -H @/dev/fd/3 3< <(printf 'Authorization: Bearer %s\n' "$AI_GATEWAY_API_KEY_PRIVATE") \
+      --data-binary @- 2>/dev/null) || HTTP=000
+  fi
   T1=$(fm_timing_now_ms)
   LAT_MS=$(( T1 - T0 ))
   [ "$HTTP" = 200 ] || emit_error "http $HTTP after ${LAT_MS} ms: $(head -c 200 "$RESP_FILE" 2>/dev/null | tr '\n' ' ')"
+  if [ "$RESOLVER_PROVIDER" = vercel ]; then
+    NORM_FILE=$(mktemp) || emit_error "mktemp failed"
+    jq --arg model "$GW_MODEL_ID" '
+      {
+        model: $model,
+        answers: {
+          rule: ((.answers.rule // {}) + {confidence: (.providerMetadata.typesafe.confidence.rule // null)})
+        }
+      } + (if (.usage | type) == "object" then
+             {usage: {input_tokens: (.usage.inputTokens // null), output_tokens: (.usage.outputTokens // null)}}
+           else {} end)
+    ' "$RESP_FILE" > "$NORM_FILE" 2>/dev/null || emit_error "malformed gateway response"
+    mv "$NORM_FILE" "$RESP_FILE"
+    NORM_FILE=''
+  fi
 jq -e --slurpfile rules "$RULES" '
     (($rules[0].rules | to_entries | map("rule_" + ((.key + 1) | tostring))) + ["default"] | sort) as $choices |
     (.answers.rule.choice | type) == "string" and

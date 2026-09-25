@@ -57,13 +57,15 @@ Two default-labeled briefs became ambiguous.
 
 `tests/fm-dispatch-resolve.test.sh` drives the public interface with a fake `curl` that records argv, the request body, the header read from file descriptor 3, and whether the secret reached its environment, plus a fake `quota-axi` that performs the same environment check.
 It proves firstmate can invoke the resolve path without a preflight, rules are snapshotted once from the isolated home's canonical `config/crew-dispatch.json`, and dynamic output fields are flattened to one line.
-It proves the absent key (environment and `.env`) prints one stderr line, nothing on stdout, exits 0, and never invokes `curl` or `quota-axi`.
+It proves the absent keys (environment and `.env`, both `TYPESAFE_API_KEY` and `AI_GATEWAY_API_KEY`) print one stderr line, nothing on stdout, exit 0, and never invoke `curl` or `quota-axi`.
 It proves absent, default-only, and empty-rules files return `no rules to match` without a model or quota request, while a broken rules-file symlink exits 2 as unreadable.
 It proves the documented starter configuration resolves its Pi default through the declared Claude provider, a `.env` key turns the tool on, and the environment wins over it.
-It proves the key is absent from child environments, never appears on `curl` argv, and arrives only as the bearer header on the descriptor.
-It proves the request uses the fixed endpoint and model, carries only the project, brief, and rule Choice with one option per rule plus the fixed neutral none option, and never carries `why`, `use`, or quota.
+It proves a host-rendered `~/.env.vercel-ai-gateway` turns the gateway path on when neither the environment nor the home `.env` holds `AI_GATEWAY_API_KEY`, that both of those win over it, and that the key it supplies stays off argv, stdout, stderr, and child environments.
+It proves the key is absent from child environments, never appears on `curl` argv, and arrives only as the bearer header on the descriptor, for both the direct typesafe.ai path and the Vercel AI Gateway path.
+It proves the direct request uses the fixed endpoint and model, carries only the project, brief, and rule Choice with one option per rule plus the fixed neutral none option, and never carries `why`, `use`, or quota.
+It proves the gateway request uses the fixed Vercel endpoint and its four fixed headers (`ai-gateway-protocol-version`, `ai-gateway-auth-method`, `ai-evaluation-model-specification-version`, `ai-model-id`) instead of a body `model` field, that the response's `providerMetadata.typesafe.confidence` and camelCase `usage` fields normalize into the same shape resolution already expects, and that `TYPESAFE_API_KEY` wins over `AI_GATEWAY_API_KEY` when both are set.
 It proves the clear, fixed-floor ambiguous with candidate evidence, escalate (approval with candidate evidence, unverifiable rule floor, tie, nothing rankable), known rule-floor fall-through, known and unverifiable profile-floor evidence, explicit-provider and provider-ID enforcement, authoritative Agy and explicit-provider Gemini routing, partial providers, eligible unranked candidates and their clear-result note, concrete quota vetoes and profile-floor shortfalls taking precedence over uncertainty, account-wide quota veto, limiting-bound ranking, schema-6 account-row binding with schema-5 compatibility, missing-curl and quota-axi failures, HTTP 429 and 500, transport failure, malformed usage, zero-mass or malformed probabilities or confidence, malformed or duplicate profile, invalid selector, removed-option rejection, and out-of-range rule ID paths behave as the contract states, with configuration errors exiting 2 before any network call.
-`tests/fm-bootstrap.test.sh` proves bootstrap ignores resolver-only fields without the typed key, validates each malformed shape when the environment or home `.env` activates typed resolution, and prevents an environment-provided key from reaching child processes.
+`tests/fm-bootstrap.test.sh` proves bootstrap ignores resolver-only fields without a typed key, validates each malformed shape when the environment or home `.env` activates typed resolution through either `TYPESAFE_API_KEY` or `AI_GATEWAY_API_KEY`, treats a host-rendered `~/.env.vercel-ai-gateway` as the same activation, and prevents an environment-provided key of either kind from reaching child processes.
 
 ```console
 $ bash tests/fm-dispatch-resolve.test.sh | tail -1
@@ -71,3 +73,9 @@ $ bash tests/fm-dispatch-resolve.test.sh | tail -1
 ```
 
 A live run needs a key and is not part of the suite; rerun the table above by pointing the tool at a brief with the key injected for that one command.
+
+## Live Vercel AI Gateway proof
+
+Run 2026-09-25 on homelab with `AI_GATEWAY_API_KEY` loaded from `~/.env.vercel-ai-gateway` into a subshell (`TYPESAFE_API_KEY` absent), model `typesafe-ai/jev` selected by the `ai-model-id` header, against `FM_HOME=/home/justin/nexus-brain` and its live `data/ib-alert-quiet/brief.md`.
+The call returned `status: clear` in 1,746 ms with 3,357 input and 62 output tokens, matched `rule_3` at 0.61 confidence, and resolved `--harness claude --model sonnet --effort medium`; no key appeared in the output.
+This confirms the gateway path end to end against a real brief and a real `crew-dispatch.json`, distinct from the offline fake-`curl` coverage above.

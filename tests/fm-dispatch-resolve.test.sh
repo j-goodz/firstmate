@@ -3,10 +3,10 @@
 #
 # Drives the public argv and environment interface with a fake curl on PATH
 # that records argv, the request body it read from stdin, and the header it
-# read from file descriptor 3, and answers with a canned typesafe.ai response.
-# A fake quota-axi serves the selected schema-5 fixture. No case touches the
-# network, and the absent-key case proves the tool makes no call
-# at all.
+# read from file descriptor 3, and answers with a canned typesafe.ai or Vercel
+# AI Gateway response. A fake quota-axi serves the selected schema-5 fixture.
+# No case touches the network, and the absent-key case proves the tool makes
+# no call at all.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -15,6 +15,7 @@ set -u
 TOOL="$ROOT/bin/fm-dispatch-resolve.sh"
 TMP_ROOT=$(fm_test_tmproot fm-dispatch-resolve)
 HOME_DIR="$TMP_ROOT/home"
+USER_HOME="$TMP_ROOT/user-home"
 FAKEBIN=$(fm_fakebin "$TMP_ROOT")
 NO_CURL_BIN="$TMP_ROOT/no-curl-bin"
 LOG="$TMP_ROOT/log"
@@ -23,7 +24,7 @@ BASE_RULES="$TMP_ROOT/rules.json"
 RULES="$HOME_DIR/config/crew-dispatch.json"
 QUOTA="$TMP_ROOT/quota.json"
 BASE_PATH=$PATH
-mkdir -p "$HOME_DIR/config" "$LOG" "$NO_CURL_BIN"
+mkdir -p "$HOME_DIR/config" "$LOG" "$NO_CURL_BIN" "$USER_HOME"
 for command_name in bash chmod cp dirname jq mktemp rm; do
   ln -s "$(command -v "$command_name")" "$NO_CURL_BIN/$command_name"
 done
@@ -110,7 +111,8 @@ cat > "$FAKEBIN/curl" <<'SH'
 # Fake curl: records argv (minus the -o target), the stdin body, and the header
 # read from fd 3, then answers with FAKE_CURL_RESPONSE and FAKE_CURL_HTTP.
 set -u
-if [ -n "${TYPESAFE_API_KEY+x}" ] || [ -n "${TYPESAFE_API_KEY_PRIVATE+x}" ]; then
+if [ -n "${TYPESAFE_API_KEY+x}" ] || [ -n "${TYPESAFE_API_KEY_PRIVATE+x}" ] \
+  || [ -n "${AI_GATEWAY_API_KEY+x}" ] || [ -n "${AI_GATEWAY_API_KEY_PRIVATE+x}" ]; then
   printf 'curl:secret-present\n' >> "${CHILD_ENV_LOG:?}"
 else
   printf 'curl:clean\n' >> "${CHILD_ENV_LOG:?}"
@@ -138,7 +140,8 @@ chmod +x "$FAKEBIN/curl"
 cat > "$FAKEBIN/quota-axi" <<'SH'
 #!/usr/bin/env bash
 set -u
-if [ -n "${TYPESAFE_API_KEY+x}" ] || [ -n "${TYPESAFE_API_KEY_PRIVATE+x}" ]; then
+if [ -n "${TYPESAFE_API_KEY+x}" ] || [ -n "${TYPESAFE_API_KEY_PRIVATE+x}" ] \
+  || [ -n "${AI_GATEWAY_API_KEY+x}" ] || [ -n "${AI_GATEWAY_API_KEY_PRIVATE+x}" ]; then
   printf 'quota-axi:secret-present\n' >> "${CHILD_ENV_LOG:?}"
 else
   printf 'quota-axi:clean\n' >> "${CHILD_ENV_LOG:?}"
@@ -163,7 +166,7 @@ reset_log() {
 run() {
   local __exit=$1 __out=$2 __err=$3 _out _code
   shift 3
-  _out=$(PATH="$FAKEBIN:$BASE_PATH" FM_HOME="$HOME_DIR" "$TOOL" "$@" 2> "$TMP_ROOT/stderr")
+  _out=$(PATH="$FAKEBIN:$BASE_PATH" HOME="$USER_HOME" FM_HOME="$HOME_DIR" "$TOOL" "$@" 2> "$TMP_ROOT/stderr")
   _code=$?
   printf -v "$__exit" '%s' "$_code"
   printf -v "$__out" '%s' "$_out"
@@ -173,7 +176,7 @@ run() {
 run_without_curl() {
   local __exit=$1 __out=$2 __err=$3 _out _code
   shift 3
-  _out=$(PATH="$NO_CURL_BIN" FM_HOME="$HOME_DIR" TYPESAFE_API_KEY="$KEY" "$TOOL" "$@" 2> "$TMP_ROOT/stderr")
+  _out=$(PATH="$NO_CURL_BIN" HOME="$USER_HOME" FM_HOME="$HOME_DIR" TYPESAFE_API_KEY="$KEY" "$TOOL" "$@" 2> "$TMP_ROOT/stderr")
   _code=$?
   printf -v "$__exit" '%s' "$_code"
   printf -v "$__out" '%s' "$_out"
@@ -183,16 +186,16 @@ run_without_curl() {
 KEY='test-key-9f1c2d3e-never-on-argv'
 code='' out='' err=''
 
-# --- absent key: off, silent on stdout, no network, no quota read -----------
+# --- absent keys: off, silent on stdout, no network, no quota read ----------
 reset_log
 write_response "$RESPONSE" rule_4 0.9
 run code out err "$BRIEF" --project pager
-expect_code 0 "$code" "absent key exits 0"
-assert_equals '' "$out" "absent key prints nothing on stdout"
-assert_contains "$err" 'dispatch-resolve: off (TYPESAFE_API_KEY absent from the environment and' "absent key explains itself on stderr"
-assert_absent "$LOG/argv" "absent key never calls curl"
-assert_absent "$LOG/quota-axi.calls" "absent key never reads quota-axi"
-pass "absent key is off: one stderr line, exit 0, no network call"
+expect_code 0 "$code" "absent keys exits 0"
+assert_equals '' "$out" "absent keys prints nothing on stdout"
+assert_contains "$err" 'dispatch-resolve: off (TYPESAFE_API_KEY and AI_GATEWAY_API_KEY absent from the environment, ' "absent keys explains itself on stderr"
+assert_absent "$LOG/argv" "absent keys never calls curl"
+assert_absent "$LOG/quota-axi.calls" "absent keys never reads quota-axi"
+pass "absent keys is off: one stderr line, exit 0, no network call"
 
 # --- .env key, and the environment wins over it ------------------------------
 printf '%s\n' '# local secrets' 'FMX_PAIRING_TOKEN=abc' "export TYPESAFE_API_KEY=\"$KEY\"" > "$HOME_DIR/.env"
@@ -245,6 +248,87 @@ assert_not_contains "$body" 'SECRET-WHY-TEXT' "why text never leaves the machine
 assert_not_contains "$body" 'spendPriority' "quota never leaves the machine"
 assert_not_contains "$body" 'cursor-grok' "use profiles never leave the machine"
 pass "clear: one rule Choice request, key on the fd header only, spendPriority argmax over every candidate"
+
+# --- AI Gateway (Vercel) path: request shape, headers, response mapping --------
+write_gateway_response() {  # <path> <choice> <confidence>
+  cat > "$1" <<JSON
+{ "answers": { "rule": { "type": "choice", "choice": "$2",
+    "probabilities": { "rule_1": 0.01, "rule_2": 0.01, "rule_3": 0.01, "rule_4": 0.96, "default": 0.01 } } },
+  "usage": { "inputTokens": 812, "outputTokens": 60 },
+  "providerMetadata": { "typesafe": { "confidence": { "rule": $3 } }, "gateway": { "routeId": "test", "cost": "0" } } }
+JSON
+}
+GW_KEY='test-gw-key-4a5b6c7d-never-on-argv'
+GW_RESPONSE="$TMP_ROOT/gw-response.json"
+write_gateway_response "$GW_RESPONSE" rule_4 0.9
+
+reset_log
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY=$GW_KEY FAKE_CURL_RESPONSE="$GW_RESPONSE" run code out err "$BRIEF" --project pager
+expect_code 0 "$code" "gateway key clear exits 0"
+assert_contains "$out" '  status: clear' "gateway path produces a clear result"
+assert_contains "$out" '  model: typesafe-ai/jev' "gateway path reports the fixed gateway model id"
+assert_contains "$out" '  rule: rule_4 (A simple bug fix with a stated root cause.)   confidence: 0.9' "gateway confidence is read from providerMetadata"
+assert_contains "$out" "  profile: --harness 'cursor' --model 'cursor-grok-4.6-medium'" "gateway argmax matches the direct path"
+argv=$(cat "$LOG/argv")
+assert_not_contains "$argv" "$GW_KEY" "the gateway key never appears on curl argv"
+assert_contains "$argv" 'https://ai-gateway.vercel.sh/v4/ai/evaluation-model' "the gateway request uses the fixed Vercel AI Gateway endpoint"
+assert_contains "$argv" 'ai-gateway-protocol-version: 0.0.1' "the gateway request sends the protocol version header"
+assert_contains "$argv" 'ai-gateway-auth-method: api-key' "the gateway request sends the auth method header"
+assert_contains "$argv" 'ai-evaluation-model-specification-version: 4' "the gateway request sends the evaluation model spec version header"
+assert_contains "$argv" 'ai-model-id: typesafe-ai/jev' "the gateway request selects Jev by model id header"
+assert_contains "$argv" '@/dev/fd/3' "the gateway key is read from a file descriptor"
+assert_equals "Authorization: Bearer $GW_KEY" "$(cat "$LOG/header")" "curl receives the gateway bearer header on fd 3"
+assert_equals $'curl:clean\nquota-axi:clean' "$(cat "$LOG/child-env")" "the gateway key is absent from every child environment"
+body=$(cat "$LOG/body")
+assert_equals 'null' "$(jq -r 'if has("model") then .model else null end' <<<"$body")" "the gateway body carries no top-level model field"
+assert_equals 'pager' "$(jq -r .state.task.project <<<"$body")" "project rides in the state on the gateway path too"
+assert_equals '["rule"]' "$(jq -c '.questions | keys' <<<"$body")" "the gateway body asks the same record-shaped rule question"
+assert_equals '["default","rule_1","rule_2","rule_3","rule_4"]' "$(jq -c '.questions.rule.criteria | keys' <<<"$body")" "one option per rule plus default on the gateway path"
+assert_not_contains "$body" 'SECRET-WHY-TEXT' "why text never leaves the machine on the gateway path"
+assert_not_contains "$body" 'spendPriority' "quota never leaves the machine on the gateway path"
+pass "gateway path: fixed Vercel endpoint and headers, key off argv, confidence read from providerMetadata"
+
+# --- key precedence: TYPESAFE_API_KEY beats AI_GATEWAY_API_KEY; env beats .env -
+reset_log
+write_response "$RESPONSE" rule_4 0.9
+TYPESAFE_API_KEY=$KEY AI_GATEWAY_API_KEY=$GW_KEY FAKE_CURL_RESPONSE="$RESPONSE" run code out err "$BRIEF" --project pager
+argv=$(cat "$LOG/argv")
+assert_contains "$argv" 'https://api.typesafe.ai/v1/systemone' "TYPESAFE_API_KEY still wins the direct path when both keys are set"
+assert_not_contains "$argv" 'ai-gateway.vercel.sh' "the gateway is never called while TYPESAFE_API_KEY is present"
+
+printf '%s\n' '# local secrets' "export AI_GATEWAY_API_KEY=\"$GW_KEY\"" > "$HOME_DIR/.env"
+reset_log
+TYPESAFE_API_KEY='' FAKE_CURL_RESPONSE="$GW_RESPONSE" run code out err "$BRIEF" --project pager
+expect_code 0 "$code" ".env AI_GATEWAY_API_KEY resolves"
+assert_contains "$out" '  status: clear' ".env AI_GATEWAY_API_KEY resolves through the gateway"
+assert_equals "Authorization: Bearer $GW_KEY" "$(cat "$LOG/header")" ".env AI_GATEWAY_API_KEY reaches curl on the fd header"
+reset_log
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY=env-wins FAKE_CURL_RESPONSE="$GW_RESPONSE" run code out err "$BRIEF" --project pager
+assert_equals 'Authorization: Bearer env-wins' "$(cat "$LOG/header")" "environment AI_GATEWAY_API_KEY wins over .env"
+rm -f "$HOME_DIR/.env"
+pass "key precedence: TYPESAFE_API_KEY beats AI_GATEWAY_API_KEY; environment beats .env for each key independently"
+
+# --- host-rendered ~/.env.vercel-ai-gateway is the last AI_GATEWAY_API_KEY source ----
+printf '%s\n' '# rendered by render-project-secrets' 'OTHER_VALUE=unrelated' "export AI_GATEWAY_API_KEY=\"$GW_KEY\"" > "$USER_HOME/.env.vercel-ai-gateway"
+reset_log
+TYPESAFE_API_KEY='' FAKE_CURL_RESPONSE="$GW_RESPONSE" run code out err "$BRIEF" --project pager
+expect_code 0 "$code" "rendered gateway key file resolves"
+assert_contains "$out" '  status: clear' "rendered gateway key file switches the gateway path on"
+assert_not_contains "$out$err" "$GW_KEY" "the rendered key never reaches stdout or stderr"
+assert_not_contains "$(cat "$LOG/argv")" "$GW_KEY" "the rendered key never appears on curl argv"
+assert_contains "$(cat "$LOG/argv")" 'https://ai-gateway.vercel.sh/v4/ai/evaluation-model' "the rendered key routes through the gateway"
+assert_equals "Authorization: Bearer $GW_KEY" "$(cat "$LOG/header")" "the rendered key reaches curl only on the fd header"
+assert_equals $'curl:clean\nquota-axi:clean' "$(cat "$LOG/child-env")" "the rendered key is absent from every child environment"
+printf '%s\n' 'AI_GATEWAY_API_KEY=home-env-wins' > "$HOME_DIR/.env"
+reset_log
+TYPESAFE_API_KEY='' FAKE_CURL_RESPONSE="$GW_RESPONSE" run code out err "$BRIEF" --project pager
+assert_equals 'Authorization: Bearer home-env-wins' "$(cat "$LOG/header")" "the home .env wins over the rendered key file"
+rm -f "$HOME_DIR/.env"
+reset_log
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY=env-wins FAKE_CURL_RESPONSE="$GW_RESPONSE" run code out err "$BRIEF" --project pager
+assert_equals 'Authorization: Bearer env-wins' "$(cat "$LOG/header")" "the environment wins over the rendered key file"
+rm -f "$USER_HOME/.env.vercel-ai-gateway"
+pass "rendered ~/.env.vercel-ai-gateway switches the gateway on last, key kept off argv, output, and child environments"
 
 # --- rules are snapshotted and line output is injection-safe -------------------
 MUTATED_RULES="$TMP_ROOT/mutated-rules.json"
