@@ -1733,6 +1733,26 @@ launch_entry_listed() {  # <entry> <newline-separated entries>
 #
 # Every launch shares ONE window rather than taking a window each, so a whole
 # fleet of failing sources costs a watcher cycle the same bounded wait as one.
+#
+# Ownership is read WITHOUT the source lock. A launch just detached needs that
+# exact lock to reach its own claim (cmd_start acquires it before claiming),
+# and this loop polls every 0.05s while the detached runner's own acquire
+# retries only every 0.1s - two spinners on one mkdir-based lock, the faster
+# one starving the slower one for the whole window every time both wake at
+# once. That starvation reproduces the reported noise with no source and no
+# network involved at all: a purely local runner still failed to prove its
+# claim before this loop's own polling denied it the lock to prove it with.
+# The read below is safe unlocked because every claim-file write is a
+# mktemp-then-rename and every release is a plain rm - never a torn write - so
+# an unlocked read only ever sees a fully-old claim, a fully-new claim, or
+# briefly none between a release and its replacement's create. That last case
+# reads as unowned, exactly like the stamp check already below it, and both
+# self-correct on the next 0.05s pass; this loop only ever confirms or keeps
+# waiting, so a stale or momentarily-absent read can cost an extra retry, not
+# a wrong claim.
+confirm_claim_owned() {  # <source-id>
+  fm_procevent_claim_state_locked "$1"
+}
 confirm_launched_runners() {  # <source-id><TAB><registration-identity><TAB><launch-stamp-before>...
   local deadline window entry id rest identity before state stamp mark
   local -a pending=("$@") remaining=()
@@ -1753,12 +1773,8 @@ confirm_launched_runners() {  # <source-id><TAB><registration-identity><TAB><lau
       rest=${entry#*$'\t'}
       identity=${rest%%$'\t'*}
       before=${rest#*$'\t'}
-      state=1
-      if fm_procevent_source_lock_try_acquire "$id"; then
-        fm_procevent_claim_state_locked "$id"
-        state=$?
-        fm_procevent_source_lock_release "$id"
-      fi
+      confirm_claim_owned "$id"
+      state=$?
       if [ "$state" -eq 0 ]; then
         continue
       fi
