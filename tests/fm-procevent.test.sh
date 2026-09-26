@@ -4275,4 +4275,48 @@ kill -0 -"$CRASH_PID" 2>/dev/null \
 pass "a group whose leader died to something else is still refused, not signalled"
 kill -KILL -"$CRASH_PID" 2>/dev/null || true
 
+# --- confirmation does not starve the very launch it is confirming -----------
+# Reported incident: a healthy remote-reply source that ends every round with
+# no delta (an ordinary long-poll timeout, not a failure) was announced
+# launch-failed on almost every relaunch, though a later cycle always found it
+# owned. Root cause, proved with the same fixture below and no network or
+# remote adapter involved at all: `confirm_launched_runners` used to poll
+# ownership by taking the SAME source lock the freshly detached runner needs
+# to reach its own claim - reading it every 0.05s, faster than the runner's
+# own 0.1s blocking-acquire retry - so confirmation's own polling starved the
+# runner out of the lock for the whole window on a plain local relaunch, no
+# ssh involved. The fix reads ownership without that lock (claim writes are
+# atomic mktemp+rename, so an unlocked read is safe); this proves a source
+# that repeatedly claims, runs briefly, and exits with no result (exactly the
+# no-delta remote-reply shape) is never announced failed across many
+# relaunches in a row, at the SAME confirm window the incident used.
+HNS="$TMP_ROOT/no-starve"; new_home "$HNS"
+NS_ADAPTER="$TMP_ROOT/no-starve-adapter.sh"
+cat > "$NS_ADAPTER" <<'SH'
+#!/usr/bin/env bash
+# A no-delta long-poll round: claims, runs briefly, exits with no output - the
+# runner leaves the registration untouched, so every relaunch reuses the exact
+# same registration identity, exactly like an unanswered remote-reply arm.
+sleep 0.3
+exit 75
+SH
+chmod +x "$NS_ADAPTER"
+pe_register "$HNS" remote-reply no-starve-src -- "$NS_ADAPTER" >/dev/null
+ns_failures=0
+for _ in $(seq 1 10); do
+  sleep 0.6
+  ns_out=$(FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=3 pe "$HNS" reconcile 2>&1) \
+    || fail "reconcile failed outright on a healthy relaunching source: $ns_out"
+  case "$ns_out" in
+    *failed=0*) ;;
+    *) ns_failures=$((ns_failures + 1)) ;;
+  esac
+done
+[ "$ns_failures" -eq 0 ] \
+  || fail "a healthy no-delta source was announced launch-failed $ns_failures/10 relaunches: confirmation is starving the runner's own claim"
+[ "$(launch_failed_wake_count "$HNS" no-starve-src)" = 0 ] \
+  || fail "a healthy no-delta source produced a launch-failed wake"
+pe "$HNS" retire no-starve-src >/dev/null 2>&1 || true
+pass "confirming a launch does not starve that same launch out of the lock it needs to claim"
+
 printf '\nall procevent tests passed\n'
