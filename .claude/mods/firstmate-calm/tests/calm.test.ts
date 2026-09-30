@@ -204,6 +204,31 @@ describe("operational user rows", () => {
   });
 });
 
+describe("Stop hook feedback notification rows", () => {
+  // The watcher's exit-2 wake reaches the transcript as a task-notification user row
+  // whose summary is this text; the wake body stays in the model's system-reminder.
+  const feedback = (origin: { kind: "composer" | "task-notification" }, text = "Stop hook feedback") =>
+    userMessage(text, "user-1", origin);
+
+  test("hides the task-notification row while on", async ($, on) => {
+    world(on, { preference: "on\n" });
+    expect(isHidden(await $.ui.render(feedback({ kind: "task-notification" })))).toBe(true);
+    expect(isHidden(await $.ui.render(feedback({ kind: "task-notification" }, " Stop hook feedback\n")))).toBe(true);
+  });
+
+  test("keeps other notifications and typed prompts visible while on", async ($, on) => {
+    world(on, { preference: "on\n" });
+    expect(isStock(await $.ui.render(feedback({ kind: "task-notification" }, "Background task finished")))).toBe(true);
+    expect(isStock(await $.ui.render(feedback({ kind: "task-notification" }, "Stop hook feedback and more")))).toBe(true);
+    expect(isStock(await $.ui.render(feedback({ kind: "composer" })))).toBe(true);
+  });
+
+  test("leaves the row to the engine while off", async ($, on) => {
+    world(on);
+    expect(isStock(await $.ui.render(feedback({ kind: "task-notification" })))).toBe(true);
+  });
+});
+
 describe("mid-turn working notes", () => {
   type Chunk =
     | { kind: "text"; index: number; text: string }

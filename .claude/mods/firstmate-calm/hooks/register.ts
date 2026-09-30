@@ -19,7 +19,7 @@
 // the stock working row (`Spinner`) becomes the two-row sailboat, repainted through
 // `$.ui.blit` on the sprite's own tick; `ToolUse`, `ToolResult`, and `ToolGroup` rows
 // draw as zero-height boxes; a `UserMessage` whose text the canonical operational-input
-// classifier recognizes draws as zero height; an `AssistantMessage` block recorded as a
+// classifier recognizes, or the `Stop hook feedback` task-notification row, draws as zero height; an `AssistantMessage` block recorded as a
 // mid-turn working note draws as zero height. Calm off returns every drawing to the
 // engine. A toggle invalidates every hooked drawing, so rows already on screen redraw.
 // The boat is painted in Claude Code's own theme colors: the family is read from the
@@ -48,6 +48,7 @@ import {
   classifyRestoredTranscript,
   serializeCalmPreference,
   stepTextIsWorkingNote,
+  userRowIsStopHookFeedback,
   userTextIsOperational,
   workingNoteKey,
 } from "../lib/fm-calm-presentation.ts";
@@ -285,7 +286,9 @@ export const register: Register = (on) => {
   on("ui.render", { component: "UserMessage" }, async ($, e, next) => {
     if (!(await isActivated($))) return next(e);
     await ensureLoaded($);
-    return calm && userTextIsOperational(e.props.text) ? hiddenRow($, e) : next(e);
+    return calm && (userTextIsOperational(e.props.text) || userRowIsStopHookFeedback(e.props))
+      ? hiddenRow($, e)
+      : next(e);
   });
 
   on("ui.render", { component: "AssistantMessage" }, async ($, e, next) => {

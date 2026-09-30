@@ -203,13 +203,17 @@ export function toolGroup(requestId = "group-1", isExpanded = false) {
   };
 }
 
-export function userMessage(text: string, requestId = "user-1") {
+export function userMessage(
+  text: string,
+  requestId = "user-1",
+  origin: { kind: "composer" | "task-notification" } = { kind: "composer" },
+) {
   return {
     surface: "terminal" as const,
     component: "UserMessage" as const,
     requestId,
     viewport: VIEWPORT,
-    props: { text, origin: { kind: "composer" as const } },
+    props: { text, origin },
   };
 }
 

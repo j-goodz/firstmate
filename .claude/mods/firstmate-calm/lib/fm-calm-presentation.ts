@@ -136,3 +136,15 @@ export function classifyRestoredTranscript(rows: readonly CalmSessionRow[]): {
 export function userTextIsOperational(text: string): boolean {
   return classifyFirstmateOperationalText(text) !== undefined;
 }
+
+/** The summary of the task-notification row Claude Code draws for a Stop hook's exit-2 feedback. */
+const STOP_HOOK_FEEDBACK_SUMMARY = "Stop hook feedback";
+
+/**
+ * Whether a user row is the Stop hook feedback notification: the row that announces the
+ * watcher's exit-2 wake. Only the drawn summary is hidden; the wake text reaches the model
+ * through the notification's system-reminder, which no render hook touches.
+ */
+export function userRowIsStopHookFeedback(props: { text: string; origin: { kind: string } }): boolean {
+  return props.origin.kind === "task-notification" && props.text.trim() === STOP_HOOK_FEEDBACK_SUMMARY;
+}
