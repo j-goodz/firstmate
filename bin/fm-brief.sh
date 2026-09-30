@@ -397,6 +397,9 @@ IFS= read -r -d '' TASK_SECTION <<'EOF' || true
 
 ## Firstmate spec
 {FIRSTMATE_SPEC}
+
+## Exists receipt
+Run `nexus exists "<what this task builds or calls>"` and paste its final `EXISTS-RECEIPT systems=...` line here; spawn verifies it against the nexus ledger.
 EOF
 TASK_SECTION=${TASK_SECTION%$'\n'}
 
