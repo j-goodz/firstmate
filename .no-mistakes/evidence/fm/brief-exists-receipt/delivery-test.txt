@@ -1,0 +1,1 @@
+ok - fm-spawn: ship and scout spawns require an EXISTS-RECEIPT verified against the nexus ledger

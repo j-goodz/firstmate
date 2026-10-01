@@ -1,0 +1,9 @@
+== ok
+rc=0
+== bad
+error: /home/justin/.cache/tmp/tmp.1acLYU3uZ0/bad.md EXISTS-RECEIPT systems=zz has no fresh matching row in /home/justin/.cache/tmp/tmp.1acLYU3uZ0/l.jsonl; it was not produced by nexus exists (or is older than 604800s); rerun nexus exists and paste the real line
+rc=1
+== none
+error: /home/justin/.cache/tmp/tmp.1acLYU3uZ0/none.md has no EXISTS-RECEIPT line; run `nexus exists "<what you are about to build>"` and paste its final EXISTS-RECEIPT systems=... line under ## Exists receipt before spawn
+rc=1
+rc=0
