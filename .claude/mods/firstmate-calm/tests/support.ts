@@ -1,7 +1,8 @@
 // Shared fixtures for the firstmate-calm plugin test suites under `claude plugin test`.
 //
 // Each test mocks the world beneath the plugin noun by noun: the environment that
-// names the Firstmate home, an in-memory file system for the per-home preference, the
+// names the Firstmate home, an in-memory file system for the Calm preference and the
+// directories that carry a Firstmate home's layout, the session's project root, the
 // engine's own draw for every component the mod passes through, and a journal of every
 // call the mod makes on `$` (blits, toasts, redraws, the command it registers).
 import type { On, SessionMessage } from "claude-code";
@@ -9,6 +10,8 @@ import { mock, type MockClock } from "claude-code/testing";
 
 export const HOME = "/fm/home";
 export const PREFERENCE = `${HOME}/config/calm`;
+/** The tracked code root three levels above this plugin's folder, as the mod derives it. */
+export const CODE_ROOT = new URL("../../../../", import.meta.url).pathname.replace(/\/+$/, "");
 
 export type Journal = {
   /** Every `$.command.register` name, in order. */
@@ -52,6 +55,10 @@ export type WorldOptions = {
   messages?: readonly { role: "user" | "assistant"; text: string; toolUses: readonly unknown[] }[];
   /** The `theme` row's value as `$.config.list()` reports it; omitted means `dark`. */
   theme?: unknown;
+  /** Directories laid out as Firstmate homes: `AGENTS.md`, `bin/`, and `state/`. */
+  homes?: readonly string[];
+  /** What `$.session.root()` answers; omitted means `/work`. */
+  sessionRoot?: string;
 };
 
 /** The engine's own drawing, as the bottom of every `ui.render` chain. */
@@ -86,6 +93,20 @@ export function world(on: On, options: WorldOptions = {}): World {
     journal.fsReads.push(e.path);
     return files.has(e.path) ? { value: files.get(e.path)! } : { deny: `ENOENT: ${e.path}` };
   });
+  const dirs = new Set<string>();
+  const layoutFiles = new Set<string>();
+  for (const home of options.homes ?? []) {
+    layoutFiles.add(`${home}/AGENTS.md`);
+    dirs.add(`${home}/bin`);
+    dirs.add(`${home}/state`);
+  }
+  on("fs.stat", async (_$, e) => {
+    const kind = dirs.has(e.path) ? "dir" : files.has(e.path) || layoutFiles.has(e.path) ? "file" : undefined;
+    return kind === undefined
+      ? { deny: `ENOENT: ${e.path}` }
+      : { value: { kind, size: 0, mtimeMs: 0, isLink: false } };
+  });
+  on("session.root", async () => ({ value: options.sessionRoot ?? "/work" }));
   on("fs.write", async (_$, e) => {
     if (writeFailure !== undefined) return { deny: writeFailure };
     files.set(e.path, e.text);

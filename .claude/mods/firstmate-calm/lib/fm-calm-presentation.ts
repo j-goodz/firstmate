@@ -1,7 +1,7 @@
 // Firstmate Calm presentation policy for the Claude Code mod, kept free of the engine.
 //
 // This module owns the decisions ../hooks/register.ts applies through `$`: where the
-// shared per-home Calm preference lives and how its value reads, which assistant text is
+// shared Calm preference lives and how its value reads, which assistant text is
 // a mid-turn working note, and which transcript rows Calm hides. It shares Pi Calm's
 // broad presentation boundary: genuine user prompts, genuine agent responses, and
 // working activity stay visible; tool rows, tool groups, classified working notes, and
@@ -16,12 +16,25 @@ import {
 
 export { CALM_PRESERVE_MIN_CHARS } from "./fm-calm-preservation.ts";
 
-/** The environment variables that select the effective Firstmate home, as the mod reads them. */
+/** The environment variables that select the preference location, as the mod reads them. */
 export type CalmHomeEnvironment = {
   readonly FM_HOME?: string | undefined;
   readonly FM_ROOT_OVERRIDE?: string | undefined;
   readonly FM_CONFIG_OVERRIDE?: string | undefined;
+  readonly XDG_CONFIG_HOME?: string | undefined;
+  readonly HOME?: string | undefined;
 };
+
+/** The directories beside the environment that can hold the preference. */
+export type CalmPreferencePlaces = {
+  /** `$.plugin.root`, as Claude Code names it: possibly a symlink path, never resolved. */
+  readonly pluginRoot: string;
+  /** `$.session.root()`, or undefined when the session could not report one. */
+  readonly sessionRoot?: string | undefined;
+};
+
+/** What a path leads to, as `$.fs.stat` reports it; undefined when it leads nowhere. */
+export type CalmPathKind = (path: string) => Promise<"file" | "dir" | "other" | undefined>;
 
 /** The parent of a path, with either separator; a bare name resolves to itself. */
 function parentDirectory(path: string): string {
@@ -41,15 +54,42 @@ export function calmCodeRootFromPluginRoot(pluginRoot: string): string {
 }
 
 /**
- * The per-home `config/calm` path, resolved exactly as the Pi extension resolves it:
- * `FM_HOME`, then `FM_ROOT_OVERRIDE`, then the tracked code root, with
- * `FM_CONFIG_OVERRIDE` naming the config directory outright when present.
+ * Whether a directory has a Firstmate home's layout: an `AGENTS.md` file beside `bin/`
+ * and `state/` directories, the layout half of `fm_primary_scope_matches` in
+ * bin/fm-primary-scope-lib.sh. A task worktree has no `state/`, so it does not qualify.
  */
-export function calmPreferencePath(env: CalmHomeEnvironment, pluginRoot: string): string {
-  const configDirectory =
-    env.FM_CONFIG_OVERRIDE ||
-    `${env.FM_HOME || env.FM_ROOT_OVERRIDE || calmCodeRootFromPluginRoot(pluginRoot)}/config`;
-  return `${configDirectory}/calm`;
+export async function calmDirectoryIsFirstmateHome(directory: string, kindOf: CalmPathKind): Promise<boolean> {
+  const [agents, bin, state] = await Promise.all([
+    kindOf(`${directory}/AGENTS.md`),
+    kindOf(`${directory}/bin`),
+    kindOf(`${directory}/state`),
+  ]);
+  return agents === "file" && bin === "dir" && state === "dir";
+}
+
+/**
+ * The Calm preference path. `FM_CONFIG_OVERRIDE` names the config directory outright,
+ * then `FM_HOME`, then `FM_ROOT_OVERRIDE`, exactly as the Pi extension resolves them.
+ * Without those, the tracked code root above the plugin and then the session's project
+ * root are used only when they are Firstmate homes, because a user-level install's code
+ * root is an ordinary directory. Outside every home, one user-level file under
+ * `XDG_CONFIG_HOME` or `~/.config` serves every Claude Code configuration directory.
+ */
+export async function calmPreferencePath(
+  env: CalmHomeEnvironment,
+  places: CalmPreferencePlaces,
+  kindOf: CalmPathKind,
+): Promise<string> {
+  if (env.FM_CONFIG_OVERRIDE) return `${env.FM_CONFIG_OVERRIDE}/calm`;
+  const named = env.FM_HOME || env.FM_ROOT_OVERRIDE;
+  if (named) return `${named}/config/calm`;
+  const codeRoot = calmCodeRootFromPluginRoot(places.pluginRoot);
+  if (await calmDirectoryIsFirstmateHome(codeRoot, kindOf)) return `${codeRoot}/config/calm`;
+  const sessionRoot = places.sessionRoot;
+  if (sessionRoot && (await calmDirectoryIsFirstmateHome(sessionRoot, kindOf))) return `${sessionRoot}/config/calm`;
+  const userConfig = env.XDG_CONFIG_HOME || (env.HOME ? `${env.HOME}/.config` : undefined);
+  // With no user directory at all, keep the code-root location rather than invent one.
+  return userConfig ? `${userConfig}/firstmate/calm` : `${codeRoot}/config/calm`;
 }
 
 /**

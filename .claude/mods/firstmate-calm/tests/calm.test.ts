@@ -1,11 +1,11 @@
-// firstmate-calm under `claude plugin test`: the Calm toggle, its persisted per-home
+// firstmate-calm under `claude plugin test`: the Calm toggle, its persisted
 // preference, and the transcript rows Calm hides and restores.
 import { describe, expect, test, type Engine } from "claude-code/testing";
 import {
   assistantMessage,
   calmCommand,
   fromFirstmate,
-  HOME,
+  CODE_ROOT,
   isHidden,
   isStock,
   operational,
@@ -134,23 +134,56 @@ describe("/calm", () => {
     expect(files.has(PREFERENCE)).toBe(false);
   });
 
-  test("falls back to FM_ROOT_OVERRIDE, then the tracked code root above the plugin, when FM_HOME is unset", async ($, on) => {
+  test("falls back to FM_ROOT_OVERRIDE when FM_HOME is unset", async ($, on) => {
     const { files } = world(on, { home: undefined, env: { FM_ROOT_OVERRIDE: "/root/override" } });
     await $.command.run(calmCommand());
     expect(files.get("/root/override/config/calm")).toBe("on\n");
   });
 
-  test("derives the home from the plugin folder when nothing names it", async ($, on) => {
-    const { files } = world(on, { home: undefined });
+  test("uses the tracked code root above the plugin when it is a Firstmate home, ahead of the session root", async ($, on) => {
+    const { files } = world(on, {
+      home: undefined,
+      env: { HOME: "/captain" },
+      homes: [CODE_ROOT, "/captain/fm-home"],
+      sessionRoot: "/captain/fm-home",
+    });
     await $.command.run(calmCommand());
-    const [path] = [...files.keys()];
-    expect(path).toBeDefined();
-    expect(path!).toEndWith("/config/calm");
-    expect(path!.startsWith(HOME)).toBe(false);
-    // Three levels above the plugin folder: the tracked code root, above `.claude/`.
-    expect(path!).not.toContain("firstmate-calm/");
-    expect(path!).not.toContain("/.claude/");
-    expect(path!).not.toContain("/mods/");
+    expect([...files.keys()]).toEqual([`${CODE_ROOT}/config/calm`]);
+  });
+
+  test("uses the session's Firstmate home when a user-level install's code root is not a home", async ($, on) => {
+    const { files } = world(on, {
+      home: undefined,
+      env: { HOME: "/captain" },
+      homes: ["/captain/fm-home"],
+      sessionRoot: "/captain/fm-home",
+    });
+    await $.command.run(calmCommand());
+    expect([...files.keys()]).toEqual(["/captain/fm-home/config/calm"]);
+  });
+
+  test("uses one user-level file outside every Firstmate home", async ($, on) => {
+    const { files } = world(on, { home: undefined, env: { HOME: "/captain" }, sessionRoot: "/captain/project" });
+    await $.command.run(calmCommand());
+    expect([...files.keys()]).toEqual(["/captain/.config/firstmate/calm"]);
+  });
+
+  test("puts the user-level file under XDG_CONFIG_HOME when that names the config directory", async ($, on) => {
+    const { files } = world(on, { home: undefined, env: { HOME: "/captain", XDG_CONFIG_HOME: "/xdg" } });
+    await $.command.run(calmCommand());
+    expect([...files.keys()]).toEqual(["/xdg/firstmate/calm"]);
+  });
+
+  test("reads the session home's stored choice at load", async ($, on) => {
+    const { files } = world(on, {
+      home: undefined,
+      env: { HOME: "/captain" },
+      homes: ["/captain/fm-home"],
+      sessionRoot: "/captain/fm-home",
+    });
+    files.set("/captain/fm-home/config/calm", "on\n");
+    await $.session.start(sessionStart);
+    expect(isHidden(await $.ui.render(toolUse()))).toBe(true);
   });
 });
 

@@ -27,7 +27,7 @@
 //
 // Loading is lazy and cached within a session: a resumed transcript or a hot reload can
 // draw restored rows before `session.start`, so every hook awaits that session's load of
-// the per-home preference and restored working notes rather than trusting a stale "off".
+// the Calm preference and restored working notes rather than trusting a stale "off".
 // Each `session.start` clears presentation classifications and reloads the new session.
 import type { EngineInterface, Register, RenderElement, RenderInput } from "claude-code";
 import {
@@ -98,14 +98,34 @@ async function readTheme($: EngineInterface): Promise<unknown> {
   }
 }
 
+/** What a path leads to, or undefined when it leads nowhere or cannot be read. */
+async function pathKind($: EngineInterface, path: string): Promise<"file" | "dir" | "other" | undefined> {
+  try {
+    return (await $.fs.stat(path)).kind;
+  } catch {
+    return undefined;
+  }
+}
+
+async function sessionRoot($: EngineInterface): Promise<string | undefined> {
+  try {
+    return await $.session.root();
+  } catch {
+    return undefined;
+  }
+}
+
 async function load($: EngineInterface): Promise<void> {
-  preferencePath = calmPreferencePath(
+  preferencePath = await calmPreferencePath(
     {
       FM_HOME: await $.env.get("FM_HOME"),
       FM_ROOT_OVERRIDE: await $.env.get("FM_ROOT_OVERRIDE"),
       FM_CONFIG_OVERRIDE: await $.env.get("FM_CONFIG_OVERRIDE"),
+      XDG_CONFIG_HOME: await $.env.get("XDG_CONFIG_HOME"),
+      HOME: await $.env.get("HOME"),
     },
-    $.plugin.root,
+    { pluginRoot: $.plugin.root, sessionRoot: await sessionRoot($) },
+    (path) => pathKind($, path),
   );
   calm = parseCalmPreference(await readPreference($, preferencePath));
   palette = CALM_SHIP_RASTER_PALETTES[calmShipPaletteFamily(await readTheme($))];
