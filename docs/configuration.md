@@ -31,6 +31,9 @@ Ordinary dead-direct-report recovery is owned by `stuck-crewmate-recovery`, whil
 
 The Pi Calm extension and the Claude Code Calm mod share the captain's home-local presentation choice in gitignored `config/calm` under the effective Firstmate home, so one `/calm` choice applies on either harness.
 Both resolve that home from `FM_HOME`, then `FM_ROOT_OVERRIDE`, then the tracked code root derived from their own path under it, or use `FM_CONFIG_OVERRIDE` as the config directory outright when that test and specialized-setup override is present.
+The Claude Code mod can also be installed user-level, where its derived code root is an ordinary directory, so it uses that code root only when the directory has a Firstmate home's layout: an `AGENTS.md` file beside `bin/` and `state/` directories, the layout half of `bin/fm-primary-scope-lib.sh`'s primary-scope check.
+Otherwise it uses the session's project root when that has the same layout, and outside every home it uses one user-level `firstmate/calm` file under `XDG_CONFIG_HOME`, or `~/.config` when that is unset, shared by every Claude Code configuration directory.
+A task worktree has no `state/`, so a mod session there without `FM_HOME` uses that user-level file, while Pi still uses the worktree's own `config/calm`.
 The values they write are `on` and `off`, each followed by one newline; an absent, unreadable, or unrecognized value defaults to off.
 `max` is the legacy value written by a removed third presentation level whose behavior is now ordinary Calm, and it is still read as `on`, so a home upgraded from it keeps Calm on rather than dropping to off.
 Each `/calm` command persists the new choice before changing live presentation, so a failed write leaves the current choice unchanged rather than claiming persistence; Pi replaces the file atomically, while the Claude Code mod writes it through the plugin API's plain file write.

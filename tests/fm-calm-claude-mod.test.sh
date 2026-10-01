@@ -237,14 +237,40 @@ const policy = await import(pathToFileURL(${MOD@Q} + "/lib/fm-calm-presentation.
 const piPreservation = await import(pathToFileURL(${ROOT@Q} + "/.pi/extensions/lib/fm-calm-preservation.ts").href);
 const check = (condition, message) => { if (!condition) throw new Error(message); };
 const plugin = "/repo/.claude/mods/firstmate-calm";
-check(policy.calmPreferencePath({}, plugin) === "/repo/config/calm", "plugin-root fallback");
-check(policy.calmPreferencePath({}, "/repo/.claude/skills/firstmate-calm/") === "/repo/config/calm", "trailing slash on the plugin root");
-check(policy.calmPreferencePath({}, "/repo/.agents/skills/firstmate-calm") === "/repo/config/calm", ".agents/skills spelling of the plugin root");
+// A fake \$.fs.stat over directories laid out as homes; a "/u" captain home carries
+// AGENTS.md and bin/ but no state/, exactly as a real user directory can.
+const layout = (homes, partial = []) => async (path) => {
+  for (const home of [...homes, ...partial]) {
+    if (path === home + "/AGENTS.md") return "file";
+    if (path === home + "/bin") return "dir";
+    if (path === home + "/state" && homes.includes(home)) return "dir";
+  }
+  return undefined;
+};
+const resolve = (env, places, homes = ["/repo"], partial = ["/u"]) => policy.calmPreferencePath(env, places, layout(homes, partial));
+const inRepo = { pluginRoot: plugin, sessionRoot: "/elsewhere" };
+check(await resolve({}, inRepo) === "/repo/config/calm", "a home code root");
+check(await resolve({}, { pluginRoot: "/repo/.claude/skills/firstmate-calm/" }) === "/repo/config/calm", "trailing slash on the plugin root");
+check(await resolve({}, { pluginRoot: "/repo/.agents/skills/firstmate-calm" }) === "/repo/config/calm", ".agents/skills spelling of the plugin root");
+check(await resolve({ HOME: "/u" }, { pluginRoot: plugin, sessionRoot: "/u/fm" }, ["/repo", "/u/fm"]) === "/repo/config/calm", "the code-root home beats the session-root home");
 check(policy.calmCodeRootFromPluginRoot("C:\\\\fm\\\\.claude\\\\mods\\\\firstmate-calm") === "C:\\\\fm", "Windows separators");
-check(policy.calmPreferencePath({ FM_ROOT_OVERRIDE: "/override/root" }, plugin) === "/override/root/config/calm", "FM_ROOT_OVERRIDE");
-check(policy.calmPreferencePath({ FM_HOME: "/home/fm", FM_ROOT_OVERRIDE: "/override/root" }, plugin) === "/home/fm/config/calm", "FM_HOME beats FM_ROOT_OVERRIDE");
-check(policy.calmPreferencePath({ FM_HOME: "/home/fm", FM_CONFIG_OVERRIDE: "/cfg" }, plugin) === "/cfg/calm", "FM_CONFIG_OVERRIDE beats the home");
-check(policy.calmPreferencePath({ FM_HOME: "" }, plugin) === "/repo/config/calm", "an empty FM_HOME reads as unset");
+check(await resolve({ FM_ROOT_OVERRIDE: "/override/root" }, inRepo, []) === "/override/root/config/calm", "FM_ROOT_OVERRIDE");
+check(await resolve({ FM_HOME: "/home/fm", FM_ROOT_OVERRIDE: "/override/root" }, inRepo) === "/home/fm/config/calm", "FM_HOME beats FM_ROOT_OVERRIDE");
+check(await resolve({ FM_HOME: "/home/fm", FM_CONFIG_OVERRIDE: "/cfg" }, inRepo) === "/cfg/calm", "FM_CONFIG_OVERRIDE beats the home");
+check(await resolve({ FM_HOME: "" }, inRepo) === "/repo/config/calm", "an empty FM_HOME reads as unset");
+const userLevel = "/u/.claude/skills/firstmate-calm";
+const accountLevel = "/u/.config/claude-accounts/account-1/skills/firstmate-calm";
+for (const pluginRoot of [userLevel, accountLevel]) {
+  check(await resolve({ HOME: "/u" }, { pluginRoot, sessionRoot: "/u/fm" }, ["/u/fm"]) === "/u/fm/config/calm", "a user-level install inside a home session: " + pluginRoot);
+  check(await resolve({ HOME: "/u" }, { pluginRoot, sessionRoot: "/u/project" }, ["/u/fm"]) === "/u/.config/firstmate/calm", "a user-level install outside every home: " + pluginRoot);
+  check(await resolve({ HOME: "/u" }, { pluginRoot }, ["/u/fm"]) === "/u/.config/firstmate/calm", "no session root: " + pluginRoot);
+  check(await resolve({ HOME: "/u", XDG_CONFIG_HOME: "/xdg" }, { pluginRoot, sessionRoot: "/u/project" }, []) === "/xdg/firstmate/calm", "XDG_CONFIG_HOME: " + pluginRoot);
+}
+check(await resolve({ HOME: "/u" }, { pluginRoot: userLevel, sessionRoot: "/u" }, []) === "/u/.config/firstmate/calm", "a captain home with AGENTS.md and bin but no state is not a Firstmate home");
+check(await resolve({}, { pluginRoot: userLevel, sessionRoot: "/u/project" }, []) === "/u/config/calm", "no user directory keeps the code-root location");
+check(await policy.calmDirectoryIsFirstmateHome("/repo", layout(["/repo"])) === true, "a home layout");
+check(await policy.calmDirectoryIsFirstmateHome("/u", layout([], ["/u"])) === false, "a layout without state");
+check(await policy.calmDirectoryIsFirstmateHome("/repo", async (path) => (path.endsWith("/AGENTS.md") || path.endsWith("/state") ? "file" : "dir")) === false, "a state file is not a home's state directory");
 for (const [stored, expected] of [["on\\n", true], ["on", true], [" on \\n", true], ["max\\n", true], ["off\\n", false], ["", false], [undefined, false], ["ON", false], ["maybe", false]]) {
   check(policy.parseCalmPreference(stored) === expected, \`preference \${JSON.stringify(stored)}\`);
 }
@@ -308,7 +334,7 @@ console.log("policy-ok");
 JS
   out=$(run_node "$TMP_ROOT/policy.mjs" 2>&1) || fail "presentation policy: $out"
   assert_contains "$out" "policy-ok" "the policy check did not complete"
-  pass "the Calm policy resolves the shared preference exactly as Pi does, reads on, max, and off as Pi does, and shares Pi's 240-character-or-newline preservation behavior while classifying working notes by stop reason, tool use, and restored transcript shape"
+  pass "the Calm policy resolves the shared preference as Pi does for the same home, falls back to the session's home and then one user-level file outside every home, reads on, max, and off as Pi does, and shares Pi's 240-character-or-newline preservation behavior while classifying working notes by stop reason, tool use, and restored transcript shape"
 }
 
 # The classifier parity corpus: envelopes the shell owner encodes itself, its legacy
