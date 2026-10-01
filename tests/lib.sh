@@ -67,6 +67,9 @@ unset TASKS_AXI_FILE TASKS_AXI_BACKEND
 # test files, not by this library, so it reads as "unused" here.
 # shellcheck disable=SC2034
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Spawn tests use hand-written briefs with no nexus exists receipt; the
+# receipt gate (fm_brief_exists_receipt_check) has its own test that forces this off.
+export FM_EXISTS_RECEIPT_OPTOUT=1
 
 # --- reporters --------------------------------------------------------------
 

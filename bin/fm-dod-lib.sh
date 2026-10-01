@@ -90,6 +90,50 @@ fm_brief_task_placeholders_present() {  # <file>
   return 1
 }
 
+# Verify a ship/scout brief carries an `EXISTS-RECEIPT systems=<a,b>` line pasted
+# from `nexus exists`, and that the nexus lookup ledger holds a matching row
+# (same system set) newer than FM_EXISTS_RECEIPT_MAX_AGE seconds (default 7 days).
+# The ledger is FM_EXISTS_LEDGER or ~/.nexus/exists/lookups.jsonl. Returns 1 and
+# prints the exact reason on stderr; FM_EXISTS_RECEIPT_OPTOUT=1 skips the check.
+fm_brief_exists_receipt_check() {  # <file>
+  local file=$1 line systems ledger
+  [ "${FM_EXISTS_RECEIPT_OPTOUT:-0}" = 1 ] && return 0
+  line=$(grep -m1 -E '^EXISTS-RECEIPT systems=' "$file" 2>/dev/null || true)
+  if [ -z "$line" ]; then
+    echo "error: $file has no EXISTS-RECEIPT line; run \`nexus exists \"<what you are about to build>\"\` and paste its final EXISTS-RECEIPT systems=... line under ## Exists receipt before spawn" >&2
+    return 1
+  fi
+  systems=${line#EXISTS-RECEIPT systems=}
+  ledger=${FM_EXISTS_LEDGER:-$HOME/.nexus/exists/lookups.jsonl}
+  if [ ! -r "$ledger" ]; then
+    echo "error: cannot verify the EXISTS-RECEIPT in $file: nexus exists ledger $ledger is missing or unreadable (nexus exists never ran on this machine, or its home differs); run nexus exists here before spawn" >&2
+    return 1
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "error: cannot verify the EXISTS-RECEIPT in $file: python3 is unavailable to read $ledger" >&2
+    return 1
+  fi
+  if ! python3 - "$ledger" "$systems" "${FM_EXISTS_RECEIPT_MAX_AGE:-604800}" <<'PY'
+import json, sys, time
+ledger, systems, max_age = sys.argv[1], sys.argv[2], int(sys.argv[3])
+want = sorted(s for s in systems.strip().split(",") if s)
+now = time.time()
+for raw in open(ledger, encoding="utf-8"):
+    try:
+        row = json.loads(raw)
+    except ValueError:
+        continue
+    if sorted(row.get("systems_matched", [])) == want and now - float(row.get("ts", 0)) <= max_age:
+        sys.exit(0)
+sys.exit(1)
+PY
+  then
+    echo "error: $file EXISTS-RECEIPT systems=$systems has no fresh matching row in $ledger; it was not produced by nexus exists (or is older than ${FM_EXISTS_RECEIPT_MAX_AGE:-604800}s); rerun nexus exists and paste the real line" >&2
+    return 1
+  fi
+  return 0
+}
+
 # Parse an exact ATX heading outside fenced blocks. Body mode prints through
 # the next unfenced heading at the same or a higher level; present mode reports
 # whether the heading exists.

@@ -14,7 +14,10 @@
 #   scaffolded before that line existed warns once and launches on the flag. A
 #   ship or scout spawn also refuses leftover `{TASK}` / `{FIRSTMATE_SPEC}`
 #   placeholders, an empty Task, an incomplete pair of Task subsections, or a
-#   `## Captain's intent` line opening with a Captain label or address.
+#   `## Captain's intent` line opening with a Captain label or address. A fresh
+#   (non-relaunch) ship or scout spawn also refuses a brief without a pasted
+#   `EXISTS-RECEIPT` line matching the nexus ledger; bin/fm-dod-lib.sh's
+#   fm_brief_exists_receipt_check owns the ledger path, age limit, and opt-out.
 #   Every ship or scout spawn renders `launch-brief.md`; for a no-mistakes ship
 #   it also carries the current `--intent` contract and the extracted captain
 #   intent. A legacy mixed Task is accepted there only under bin/fm-dod-lib.sh's
@@ -2749,6 +2752,9 @@ fi
 if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
   if fm_brief_task_placeholders_present "$BRIEF"; then
     echo "error: $BRIEF still contains {TASK} or {FIRSTMATE_SPEC}; fill ## Captain's intent and ## Firstmate spec before spawn" >&2
+    exit 1
+  fi
+  if [ "$RELAUNCH" -eq 0 ] && ! fm_brief_exists_receipt_check "$BRIEF"; then
     exit 1
   fi
   if ! fm_brief_task_content_valid "$BRIEF"; then

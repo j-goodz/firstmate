@@ -69,6 +69,70 @@ run_spawn() {  # <home> <fakebin> <spawn-args...>
     "$SPAWN" "$@" 2>&1
 }
 
+# Ship and scout spawns refuse a brief with no EXISTS-RECEIPT line from
+# `nexus exists`, and verify it against the nexus lookup ledger rather than
+# trusting pasted text. An unreadable ledger refuses naming its path.
+# Secondmate charters are exempt. tests/lib.sh sets FM_EXISTS_RECEIPT_OPTOUT=1
+# for the rest of the suite; this test forces it off.
+test_spawn_requires_a_verified_exists_receipt() {
+  local rec home proj fakebin id out ledger stale status
+  rec=$(make_home exists-receipt)
+  IFS='|' read -r home proj fakebin <<EOF
+$rec
+EOF
+  ledger="$TMP_ROOT/exists-receipt/lookups.jsonl"
+  stale="$TMP_ROOT/exists-receipt/stale.jsonl"
+  printf '{"ts": %s, "systems_matched": ["youtube-public", "gh"]}\n' "$(date +%s)" > "$ledger"
+  printf '{"ts": 1000, "systems_matched": ["youtube-public", "gh"]}\n' > "$stale"
+
+  id=exists-scaffold
+  FM_HOME="$home" "$BRIEF" "$id" proj --mode no-mistakes >/dev/null 2>&1 || fail "scaffold failed"
+  fill_brief_subsections "$home/data/$id/brief.md" "Intent." "Spec."
+  out=$(FM_EXISTS_RECEIPT_OPTOUT=0 FM_EXISTS_LEDGER="$ledger" run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off); status=$?
+  [ "$status" -ne 0 ] || fail "a brief holding the receipt placeholder spawned"
+  assert_contains "$out" "EXISTS-RECEIPT" "placeholder refusal did not name the receipt line"
+  assert_contains "$out" "nexus exists" "placeholder refusal did not say how to obtain the receipt"
+
+  id=exists-none
+  write_brief "$home" "$id" no-mistakes
+  out=$(FM_EXISTS_RECEIPT_OPTOUT=0 FM_EXISTS_LEDGER="$ledger" run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off); status=$?
+  [ "$status" -ne 0 ] || fail "a brief with no receipt spawned"
+  assert_contains "$out" "EXISTS-RECEIPT" "missing-receipt refusal did not name the receipt line"
+
+  id=exists-forged
+  write_brief "$home" "$id" no-mistakes
+  printf '\n## Exists receipt\nEXISTS-RECEIPT systems=made-up\n' >> "$home/data/$id/brief.md"
+  out=$(FM_EXISTS_RECEIPT_OPTOUT=0 FM_EXISTS_LEDGER="$ledger" run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off); status=$?
+  [ "$status" -ne 0 ] || fail "a forged receipt spawned"
+  assert_contains "$out" "no fresh matching" "forged receipt refusal did not say the ledger has no match"
+
+  id=exists-stale
+  write_brief "$home" "$id" no-mistakes
+  printf '\n## Exists receipt\nEXISTS-RECEIPT systems=youtube-public,gh\n' >> "$home/data/$id/brief.md"
+  out=$(FM_EXISTS_RECEIPT_OPTOUT=0 FM_EXISTS_LEDGER="$stale" run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off); status=$?
+  [ "$status" -ne 0 ] || fail "a stale receipt spawned"
+  assert_contains "$out" "no fresh matching" "stale receipt refusal did not say the match is not fresh"
+
+  out=$(FM_EXISTS_RECEIPT_OPTOUT=0 FM_EXISTS_LEDGER="$TMP_ROOT/exists-receipt/absent.jsonl" run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off); status=$?
+  [ "$status" -ne 0 ] || fail "an unreadable ledger spawned"
+  assert_contains "$out" "absent.jsonl" "unreadable-ledger refusal did not name the ledger path"
+
+  id=exists-good
+  write_brief "$home" "$id" no-mistakes
+  printf '\n## Exists receipt\nEXISTS-RECEIPT systems=gh,youtube-public\n' >> "$home/data/$id/brief.md"
+  out=$(FM_EXISTS_RECEIPT_OPTOUT=0 FM_EXISTS_LEDGER="$ledger" run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
+  assert_not_contains "$out" "EXISTS-RECEIPT" "a ledger-verified receipt was refused"
+
+  id=exists-scout
+  write_brief "$home" "$id"
+  out=$(FM_EXISTS_RECEIPT_OPTOUT=0 FM_EXISTS_LEDGER="$ledger" run_spawn "$home" "$fakebin" "$id" "$proj" claude --scout)
+  assert_contains "$out" "EXISTS-RECEIPT" "a scout brief with no receipt was not refused"
+
+  FM_HOME="$home" "$BRIEF" exists-charter --secondmate --no-projects >/dev/null 2>&1 || fail "charter scaffold failed"
+  assert_no_grep "EXISTS_RECEIPT" "$home/data/exists-charter/brief.md" "a secondmate charter carries the receipt placeholder"
+  pass "fm-spawn: ship and scout spawns require an EXISTS-RECEIPT verified against the nexus ledger"
+}
+
 # A ship spawn must stop when its delivery contract was never decided or cannot be
 # a task mode, and must leave no task metadata behind when it does.
 test_ship_spawn_requires_a_valid_delivery_contract() {
@@ -882,6 +946,7 @@ EOF
 }
 
 test_authorized_intent_keeps_words_without_composed_address
+test_spawn_requires_a_verified_exists_receipt
 test_spawn_refreshes_legacy_worker_roles
 test_ship_spawn_requires_a_valid_delivery_contract
 test_scout_and_secondmate_refuse_delivery_flags
