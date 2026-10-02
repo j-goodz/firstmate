@@ -288,6 +288,39 @@ assert_not_contains "$body" 'SECRET-WHY-TEXT' "why text never leaves the machine
 assert_not_contains "$body" 'spendPriority' "quota never leaves the machine on the gateway path"
 pass "gateway path: fixed Vercel endpoint and headers, key off argv, confidence read from providerMetadata"
 
+# --- spend ledger: every resolver call is one row in ~/.nexus/api-calls.jsonl --
+# Every paid call writes the spend ledger nexus spend_local reads, with caller,
+# provider, model and cost.
+# Cost is the gateway-reported cost when present, else $0.042 per 1M input tokens.
+# A failed call is a row too, at $0.
+LEDGER="$USER_HOME/.nexus/api-calls.jsonl"
+rm -f "$LEDGER"
+ledger_row() { tail -n 1 "$LEDGER" | jq -r "$1"; }
+reset_log
+write_response "$RESPONSE" rule_4 0.9
+TYPESAFE_API_KEY=$KEY run code out err "$BRIEF" --project pager
+assert_equals 'typesafe|jev-1.13.0|812|60|34104|true|TYPESAFE_API_KEY' \
+  "$(ledger_row '[.provider, .model, .tokens_in, .tokens_out, (.cost_usd * 1e9 | round), .ok, .key_label] | join("|")')" \
+  "a direct call writes one priced row naming the served model"
+assert_contains "$(ledger_row .process)" 'fm-dispatch-resolve' "the row names the caller"
+first_seq=$(ledger_row .seq)
+reset_log
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY=$GW_KEY FAKE_CURL_RESPONSE="$GW_RESPONSE" run code out err "$BRIEF" --project pager
+assert_equals 'vercel-ai-gateway|812|60|0|true|AI_GATEWAY_API_KEY' \
+  "$(ledger_row '[.provider, .tokens_in, .tokens_out, .cost_usd, .ok, .key_label] | join("|")')" \
+  "a gateway call writes one row at the gateway-reported cost"
+assert_equals "$(printf '%s\n' "$out" | sed -n 's/^  model: \([^ ]*\).*/\1/p')" "$(ledger_row .model)" \
+  "the gateway row names the model the tool reports"
+assert_equals "$((first_seq + 1))" "$(ledger_row .seq)" "each row takes the next sequence number"
+reset_log
+TYPESAFE_API_KEY=$KEY FAKE_CURL_HTTP=429 run code out err "$BRIEF"
+assert_equals 'false|0|http 429' "$(ledger_row '[.ok, .cost_usd, .error] | join("|")')" \
+  "a failed call writes an unbilled row"
+assert_equals 3 "$(wc -l < "$LEDGER" | tr -d ' ')" "one row per call"
+assert_not_contains "$(cat "$LEDGER")" "$KEY" "the ledger never carries the direct key"
+assert_not_contains "$(cat "$LEDGER")" "$GW_KEY" "the ledger never carries the gateway key"
+pass "spend ledger: one row per call, priced, failed calls at \$0, no key"
+
 # --- key precedence: TYPESAFE_API_KEY beats AI_GATEWAY_API_KEY; env beats .env -
 reset_log
 write_response "$RESPONSE" rule_4 0.9
