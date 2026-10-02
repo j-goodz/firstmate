@@ -557,6 +557,7 @@ Firstmate passes its profile line unless it states a reason to override, such as
 
 The resolver and bootstrap copy an environment-provided key into a non-exported private variable and unset `TYPESAFE_API_KEY` and `AI_GATEWAY_API_KEY` before launching child processes, so the secret is absent from child environments.
 The resolver sends whichever key is active to `curl` only as a header read from a file descriptor, never on argv, and nothing prints, logs, or writes it.
+Every request, answered or failed, appends one row with its provider, model, tokens, and cost to `~/.nexus/api-calls.jsonl`, the fleet spend ledger, and a failed write never changes the outcome; the script header owns the row fields and pricing.
 The direct path fixes the endpoint at `https://api.typesafe.ai`, model at `jev-latest`, confidence floor at 0.6, and request timeout at 5 seconds.
 The gateway path fixes the endpoint at `https://ai-gateway.vercel.sh/v4/ai/evaluation-model`, selects the model with an `ai-model-id: typesafe-ai/jev` header instead of a body field, and uses the same confidence floor and timeout; its response carries confidence at `providerMetadata.typesafe.confidence.rule` and camelCase token counts, which the resolver normalizes into the same shape the direct path already produces before resolution runs.
 `TYPESAFE_API_KEY` and `AI_GATEWAY_API_KEY` are its only resolver-specific environment settings.

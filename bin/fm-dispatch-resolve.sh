@@ -61,6 +61,16 @@
 #   TYPESAFE_API_KEY and AI_GATEWAY_API_KEY are the only resolver-specific
 #   environment settings; TYPESAFE_API_KEY wins when both are set.
 #
+# Spend ledger: every POST, answered or failed, appends one JSON row to
+#   ~/.nexus/api-calls.jsonl, the fleet spend ledger nexus spend_local reads
+#   (fields ts, seq, machine, pid, process, provider, model, key_label,
+#   tokens_in, tokens_out, cost_usd, latency_ms, ok, error). provider is
+#   typesafe or vercel-ai-gateway; model is the served model the response
+#   names, else the requested one; key_label is the env name, never the key.
+#   cost_usd is the gateway-reported providerMetadata.gateway.cost when present,
+#   else input tokens at JEV_USD_PER_M_IN, and 0 for a failed call. A failed
+#   ledger write is one stderr line and never changes the outcome.
+#
 # Authority: this tool never replaces firstmate's judgment, quota-array-dispatch,
 #   the captain-approval gate, or fm-spawn.sh validation; it publishes one
 #   inspectable answer plus every candidate's evidence, in code.
@@ -95,6 +105,7 @@ TS_TIMEOUT=5
 GW_BASE=https://ai-gateway.vercel.sh
 GW_MODEL_ID=typesafe-ai/jev
 GW_TIMEOUT=5
+JEV_USD_PER_M_IN=0.042
 DEFAULT_WHEN="No listed rule applies to this task."
 
 die() { printf 'error: %s\n' "$1" >&2; exit 2; }
@@ -235,6 +246,40 @@ done < <(jq -r '
 
 RULE_COUNT=$(jq -r '(.rules // []) | length' "$RULES")
 
+# spend_ledger_row <http-code> <latency-ms>: one spend-ledger row for the POST
+# just made, built from the raw response in $RESP_FILE (header: Spend ledger).
+spend_ledger_row() {
+  local http=$1 lat=$2 ledger="$HOME/.nexus/api-calls.jsonl" provider model key seq row
+  if [ "$RESOLVER_PROVIDER" = typesafe ]; then
+    provider=typesafe model=$TS_MODEL key=TYPESAFE_API_KEY
+  else
+    provider=vercel-ai-gateway model=$GW_MODEL_ID key=AI_GATEWAY_API_KEY
+  fi
+  seq=$(jq -s 'map(.seq? | numbers) | max // 0' "$ledger" 2>/dev/null) || seq=0
+  [ -n "$seq" ] || seq=0
+  row=$( { jq -c . "$RESP_FILE" 2>/dev/null || printf '{}'; } | jq -c \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson seq "$((seq + 1))" \
+    --arg machine "${HOSTNAME:-}" --argjson pid "$$" --arg project "$PROJECT" \
+    --arg provider "$provider" --arg model "$model" --arg key "$key" \
+    --argjson lat "$lat" --arg http "$http" --argjson rate "$JEV_USD_PER_M_IN" '
+    (if type == "object" then . else {} end) as $r |
+    ($r.usage // {}) as $u |
+    (($u.input_tokens // $u.inputTokens // 0) | numbers) as $in |
+    (($u.output_tokens // $u.outputTokens // 0) | numbers) as $out |
+    ($http == "200") as $ok |
+    {ts: $ts, seq: $seq, machine: $machine, pid: $pid,
+     process: ("firstmate:fm-dispatch-resolve " + $project),
+     provider: $provider,
+     model: (if $ok and ($r.model | type) == "string" then $r.model else $model end),
+     key_label: $key, tokens_in: $in, tokens_out: $out,
+     cost_usd: (if $ok then ((($r.providerMetadata.gateway.cost // null) | tonumber?) // ($in * $rate / 1000000)) else 0 end),
+     latency_ms: $lat, ok: $ok, error: (if $ok then "" else "http " + $http end)}' 2>/dev/null) || row=''
+  if [ -z "$row" ] || ! { mkdir -p "${ledger%/*}" && printf '%s\n' "$row" >> "$ledger"; } 2>/dev/null; then
+    echo "dispatch-resolve: spend ledger row not written to $ledger" >&2
+  fi
+  return 0
+}
+
 emit_error() {
   local reason=$1
   echo "dispatch-resolve: error ($reason)" >&2
@@ -288,6 +333,7 @@ command -v curl >/dev/null 2>&1 || emit_error "curl not installed"
   fi
   T1=$(fm_timing_now_ms)
   LAT_MS=$(( T1 - T0 ))
+  spend_ledger_row "$HTTP" "$LAT_MS"
   [ "$HTTP" = 200 ] || emit_error "http $HTTP after ${LAT_MS} ms: $(head -c 200 "$RESP_FILE" 2>/dev/null | tr '\n' ' ')"
   if [ "$RESOLVER_PROVIDER" = vercel ]; then
     NORM_FILE=$(mktemp) || emit_error "mktemp failed"
