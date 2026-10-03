@@ -391,10 +391,18 @@ Firstmate only reads that snapshot and never fetches usage itself.
 
 At every launch, accounts without a usable sign-in, without fresh data, or without 5-hour headroom drop out.
 The remaining account whose unused weekly allowance would expire soonest wins, measured as remaining weekly percent per hour until its weekly reset, so an account with a far reset is preserved.
+Every qualifying account competes, including the one Firstmate itself runs on, so both accounts' weekly allowance gets used by its reset and a full 5-hour window moves work to the other account instead of stopping it.
 When every account drops out, the launch keeps the inherited account and says so.
-Each pick appends one JSON line to `data/account-picks.jsonl` with every account's numbers, data age, status, the choice, and the reason, and the task record gains `account=<label>`.
-`bin/fm-account-pick.sh`'s header owns the file format, thresholds, data-age limit, ranking, tie-break, and log fields.
-An absent file keeps today's launch exactly, while a malformed file refuses every spawn before any endpoint, worktree, or task record exists.
+
+Two optional reserve lines keep an account out of every pick, fallback included.
+A `reserve` line names an account and two local times, and holds that account out Monday to Friday between them in America/Toronto time; `reserve <label> 03:00 08:00` lets the trading account start each weekday morning with a fresh 5-hour window.
+A `reserve-file` line names a file whose lines each hold an account number or label and an epoch, and holds that account out until the epoch.
+Past lines are ignored and a missing file reserves nothing.
+When no account qualifies and the current account is reserved, the launch takes the first signed-in, unreserved account in file order, and refuses with one line naming the account and when its reserve ends only when no such account exists.
+A reserve gates new launches only and does not stop workers already running.
+Each pick appends one JSON line to `data/account-picks.jsonl` with every account's numbers, data age, status, reserve state and end, the choice, and the reason, and the task record gains `account=<label>`.
+`bin/fm-account-pick.sh`'s header owns the file format, thresholds, data-age limit, ranking, tie-break, reserve rules, and log fields.
+An absent file keeps today's launch exactly, while a malformed file or a reserve refusal stops the spawn before any endpoint, worktree, or task record exists.
 The file is local to each home and is not inherited into secondmate homes.
 
 ## Lavish server address (config/lavish-axi-host)

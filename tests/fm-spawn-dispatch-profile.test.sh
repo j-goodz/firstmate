@@ -949,6 +949,28 @@ test_claude_account_routing_malformed_config_refuses_before_endpoint() {
   pass "a malformed config/claude-accounts refuses before any endpoint or metadata"
 }
 
+test_claude_account_routing_reserved_fallback_refuses_before_endpoint() {
+  local rec id out status
+  id=profile-claude-account-reserved-z17e
+  rec=$(make_spawn_case profile-claude-account-reserved claude "$id")
+  read_case_record "$rec"
+  write_account_routing "$CASE_DIR" "$HOME_DIR"
+  # Both accounts are reserved, so the pick would fall back to firstmate's own
+  # account-1, which is itself reserved: the spawn must stop, not launch there.
+  printf '1 %s\n3 %s\n' "$(($(date +%s) + 3600))" "$(($(date +%s) + 3600))" > "$CASE_DIR/account-reserve"
+  printf 'reserve-file %s\n' "$CASE_DIR/account-reserve" >> "$HOME_DIR/config/claude-accounts"
+
+  out=$(FM_TEST_CLAUDE_CONFIG_DIR="$CASE_DIR/account-1" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" 2>&1)
+  status=$?
+  expect_code 1 "$status" "a fallback onto a reserved account must refuse the spawn"$'\n'"$out"
+  assert_contains "$out" "account-1, is reserved until" "the refusal must print the picker's line naming the reserved account"
+  assert_not_contains "$out" "inspect window" "the refusal must come before any endpoint exists to inspect"
+  [ ! -s "$LAUNCH_LOG" ] || fail "a reserved fallback must launch nothing (got: $(cat "$LAUNCH_LOG"))"
+  assert_absent "$HOME_DIR/state/$id.meta" "refusal must happen before meta is written"
+  pass "a pick that would fall back onto a reserved account stops the spawn before any endpoint or metadata"
+}
+
 test_claude_without_account_routing_writes_no_account_meta() {
   local rec id out status
   id=profile-claude-noaccount-z17d
@@ -1592,6 +1614,7 @@ test_batch_forwards_shared_profile_flags
 test_claude_forwards_firstmate_config_dir_when_set
 test_claude_account_routing_launches_on_the_picked_store
 test_claude_account_routing_malformed_config_refuses_before_endpoint
+test_claude_account_routing_reserved_fallback_refuses_before_endpoint
 test_claude_without_account_routing_writes_no_account_meta
 test_lavish_server_address_is_exported_to_worker_launch
 test_lavish_absent_config_preserves_destination_ambient

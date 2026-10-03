@@ -307,8 +307,9 @@
 #   scout, secondmate, and relaunch) runs on. bin/fm-account-pick.sh owns the
 #   config format, the selection rule, and the data/account-picks.jsonl log line.
 #   A malformed file refuses the spawn before any endpoint, worktree, or record
-#   exists; an absent file keeps the inherited CLAUDE_CONFIG_DIR and writes no
-#   account= meta line. The chosen label is recorded as account= in task meta.
+#   exists, and so does a pick that could only land on a reserved account; an
+#   absent file keeps the inherited CLAUDE_CONFIG_DIR and writes no account= meta
+#   line. The chosen label is recorded as account= in task meta.
 #   Launch templates live in launch_template() below; placeholders replaced before launch:
 #     __BRIEF__    absolute path to data/<task-id>/brief.md
 #     __CLAUDEPERMFLAG__ the claude permission flag selected by config/claude-permission-mode
@@ -521,7 +522,8 @@ auto) CLAUDE_PERM_FLAG='--permission-mode auto' ;;
 esac
 # config/claude-accounts (header above): validated once per spawn or relaunch,
 # before any mutation, so a malformed file refuses instead of launching on an
-# account the captain's routing did not choose. The pick itself happens just
+# account the captain's routing did not choose. The pick itself happens once the
+# harness is resolved, still before any endpoint exists, and is exported just
 # before Claude workspace trust is registered, so trust lands in the chosen store.
 if ! "$FM_ROOT/bin/fm-account-pick.sh" --check --config "$CONFIG/claude-accounts"; then
   echo "error: config/claude-accounts is malformed; fix or remove it (docs/configuration.md \"Claude account routing\")" >&2
@@ -2222,6 +2224,32 @@ agy)
     echo "error: agy executable not found on PATH; install Antigravity CLI or select a different verified harness" >&2
     exit 1
   }
+  ;;
+esac
+
+# Per-launch account routing (config/claude-accounts; bin/fm-account-pick.sh
+# owns the rule), picked once the harness is known and before any endpoint,
+# worktree, or task record exists, so a refusal leaves nothing behind. Exit 3
+# means the only possible account is reserved; the picker's own stderr line
+# names it and when the reserve ends. An absent config prints nothing.
+ACCOUNT_PICK_DIR=
+case "$HARNESS" in
+claude*)
+  account_pick_status=0
+  account_pick_out=$("$FM_ROOT/bin/fm-account-pick.sh" --config "$CONFIG/claude-accounts" \
+    --log "$DATA/account-picks.jsonl" --task "$ID" --current "${CLAUDE_CONFIG_DIR:-}") || account_pick_status=$?
+  if [ "$account_pick_status" -eq 3 ]; then
+    echo "error: not launching $ID: every account it could run on is reserved (see the line above)" >&2
+    exit 1
+  elif [ "$account_pick_status" -ne 0 ]; then
+    echo "error: Claude account routing failed for $ID; refusing to launch on an unchosen account" >&2
+    exit 1
+  fi
+  if [ -n "$account_pick_out" ]; then
+    ACCOUNT_PICK=$(printf '%s\n' "$account_pick_out" | sed -n 's/^account=//p')
+    ACCOUNT_PICK_DIR=$(printf '%s\n' "$account_pick_out" | sed -n 's/^config_dir=//p')
+    echo "account: $ID -> $(printf '%s\n' "$account_pick_out" | sed -n 's/^reason=//p')" >&2
+  fi
   ;;
 esac
 
@@ -4016,22 +4044,11 @@ fi
 AGY_TRUST_PREREGISTERED=0
 case "$HARNESS" in
 claude*)
-  # Per-launch account routing (config/claude-accounts; bin/fm-account-pick.sh
-  # owns the rule). Exported so the trust registration below and the launch
-  # prefix further down both use the chosen store. An absent config prints
-  # nothing and leaves the inherited CLAUDE_CONFIG_DIR untouched.
-  if ! account_pick_out=$("$FM_ROOT/bin/fm-account-pick.sh" --config "$CONFIG/claude-accounts" \
-    --log "$DATA/account-picks.jsonl" --task "$ID" --current "${CLAUDE_CONFIG_DIR:-}"); then
-    echo "error: Claude account routing failed for $ID; refusing to launch on an unchosen account; inspect window $T" >&2
-    exit 1
-  fi
-  if [ -n "$account_pick_out" ]; then
-    ACCOUNT_PICK=$(printf '%s\n' "$account_pick_out" | sed -n 's/^account=//p')
-    account_pick_dir=$(printf '%s\n' "$account_pick_out" | sed -n 's/^config_dir=//p')
-    echo "account: $ID -> $(printf '%s\n' "$account_pick_out" | sed -n 's/^reason=//p')" >&2
-    if [ -n "$account_pick_dir" ]; then
-      export CLAUDE_CONFIG_DIR="$account_pick_dir"
-    fi
+  # The account picked before any endpoint existed (above). Exported so the
+  # trust registration below and the launch prefix further down both use the
+  # chosen store; no pick leaves the inherited CLAUDE_CONFIG_DIR untouched.
+  if [ -n "$ACCOUNT_PICK_DIR" ]; then
+    export CLAUDE_CONFIG_DIR="$ACCOUNT_PICK_DIR"
   fi
   if [ "$KIND" = secondmate ]; then
     spawn_trust_args=(--secondmate-home "$PROJ_ABS" "$ID")
