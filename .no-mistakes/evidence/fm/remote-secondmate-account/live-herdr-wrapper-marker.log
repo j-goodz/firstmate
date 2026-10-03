@@ -1,0 +1,15 @@
+lab session: fm-lab-wrapper-mark-2728886-18900 (provisioned)
+== case A: fake HOME carries bin/claude marker wrapper ==
+fm-spawn rc=0 :: spawned wrapa1 harness=claude kind=secondmate mode=secondmate yolo=off window=fm-lab-wrapper-mark-2728886-18900:w1:p2 wo
+warning: secondmate wrapa1 sync skipped before launch: primary default-branch commit cannot be resolved
+agent: {"agent":"claude","agent_status":"blocked"}
+no 401/login error on pane
+marker log after case A:
+MARKER-WRAPPER-INVOKED argv0=/home/justin/.cache/tmp/fm-wrapper-marker.5Ag3uP/fakehome-a/bin/claude CLAUDE_CONFIG_DIR=/home/justin/.config/claude-accounts/account-3 first-arg=--dangerously-skip-permissions
+== case B (control): fake HOME without bin/claude ==
+fm-spawn rc=0 :: spawned wrapb1 harness=claude kind=secondmate mode=secondmate yolo=off window=fm-lab-wrapper-mark-2728886-18900:w2:p2 wo
+warning: secondmate wrapb1 sync skipped before launch: primary default-branch commit cannot be resolved
+agent: {"agent":"claude","agent_status":"blocked"}
+no 401/login error on pane
+marker log lines before=1 after=1 (control must not invoke the marker)
+teardown rc=0

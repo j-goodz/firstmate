@@ -1,0 +1,15 @@
+ok - claude secondmates launch through the account wrapper when it exists
+ok - claude falls back to bare claude when the account wrapper is absent
+ok - config/claude-permission-mode=bypass launches exactly as an absent file does
+ok - config/claude-permission-mode=auto replaces --dangerously-skip-permissions with --permission-mode auto
+ok - config/claude-permission-mode=auto reaches scout launches too
+ok - an unrecognized config/claude-permission-mode token refuses before any endpoint or metadata
+ok - config/claude-permission-mode changes claude launches only
+ok - non-claude harnesses do not receive the claude CLAUDE_CONFIG_DIR prefix
+ok - a claude task launch establishes only Firstmate's task control channels through the system prompt
+ok - a persistent claude secondmate keeps its supervisor contract without a task-worker authority overlay
+ok - fm-spawn: a Claude launch longer than 1024 bytes is delivered intact through the staging path
+ok - a claude crewmate launch carries the attribution-off policy in its own settings
+ok - a claude secondmate launch carries the attribution-off policy too
+ok - active crew-dispatch profile does not block secondmate launches
+# all fm-spawn-dispatch-profile tests passed
