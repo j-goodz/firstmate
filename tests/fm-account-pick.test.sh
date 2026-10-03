@@ -385,8 +385,10 @@ test_reserved_account_is_never_the_fallback() {
   printf 'reserve-file %s\n' "$CASE/account-reserve" >> "$CONF"
   printf '1 %s\n' "$((NOW + 3600))" > "$CASE/account-reserve"
   # No snapshot: no account is eligible, so the pick would fall back to the
-  # supervisor's own store, and that store is the reserved account-1.
+  # supervisor's own store, and that store is the reserved account-1. account-3
+  # is signed out, so no unreserved account can take the launch either.
   rm -f "$SNAP"
+  rm -f "$CASE/account-3/.credentials.json"
   run_pick "$CASE/account-1/"
   expect_code 3 "$STATUS" "a fallback onto a reserved store must refuse"
   assert_equals "" "$OUT" "a refusal must print no pick"
@@ -401,6 +403,22 @@ test_reserved_account_is_never_the_fallback() {
   expect_code 0 "$STATUS" "a fallback onto an unreserved store must still succeed"
   assert_equals inherited "$(field account)" "the unreserved fallback must keep the current store"
   pass "a reserved account is never used as the fallback; the pick refuses instead"
+}
+
+test_reserved_current_falls_back_to_unreserved_account() {
+  local NOW
+  NOW=$(toronto "2026-10-02 04:00")
+  new_case reserve-stale
+  printf 'reserve account-1 03:00 08:00\n' >> "$CONF"
+  # The snapshot writer stopped 20 minutes ago: every reading is stale.
+  write_snapshot "$(account_json 10 50 96 1200)" "$(account_json 10 50 24 1200)"
+  run_pick "$CASE/account-1"
+  expect_code 0 "$STATUS" "a stale snapshot with a reserved current account must not refuse"
+  assert_equals account-3 "$(field account)" "the first signed-in unreserved account must take the launch"
+  assert_equals "$CASE/account-3" "$(field config_dir)" "config_dir must be the unreserved account's store"
+  assert_equals true "$(tail -n 1 "$LOG" | jq .fallback)" "the pick must be logged as a fallback"
+  assert_equals '"unknown-stale"' "$(last_account account-3 status)" "the log must say the data was stale"
+  pass "with no eligible account and a reserved current account, the first signed-in unreserved account is used"
 }
 
 test_supervisor_account_is_never_held_idle() {
@@ -470,6 +488,7 @@ test_reserve_file_excludes_until_epoch
 test_reserve_file_missing_or_bad_lines_are_not_errors
 test_reserve_takes_the_latest_end
 test_reserved_account_is_never_the_fallback
+test_reserved_current_falls_back_to_unreserved_account
 test_supervisor_account_is_never_held_idle
 test_reserve_config_is_validated
 test_reserve_without_jq_refuses

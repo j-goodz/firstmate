@@ -398,7 +398,8 @@ Two optional reserve lines keep an account out of every pick, fallback included.
 A `reserve` line names an account and two local times, and holds that account out Monday to Friday between them in America/Toronto time; `reserve <label> 03:00 08:00` lets the trading account start each weekday morning with a fresh 5-hour window.
 A `reserve-file` line names a file whose lines each hold an account number or label and an epoch, and holds that account out until the epoch.
 Past lines are ignored and a missing file reserves nothing.
-When the only account left for a launch is a reserved one, the launch refuses with one line naming the account and when its reserve ends, rather than running on it.
+When no account qualifies and the current account is reserved, the launch takes the first signed-in, unreserved account in file order, and refuses with one line naming the account and when its reserve ends only when no such account exists.
+A reserve gates new launches only and does not stop workers already running.
 Each pick appends one JSON line to `data/account-picks.jsonl` with every account's numbers, data age, status, reserve state and end, the choice, and the reason, and the task record gains `account=<label>`.
 `bin/fm-account-pick.sh`'s header owns the file format, thresholds, data-age limit, ranking, tie-break, reserve rules, and log fields.
 An absent file keeps today's launch exactly, while a malformed file or a reserve refusal stops the spawn before any endpoint, worktree, or task record exists.

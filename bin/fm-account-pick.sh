@@ -35,6 +35,7 @@
 #                  (wrong shape, non-numeric epoch, unknown account) is one
 #                  stderr warning and reserves nothing.
 # When several reserves cover one account, the one that ends last applies.
+# A reserve gates new launches only and does not stop workers already running.
 #
 # Snapshot: a JSON object whose "accounts" maps each label to a reading with
 # numeric five_hour_pct and weekly_pct, weekly_resets_at (ISO-8601 or epoch),
@@ -62,7 +63,9 @@
 # accounts' weekly allowance is spent by its reset and a 5-hour exclusion moves
 # work to the other account instead of stopping it. With no eligible account
 # the pick falls back to --current and says so, unless --current (an empty
-# --current means $HOME/.claude) is a reserved account's store: then it refuses with exit 3 and one stderr line naming the account and
+# --current means $HOME/.claude) is a reserved account's store: then it falls
+# back to the first signed-in, unreserved account in config order, and with no
+# such account it refuses with exit 3 and one stderr line naming the account and
 # when its reserve ends, and prints no pick. With a reserve configured and jq
 # missing, or a reserve file present but unreadable, it also refuses with exit 3
 # because the reserve cannot be honored.
@@ -400,8 +403,12 @@ RESULT=$(jq -nc \
   | ([ $rows[] | select(.status == "eligible") ] | sort_by([-.score, .five_hour_pct, .idx])) as $ranked
   | ($ranked[0] // null) as $pick
   | ([ $rows[] | select(.current and .reserved) ][0] // null) as $reserved_current
+  | ([ $rows[] | select(.signin and (.reserved | not)) ][0] // null) as $unreserved
   | def brief: "\(.label) \(.status)\(if .status == "eligible" then " \(.score | r2)%/h" elif .reserved then " until \(.reserve_until_local)" else "" end)";
-    (if $pick == null and $reserved_current != null then
+    (if $pick == null and $reserved_current != null and $unreserved != null then
+      {chosen: $unreserved.label, config_dir: $unreserved.config_dir, fallback: true, refused: false,
+       reason: ("fallback: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + ") and the current account \($reserved_current.label) is reserved until \($reserved_current.reserve_until_local); took the first signed-in unreserved account \($unreserved.label)")}
+    elif $pick == null and $reserved_current != null then
       {chosen: null, config_dir: null, fallback: true, refused: true,
        reason: ("refusing: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + ") and the fallback, the current account \($reserved_current.label), is reserved until \($reserved_current.reserve_until_local) by its \($reserved_current.reserve_source) reserve")}
     elif $pick == null then
