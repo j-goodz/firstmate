@@ -13,6 +13,7 @@ Busy hooks verified 2026-07-28 on Claude Code 2.1.220.
 | Model | `--model <model>`; discover through the interactive `/model` picker, with alias or full-name shape documented by `claude --help`. |
 | Effort | `--effort <low\|medium\|high\|xhigh\|max>`, verified on 2.1.196. |
 | Permissions | `--dangerously-skip-permissions` by default, or `--permission-mode auto` when `config/claude-permission-mode` is `auto`; the `auto` shape verified on 2.1.269, and `../../../../../docs/configuration.md` "Claude permission mode" owns the file. |
+| Account | Inherits firstmate's `CLAUDE_CONFIG_DIR` unless `config/claude-accounts` exists, in which case each launch runs on the store `../../../../../bin/fm-account-pick.sh` picks and the task record names it as `account=`; `../../../../../docs/configuration.md` "Claude account routing" owns the file. |
 
 ## Workspace trust
 
