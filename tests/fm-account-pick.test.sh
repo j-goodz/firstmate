@@ -344,12 +344,12 @@ test_reserve_file_excludes_until_epoch() {
   assert_equals "$((NOW + 7200))" "$(last_account account-3 reserve_until)" "log must carry the file's end time"
   assert_equals '"file"' "$(last_account account-3 reserve_source)" "log must say the file set the reserve"
   assert_equals false "$(last_account account-1 reserved)" "a reserve line in the past must be ignored"
-  # Once the until epoch passes, routing returns to normal with no manual step.
+  # Once the until epoch passes, the account is back in the pick.
   local NOW=$((NOW + 7200))
   write_snapshot "$(account_json 10 84 116 30)" "$(account_json 3 47 24 30)"
   run_pick
-  assert_equals account-3 "$(field account)" "routing must return to normal once the reserve ends"
-  pass "a reserve file line holds an account out until its epoch, then routing returns to normal"
+  assert_equals account-3 "$(field account)" "the account must return once its reserve ends"
+  pass "a reserve file line holds an account out until its epoch and no longer"
 }
 
 test_reserve_file_missing_or_bad_lines_are_not_errors() {
@@ -403,21 +403,18 @@ test_reserved_account_is_never_the_fallback() {
   pass "a reserved account is never used as the fallback; the pick refuses instead"
 }
 
-test_supervisor_keeps_its_own_account() {
+test_supervisor_account_is_never_held_idle() {
   new_case supervisor
-  # account-3 ranks first, but the spawning supervisor runs on it.
+  # account-3 ranks first and the spawning supervisor runs on it: it must still win.
   write_snapshot "$(account_json 10 84 116 30)" "$(account_json 3 47 24 30)"
   run_pick "$CASE/account-3"
-  assert_equals account-1 "$(field account)" "workers must avoid the supervisor's account while another is eligible"
-  assert_contains "$(field reason)" "supervisor" "the reason must say the supervisor's account was avoided"
-  assert_equals true "$(last_account account-3 supervisor)" "log must mark the supervisor's account"
-  assert_equals false "$(last_account account-1 supervisor)" "log must mark the other account as not the supervisor's"
-  # When the supervisor's account is the only eligible one, workers use it.
-  write_snapshot "$(account_json 90 84 116 30)" "$(account_json 3 47 24 30)"
+  assert_equals account-3 "$(field account)" "the supervisor's own account must compete like any other"
+  # When its 5-hour window fills, work moves to the other account instead of stopping.
+  write_snapshot "$(account_json 10 84 116 30)" "$(account_json 90 47 24 30)"
   run_pick "$CASE/account-3"
-  assert_equals account-3 "$(field account)" "the supervisor's account must be used when it is the only eligible one"
-  assert_contains "$(field reason)" "supervisor" "the reason must say why the supervisor's account was used"
-  pass "workers keep off the supervisor's own account unless it is the only eligible one"
+  assert_equals account-1 "$(field account)" "a 5-hour exclusion must move work to the other account"
+  assert_equals false "$(tail -n 1 "$LOG" | jq .fallback)" "balancing to the other account is not a fallback"
+  pass "no eligible account is held idle, the supervisor's included, and a full 5-hour window moves work over"
 }
 
 test_reserve_config_is_validated() {
@@ -473,7 +470,7 @@ test_reserve_file_excludes_until_epoch
 test_reserve_file_missing_or_bad_lines_are_not_errors
 test_reserve_takes_the_latest_end
 test_reserved_account_is_never_the_fallback
-test_supervisor_keeps_its_own_account
+test_supervisor_account_is_never_held_idle
 test_reserve_config_is_validated
 test_reserve_without_jq_refuses
 

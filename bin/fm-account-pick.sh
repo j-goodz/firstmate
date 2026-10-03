@@ -33,9 +33,7 @@
 #                  account-N. Blank and # lines are skipped, past epochs are
 #                  ignored, and a missing file reserves nothing. An unusable line
 #                  (wrong shape, non-numeric epoch, unknown account) is one
-#                  stderr warning and reserves nothing. This is also how a spent
-#                  account sits out until its limit resets: one line holding the
-#                  reset epoch, after which routing returns to normal by itself.
+#                  stderr warning and reserves nothing.
 # When several reserves cover one account, the one that ends last applies.
 #
 # Snapshot: a JSON object whose "accounts" maps each label to a reading with
@@ -59,13 +57,12 @@
 #   eligible          score = (100 - weekly_pct) / hours until weekly reset
 #                     (hours floored at 0.1), so weekly allowance that expires
 #                     sooner is spent first and an account with a far reset is kept
-# The supervisor keeps its own account: the account whose store is --current
-# (an empty --current means $HOME/.claude) ranks below every other eligible
-# account, so a worker uses it only when it is the sole eligible one, and the
-# reason says so either way. Among the rest the highest score wins; ties break
-# on lower five_hour_pct, then config order. With no eligible account the pick
-# falls back to --current and says so, unless --current is a reserved account's
-# store: then it refuses with exit 3 and one stderr line naming the account and
+# The highest score wins; ties break on lower five_hour_pct, then config order.
+# Every eligible account competes, the supervisor's own included, so both
+# accounts' weekly allowance is spent by its reset and a 5-hour exclusion moves
+# work to the other account instead of stopping it. With no eligible account
+# the pick falls back to --current and says so, unless --current (an empty
+# --current means $HOME/.claude) is a reserved account's store: then it refuses with exit 3 and one stderr line naming the account and
 # when its reserve ends, and prints no pick. With a reserve configured and jq
 # missing, or a reserve file present but unreadable, it also refuses with exit 3
 # because the reserve cannot be honored.
@@ -83,7 +80,7 @@
 # Log: with --log, every pick (fallback included) appends one JSON line holding
 # ts, epoch, task, chosen, config_dir, fallback, refused, reason, the
 # thresholds, the snapshot path, the reserve file, and per account: label,
-# config_dir, signin, supervisor, status, reserved, reserve_until (epoch or
+# config_dir, signin, status, reserved, reserve_until (epoch or
 # null), reserve_until_local (Toronto time or null), reserve_source ("window" or
 # "file" or null), five_hour_pct, weekly_pct, weekly_resets_at,
 # hours_to_weekly_reset, age_s, and score. A refusal is logged with chosen null. Credential contents are never read into output or the log; the
@@ -329,11 +326,11 @@ ACCOUNTS_JSON='[]'
 for i in "${!LABELS[@]}"; do
   signin=false
   signed_in "${DIRS[$i]}" "${SIGNIN_FILES[$i]}" && signin=true
-  supervisor=false
-  [ "$(canon_dir "${DIRS[$i]}")" != "$CURRENT_CANON" ] || supervisor=true
+  current=false
+  [ "$(canon_dir "${DIRS[$i]}")" != "$CURRENT_CANON" ] || current=true
   ACCOUNTS_JSON=$(jq -c --arg label "${LABELS[$i]}" --arg dir "${DIRS[$i]}" --argjson signin "$signin" --argjson idx "$i" \
-    --argjson supervisor "$supervisor" \
-    '. + [{label: $label, config_dir: $dir, signin: $signin, supervisor: $supervisor, idx: $idx}]' <<<"$ACCOUNTS_JSON")
+    --argjson current "$current" \
+    '. + [{label: $label, config_dir: $dir, signin: $signin, current: $current, idx: $idx}]' <<<"$ACCOUNTS_JSON")
 done
 
 SNAPSHOT_JSON=null
@@ -388,7 +385,7 @@ RESULT=$(jq -nc \
          elif $five > $five_max then "excluded-5h"
          elif $weekly >= $weekly_max then "excluded-weekly"
          else "eligible" end) as $status
-      | {label: $a.label, config_dir: $a.config_dir, signin: $a.signin, supervisor: $a.supervisor, idx: $a.idx,
+      | {label: $a.label, config_dir: $a.config_dir, signin: $a.signin, current: $a.current, idx: $a.idx,
          status: $status, reserved: ($res != null),
          reserve_until: ($res | if . == null then null else .until end),
          reserve_until_local: ($res | if . == null then null else .until_local end),
@@ -400,28 +397,26 @@ RESULT=$(jq -nc \
          score: (if $status == "eligible"
                  then ((([100 - $weekly, 0] | max) / ([$hours, 0.1] | max)) * 1000000 | round / 1000000)
                  else null end)} ] as $rows
-  | ([ $rows[] | select(.status == "eligible") ] | sort_by([(if .supervisor then 1 else 0 end), -.score, .five_hour_pct, .idx])) as $ranked
+  | ([ $rows[] | select(.status == "eligible") ] | sort_by([-.score, .five_hour_pct, .idx])) as $ranked
   | ($ranked[0] // null) as $pick
-  | ([ $rows[] | select(.supervisor and .reserved) ][0] // null) as $reserved_current
+  | ([ $rows[] | select(.current and .reserved) ][0] // null) as $reserved_current
   | def brief: "\(.label) \(.status)\(if .status == "eligible" then " \(.score | r2)%/h" elif .reserved then " until \(.reserve_until_local)" else "" end)";
     (if $pick == null and $reserved_current != null then
       {chosen: null, config_dir: null, fallback: true, refused: true,
-       reason: ("refusing: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + ") and the fallback, the supervisor'"'"'s account \($reserved_current.label), is reserved until \($reserved_current.reserve_until_local) by its \($reserved_current.reserve_source) reserve")}
+       reason: ("refusing: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + ") and the fallback, the current account \($reserved_current.label), is reserved until \($reserved_current.reserve_until_local) by its \($reserved_current.reserve_source) reserve")}
     elif $pick == null then
       {chosen: "inherited", config_dir: $current, fallback: true, refused: false,
        reason: ("fallback: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + "); kept the current account")}
     else
       {chosen: $pick.label, config_dir: $pick.config_dir, fallback: false, refused: false,
-       reason: ((if $pick.supervisor then "only eligible account is the supervisor'"'"'s own; " else "" end)
-         + "\($pick.label): \(100 - $pick.weekly_pct | r2)% weekly left, resets in \($pick.hours_to_weekly_reset)h (\($pick.score | r2)%/h), 5h \($pick.five_hour_pct)%"
-         + ([ $ranked[] | select(.supervisor and .label != $pick.label) | "; kept the supervisor'"'"'s account \(.label) free" ] | join(""))
+       reason: ("\($pick.label): \(100 - $pick.weekly_pct | r2)% weekly left, resets in \($pick.hours_to_weekly_reset)h (\($pick.score | r2)%/h), 5h \($pick.five_hour_pct)%"
          + (if ($rows | length) > 1 then "; others: " + ([ $rows[] | select(.label != $pick.label) | brief ] | join(", ")) else "" end))}
     end) as $choice
   | $choice + {
       ts: ($now | todate), epoch: $now, task: $task,
       five_hour_max: $five_max, weekly_max: $weekly_max, max_age_s: $max_age, snapshot: $snapshot,
       reserve_file: (if $reserve_file == "" then null else $reserve_file end),
-      accounts: [ $rows[] | del(.idx) ]}
+      accounts: [ $rows[] | del(.idx, .current) ]}
 ')
 
 CHOSEN=$(jq -r .chosen <<<"$RESULT")
