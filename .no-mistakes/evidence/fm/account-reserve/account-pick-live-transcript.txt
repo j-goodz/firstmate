@@ -1,0 +1,83 @@
+=== S1 Tue 04:00 ET, account-1 has best score but window reserves it
+    clock: Tue 2026-10-06 04:00 EDT  --current /tmp/acctpick.2FPr/a1
+account=account-2
+config_dir=/tmp/acctpick.2FPr/a2
+reason=account-2: 60% weekly left, resets in 120h (0.5%/h), 5h 5%; others: account-1 excluded-reserve until 2026-10-06 08:00 EDT
+    exit=0
+=== S2 Tue 08:00 ET, window ended: account-1 back in rotation
+    clock: Tue 2026-10-06 08:00 EDT  --current /tmp/acctpick.2FPr/a1
+account=account-1
+config_dir=/tmp/acctpick.2FPr/a1
+reason=account-1: 60% weekly left, resets in 24h (2.5%/h), 5h 5%; others: account-2 eligible 0.5%/h
+    exit=0
+=== S2b Tue 02:59 ET, just before window: account-1 picked
+    clock: Tue 2026-10-06 02:59 EDT  --current /tmp/acctpick.2FPr/a1
+account=account-1
+config_dir=/tmp/acctpick.2FPr/a1
+reason=account-1: 60% weekly left, resets in 24h (2.5%/h), 5h 5%; others: account-2 eligible 0.5%/h
+    exit=0
+=== S3 Sat 04:00 ET, weekday-only window does not apply
+    clock: Sat 2026-10-10 04:00 EDT  --current /tmp/acctpick.2FPr/a1
+account=account-1
+config_dir=/tmp/acctpick.2FPr/a1
+reason=account-1: 60% weekly left, resets in 24h (2.5%/h), 5h 5%; others: account-2 eligible 0.5%/h
+    exit=0
+=== S4 Tue 12:00 ET, ~/.nexus/account-reserve style line '1 <now+1h>'
+    clock: Tue 2026-10-06 12:00 EDT  --current /tmp/acctpick.2FPr/a1
+account=account-2
+config_dir=/tmp/acctpick.2FPr/a2
+reason=account-2: 60% weekly left, resets in 120h (0.5%/h), 5h 5%; others: account-1 excluded-reserve until 2026-10-06 13:00 EDT
+    exit=0
+=== S4b same, reserve epoch already past: account-1 back
+    clock: Tue 2026-10-06 12:00 EDT  --current /tmp/acctpick.2FPr/a1
+account=account-1
+config_dir=/tmp/acctpick.2FPr/a1
+reason=account-1: 60% weekly left, resets in 24h (2.5%/h), 5h 5%; others: account-2 eligible 0.5%/h
+    exit=0
+=== S4c malformed reserve-file lines: warned, reserve nothing
+    clock: Tue 2026-10-06 12:00 EDT  --current /tmp/acctpick.2FPr/a1
+account=account-1
+config_dir=/tmp/acctpick.2FPr/a1
+reason=account-1: 60% weekly left, resets in 24h (2.5%/h), 5h 5%; others: account-2 eligible 0.5%/h
+    stderr: warning: fm-account-pick.sh: /tmp/acctpick.2FPr/reserve line 1 is not '<account number or label> <until epoch>' for a configured account; it reserves nothing
+    stderr: warning: fm-account-pick.sh: /tmp/acctpick.2FPr/reserve line 2 is not '<account number or label> <until epoch>' for a configured account; it reserves nothing
+    exit=0
+=== S5 F1: Tue 04:00, snapshot 20 min stale, supervisor on reserved account-1
+    clock: Tue 2026-10-06 04:00 EDT  --current /tmp/acctpick.2FPr/a1
+account=account-2
+config_dir=/tmp/acctpick.2FPr/a2
+reason=fallback: no eligible account (account-1 excluded-reserve until 2026-10-06 08:00 EDT, account-2 unknown-stale) and the current account account-1 is reserved until 2026-10-06 08:00 EDT; took the first signed-in unreserved account account-2
+    exit=0
+=== S6 adversarial: same but account-2 signed out, only reserved account left
+    clock: Tue 2026-10-06 04:00 EDT  --current /tmp/acctpick.2FPr/a1
+    stderr: error: fm-account-pick.sh: refusing: no eligible account (account-1 excluded-reserve until 2026-10-06 08:00 EDT, account-2 excluded-signin) and the fallback, the current account account-1, is reserved until 2026-10-06 08:00 EDT by its window reserve
+    exit=3
+=== S6b adversarial: fresh snapshot, account-2 over 5h cap, supervisor on account-1
+    clock: Tue 2026-10-06 04:00 EDT  --current /tmp/acctpick.2FPr/a1
+account=account-2
+config_dir=/tmp/acctpick.2FPr/a2
+reason=fallback: no eligible account (account-1 excluded-reserve until 2026-10-06 08:00 EDT, account-2 excluded-5h) and the current account account-1 is reserved until 2026-10-06 08:00 EDT; took the first signed-in unreserved account account-2
+    exit=0
+=== S7 three accounts, Tue 04:00: account-1 reserved, balance across 2 and 3
+    clock: Tue 2026-10-06 04:00 EDT  --current /tmp/acctpick.2FPr/a1
+account=account-3
+config_dir=/tmp/acctpick.2FPr/a3
+reason=account-3: 80% weekly left, resets in 144h (0.56%/h), 5h 10%; others: account-1 excluded-reserve until 2026-10-06 08:00 EDT, account-2 eligible 0.5%/h
+    exit=0
+=== S8 --check rejects bad reserve line
+error: /tmp/acctpick.2FPr/badcfg: line 7: reserve names 'account-9', which no account line defines (expected '# comment', 'snapshot <absolute path>', 'account <label> <absolute store dir> [<absolute sign-in file>]', 'reserve <label> <HH:MM> <HH:MM>', or 'reserve-file <absolute path>')
+    exit=2
+error: /tmp/acctpick.2FPr/badcfg: line 6: reserve start '25:00' is not HH:MM (expected '# comment', 'snapshot <absolute path>', 'account <label> <absolute store dir> [<absolute sign-in file>]', 'reserve <label> <HH:MM> <HH:MM>', or 'reserve-file <absolute path>')
+    exit=2
+=== S9 log rows (chosen, fallback, refused, account-1 reserve fields)
+{"task":"t-S1 ","chosen":"account-2","fallback":false,"refused":false,"a1":{"status":"excluded-reserve","reserved":true,"reserve_until_local":"2026-10-06 08:00 EDT","reserve_source":"window"}}
+{"task":"t-S2 ","chosen":"account-1","fallback":false,"refused":false,"a1":{"status":"eligible","reserved":false,"reserve_until_local":null,"reserve_source":null}}
+{"task":"t-S2b","chosen":"account-1","fallback":false,"refused":false,"a1":{"status":"eligible","reserved":false,"reserve_until_local":null,"reserve_source":null}}
+{"task":"t-S3 ","chosen":"account-1","fallback":false,"refused":false,"a1":{"status":"eligible","reserved":false,"reserve_until_local":null,"reserve_source":null}}
+{"task":"t-S4 ","chosen":"account-2","fallback":false,"refused":false,"a1":{"status":"excluded-reserve","reserved":true,"reserve_until_local":"2026-10-06 13:00 EDT","reserve_source":"file"}}
+{"task":"t-S4b","chosen":"account-1","fallback":false,"refused":false,"a1":{"status":"eligible","reserved":false,"reserve_until_local":null,"reserve_source":null}}
+{"task":"t-S4c","chosen":"account-1","fallback":false,"refused":false,"a1":{"status":"eligible","reserved":false,"reserve_until_local":null,"reserve_source":null}}
+{"task":"t-S5 ","chosen":"account-2","fallback":true,"refused":false,"a1":{"status":"excluded-reserve","reserved":true,"reserve_until_local":"2026-10-06 08:00 EDT","reserve_source":"window"}}
+{"task":"t-S6 ","chosen":null,"fallback":true,"refused":true,"a1":{"status":"excluded-reserve","reserved":true,"reserve_until_local":"2026-10-06 08:00 EDT","reserve_source":"window"}}
+{"task":"t-S6b","chosen":"account-2","fallback":true,"refused":false,"a1":{"status":"excluded-reserve","reserved":true,"reserve_until_local":"2026-10-06 08:00 EDT","reserve_source":"window"}}
+{"task":"t-S7 ","chosen":"account-3","fallback":false,"refused":false,"a1":{"status":"excluded-reserve","reserved":true,"reserve_until_local":"2026-10-06 08:00 EDT","reserve_source":"window"}}
