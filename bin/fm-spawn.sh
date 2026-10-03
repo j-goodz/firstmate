@@ -302,6 +302,13 @@
 #   worktree, or record exists and names the accepted values. The file is read
 #   on every spawn and relaunch, so a change reaches the next launch without a
 #   restart, and it is inherited into secondmate homes (bin/fm-config-inherit-lib.sh).
+# Claude account routing (config/claude-accounts):
+#   Optional per-launch choice of the CLAUDE_CONFIG_DIR every claude launch (ship,
+#   scout, secondmate, and relaunch) runs on. bin/fm-account-pick.sh owns the
+#   config format, the selection rule, and the data/account-picks.jsonl log line.
+#   A malformed file refuses the spawn before any endpoint, worktree, or record
+#   exists; an absent file keeps the inherited CLAUDE_CONFIG_DIR and writes no
+#   account= meta line. The chosen label is recorded as account= in task meta.
 #   Launch templates live in launch_template() below; placeholders replaced before launch:
 #     __BRIEF__    absolute path to data/<task-id>/brief.md
 #     __CLAUDEPERMFLAG__ the claude permission flag selected by config/claude-permission-mode
@@ -512,6 +519,15 @@ case "$CLAUDE_PERMISSION_MODE" in
 auto) CLAUDE_PERM_FLAG='--permission-mode auto' ;;
 *) CLAUDE_PERM_FLAG='--dangerously-skip-permissions' ;;
 esac
+# config/claude-accounts (header above): validated once per spawn or relaunch,
+# before any mutation, so a malformed file refuses instead of launching on an
+# account the captain's routing did not choose. The pick itself happens just
+# before Claude workspace trust is registered, so trust lands in the chosen store.
+if ! "$FM_ROOT/bin/fm-account-pick.sh" --check --config "$CONFIG/claude-accounts"; then
+  echo "error: config/claude-accounts is malformed; fix or remove it (docs/configuration.md \"Claude account routing\")" >&2
+  exit 1
+fi
+ACCOUNT_PICK=
 # config/lavish-axi-host is the primary-owned per-machine address for the
 # shared Lavish server. Read it once per launch and refuse malformed values so
 # every worker reaches the same server instead of starting a second one.
@@ -4000,6 +4016,23 @@ fi
 AGY_TRUST_PREREGISTERED=0
 case "$HARNESS" in
 claude*)
+  # Per-launch account routing (config/claude-accounts; bin/fm-account-pick.sh
+  # owns the rule). Exported so the trust registration below and the launch
+  # prefix further down both use the chosen store. An absent config prints
+  # nothing and leaves the inherited CLAUDE_CONFIG_DIR untouched.
+  if ! account_pick_out=$("$FM_ROOT/bin/fm-account-pick.sh" --config "$CONFIG/claude-accounts" \
+    --log "$DATA/account-picks.jsonl" --task "$ID" --current "${CLAUDE_CONFIG_DIR:-}"); then
+    echo "error: Claude account routing failed for $ID; refusing to launch on an unchosen account; inspect window $T" >&2
+    exit 1
+  fi
+  if [ -n "$account_pick_out" ]; then
+    ACCOUNT_PICK=$(printf '%s\n' "$account_pick_out" | sed -n 's/^account=//p')
+    account_pick_dir=$(printf '%s\n' "$account_pick_out" | sed -n 's/^config_dir=//p')
+    echo "account: $ID -> $(printf '%s\n' "$account_pick_out" | sed -n 's/^reason=//p')" >&2
+    if [ -n "$account_pick_dir" ]; then
+      export CLAUDE_CONFIG_DIR="$account_pick_dir"
+    fi
+  fi
   if [ "$KIND" = secondmate ]; then
     spawn_trust_args=(--secondmate-home "$PROJ_ABS" "$ID")
   else
@@ -4500,7 +4533,7 @@ SPAWN_META_PATH=$SPAWN_META_TMP
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
+      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort account busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -4518,6 +4551,7 @@ preserve_relaunch_meta() {
   echo "tasktmp=$TASK_TMP"
   echo "model=${MODEL:-default}"
   echo "effort=${EFFORT:-default}"
+  [ -z "$ACCOUNT_PICK" ] || echo "account=$ACCOUNT_PICK"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
   # Default-off writes no traceparent= line.

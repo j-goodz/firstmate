@@ -889,6 +889,80 @@ test_claude_forwards_firstmate_config_dir_when_set() {
   pass "claude forwards firstmate's CLAUDE_CONFIG_DIR so the crewmate uses the same credential store"
 }
 
+# write_account_routing <case_dir> <home>: two signed-in fixture stores, a fresh
+# usage snapshot in which account-3 has more weekly allowance per remaining
+# hour, and config/claude-accounts naming both.
+write_account_routing() {
+  local case_dir=$1 home=$2 now label
+  now=$(date +%s)
+  for label in account-1 account-3; do
+    mkdir -p "$case_dir/$label"
+    printf '{}\n' > "$case_dir/$label/.claude.json"
+    printf '{"claudeAiOauth":{"refreshToken":"fixture-refresh","refreshTokenExpiresAt":%s000}}\n' "$((now + 864000))" \
+      > "$case_dir/$label/.credentials.json"
+  done
+  printf '{"version":1,"accounts":{"account-1":{"five_hour_pct":23.0,"weekly_pct":84.0,"weekly_resets_at":"%s","outcome":"ok","fetched_at":"%s"},"account-3":{"five_hour_pct":3.0,"weekly_pct":47.0,"weekly_resets_at":"%s","outcome":"ok","fetched_at":"%s"}}}\n' \
+    "$(date -u -d "@$((now + 116 * 3600))" '+%Y-%m-%dT%H:%M:%S.000000+00:00')" "$(date -u -d "@$now" '+%Y-%m-%dT%H:%M:%SZ')" \
+    "$(date -u -d "@$((now + 108 * 3600))" '+%Y-%m-%dT%H:%M:%S.000000+00:00')" "$(date -u -d "@$now" '+%Y-%m-%dT%H:%M:%SZ')" \
+    > "$case_dir/usage-snapshot.json"
+  printf 'snapshot %s\naccount account-1 %s\naccount account-3 %s\n' \
+    "$case_dir/usage-snapshot.json" "$case_dir/account-1" "$case_dir/account-3" > "$home/config/claude-accounts"
+}
+
+test_claude_account_routing_launches_on_the_picked_store() {
+  local rec id out status launch
+  id=profile-claude-account-z17b
+  rec=$(make_spawn_case profile-claude-account claude "$id")
+  read_case_record "$rec"
+  write_account_routing "$CASE_DIR" "$HOME_DIR"
+
+  # Firstmate itself runs on account-1; routing must override that inheritance.
+  out=$(FM_TEST_CLAUDE_CONFIG_DIR="$CASE_DIR/account-1" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" 2>&1)
+  status=$?
+  expect_code 0 "$status" "claude spawn with account routing should succeed"$'\n'"$out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "CLAUDE_CONFIG_DIR='$CASE_DIR/account-3' env -u CURSOR_AGENT" \
+    "claude launch did not run on the routed account"
+  assert_not_contains "$launch" "CLAUDE_CONFIG_DIR='$CASE_DIR/account-1'" \
+    "claude launch must not keep firstmate's own account once routing picked another"
+  assert_grep "account=account-3" "$HOME_DIR/state/$id.meta" "meta must record the chosen account"
+  assert_grep "$WT_DIR" "$CASE_DIR/account-3/.claude.json" \
+    "workspace trust must be registered in the chosen account's store"
+  assert_grep "\"task\":\"$id\"" "$HOME_DIR/data/account-picks.jsonl" "the pick must be logged with the task id"
+  pass "claude account routing launches the worker on the picked store, registers trust there, and records it"
+}
+
+test_claude_account_routing_malformed_config_refuses_before_endpoint() {
+  local rec id out status
+  id=profile-claude-account-bad-z17c
+  rec=$(make_spawn_case profile-claude-account-bad claude "$id")
+  read_case_record "$rec"
+  printf 'account only-a-label\n' > "$HOME_DIR/config/claude-accounts"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" 2>&1)
+  status=$?
+  expect_code 1 "$status" "a malformed claude-accounts file must refuse the spawn"
+  assert_contains "$out" "claude-accounts" "refusal must name the file"
+  [ ! -s "$LAUNCH_LOG" ] || fail "a malformed account config must launch nothing (got: $(cat "$LAUNCH_LOG"))"
+  assert_absent "$HOME_DIR/state/$id.meta" "refusal must happen before meta is written"
+  pass "a malformed config/claude-accounts refuses before any endpoint or metadata"
+}
+
+test_claude_without_account_routing_writes_no_account_meta() {
+  local rec id out status
+  id=profile-claude-noaccount-z17d
+  rec=$(make_spawn_case profile-claude-noaccount claude "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" 2>&1)
+  status=$?
+  expect_code 0 "$status" "claude spawn without account routing should succeed"
+  assert_no_grep "account=" "$HOME_DIR/state/$id.meta" "absent routing config must not add an account= meta line"
+  assert_absent "$HOME_DIR/data/account-picks.jsonl" "absent routing config must log no pick"
+  pass "absent config/claude-accounts keeps the launch and meta unchanged"
+}
+
 test_lavish_server_address_is_exported_to_worker_launch() {
   local rec id out status launch
   id=profile-lavish-host-z18
@@ -1516,6 +1590,9 @@ test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity
 test_batch_forwards_shared_profile_flags
 test_claude_forwards_firstmate_config_dir_when_set
+test_claude_account_routing_launches_on_the_picked_store
+test_claude_account_routing_malformed_config_refuses_before_endpoint
+test_claude_without_account_routing_writes_no_account_meta
 test_lavish_server_address_is_exported_to_worker_launch
 test_lavish_absent_config_preserves_destination_ambient
 test_claude_omits_config_dir_prefix_when_unset

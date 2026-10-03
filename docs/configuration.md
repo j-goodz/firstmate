@@ -381,6 +381,22 @@ Any other value, or an unreadable file, refuses every spawn from that home, whic
 The file is a captain-wide safety preference, so it is inherited into secondmate homes under the [`secondmate-provisioning`](../.agents/skills/secondmate-provisioning/SKILL.md) inherited-local-material contract; a secondmate's own Claude crewmates then launch on the same posture.
 The [Claude adapter reference](../.agents/skills/harness-adapters/references/harness/claude.md) records the verified shape of both launches and which once-per-machine dialog each one can meet.
 
+## Claude account routing (config/claude-accounts)
+
+The optional local, gitignored `config/claude-accounts` lets each Claude worker launch pick its own Claude account instead of inheriting Firstmate's.
+It covers crewmates, scouts, Claude secondmates, and relaunches, and lists the candidate accounts so a home can add or remove one without a code change.
+Each `account` line names a label, the account's absolute `CLAUDE_CONFIG_DIR` store, and an optional absolute sign-in file whose presence counts as a usable sign-in.
+A single `snapshot` line names the usage snapshot that already holds each account's live 5-hour and weekly percentages and weekly reset time; on a nexus machine that is `~/.nexus/usage-snapshot.json`, whose labels are the account labels.
+Firstmate only reads that snapshot and never fetches usage itself.
+
+At every launch, accounts without a usable sign-in, without fresh data, or without 5-hour headroom drop out.
+The remaining account whose unused weekly allowance would expire soonest wins, measured as remaining weekly percent per hour until its weekly reset, so an account with a far reset is preserved.
+When every account drops out, the launch keeps the inherited account and says so.
+Each pick appends one JSON line to `data/account-picks.jsonl` with every account's numbers, data age, status, the choice, and the reason, and the task record gains `account=<label>`.
+`bin/fm-account-pick.sh`'s header owns the file format, thresholds, data-age limit, ranking, tie-break, and log fields.
+An absent file keeps today's launch exactly, while a malformed file refuses every spawn before any endpoint, worktree, or task record exists.
+The file is local to each home and is not inherited into secondmate homes.
+
 ## Lavish server address (config/lavish-axi-host)
 
 The optional local, gitignored `config/lavish-axi-host` contains one non-empty address without whitespace for the per-machine Lavish server.
