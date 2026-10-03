@@ -1045,6 +1045,62 @@ test_claude_omits_config_dir_prefix_when_unset() {
   pass "claude omits the config-dir prefix when firstmate runs with the single-store default"
 }
 
+test_claude_launches_through_the_account_wrapper_when_present() {
+  local rec id out status launch
+  id=profile-claude-wrapper-z1w
+  rec=$(make_spawn_case profile-claude-wrapper claude "$id")
+  read_case_record "$rec"
+  # run_spawn runs under $HOME_DIR/user-home, so the wrapper is resolved there.
+  mkdir -p "$HOME_DIR/user-home/bin"
+  printf '#!/bin/sh\nexit 0\n' > "$HOME_DIR/user-home/bin/claude"
+  chmod +x "$HOME_DIR/user-home/bin/claude"
+
+  out=$(FM_TEST_CLAUDE_CONFIG_DIR="$CASE_DIR/account-3" \
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  status=$?
+  expect_code 0 "$status" "claude spawn with an account wrapper should succeed"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "CLAUDE_CONFIG_DIR='$CASE_DIR/account-3'" \
+    "wrapper launch must keep the config-dir prefix"
+  assert_contains "$launch" "CLAUDE_CODE_SEND_FEEDBACK=0 '$HOME_DIR/user-home/bin/claude' --dangerously-skip-permissions" \
+    "claude launch must go through the per-account wrapper when it exists"
+  pass "claude launches through \$HOME/bin/claude when the account wrapper exists"
+}
+
+test_claude_secondmate_launches_through_the_account_wrapper_when_present() {
+  local rec id out status launch
+  id=profile-claude-wrapper-sm-z1x
+  rec=$(make_spawn_case profile-claude-wrapper-sm claude "$id")
+  read_case_record "$rec"
+  mkdir -p "$HOME_DIR/user-home/bin"
+  printf '#!/bin/sh\nexit 0\n' > "$HOME_DIR/user-home/bin/claude"
+  chmod +x "$HOME_DIR/user-home/bin/claude"
+  make_seeded_secondmate_home "$CASE_DIR/secondmate-home" "$id"
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$CASE_DIR/secondmate-home" --secondmate)
+  status=$?
+  expect_code 0 "$status" "claude secondmate spawn with an account wrapper should succeed: $out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "'$HOME_DIR/user-home/bin/claude' --dangerously-skip-permissions" \
+    "a claude secondmate must launch through the per-account wrapper when it exists"
+  pass "claude secondmates launch through the account wrapper when it exists"
+}
+
+test_claude_falls_back_to_bare_claude_without_the_account_wrapper() {
+  local rec id out status launch
+  id=profile-claude-nowrapper-z1y
+  rec=$(make_spawn_case profile-claude-nowrapper claude "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  status=$?
+  expect_code 0 "$status" "claude spawn without a wrapper should succeed"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions" \
+    "claude launch must fall back to bare claude when no wrapper exists"
+  pass "claude falls back to bare claude when the account wrapper is absent"
+}
+
 test_non_claude_harness_ignores_config_dir() {
   local rec id out status launch
   id=profile-codex-nocfgdir-z19
@@ -1619,6 +1675,9 @@ test_claude_without_account_routing_writes_no_account_meta
 test_lavish_server_address_is_exported_to_worker_launch
 test_lavish_absent_config_preserves_destination_ambient
 test_claude_omits_config_dir_prefix_when_unset
+test_claude_launches_through_the_account_wrapper_when_present
+test_claude_secondmate_launches_through_the_account_wrapper_when_present
+test_claude_falls_back_to_bare_claude_without_the_account_wrapper
 test_claude_permission_mode_bypass_matches_absent_launch
 test_claude_permission_mode_auto_swaps_only_the_permission_flag
 test_claude_permission_mode_auto_reaches_scout_launch

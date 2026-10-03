@@ -4747,6 +4747,15 @@ esac
 if [ "$HARNESS" = claude ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
   LAUNCH="CLAUDE_CONFIG_DIR=$(shell_quote "$CLAUDE_CONFIG_DIR") $LAUNCH"
 fi
+# The same pane daemon's PATH resolves the real claude binary, not the per-account
+# token wrapper at $HOME/bin/claude that loads ~/.env.claude-account-N for the
+# CLAUDE_CONFIG_DIR above; without it the store's own stored login is used and may
+# have expired (401). Launch through the wrapper when it exists. This runs on the
+# host that creates the pane (a remote secondmate runs the remote host's own
+# fm-spawn), so $HOME is the target host's. Absent wrapper keeps bare claude.
+if [ "$HARNESS" = claude ] && [ -n "${HOME:-}" ] && [ -x "$HOME/bin/claude" ]; then
+  LAUNCH=${LAUNCH//" claude --"/" $(shell_quote "$HOME/bin/claude") --"}
+fi
 if [ "$KIND" = secondmate ]; then
   sq_home=$(shell_quote "$PROJ_ABS")
   sq_primary_home=$(shell_quote "$FM_HOME")
