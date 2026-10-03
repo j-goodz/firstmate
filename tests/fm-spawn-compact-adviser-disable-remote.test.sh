@@ -189,4 +189,28 @@ assert_equals 1 "$SEEN" \
   "a remote second mate launched under the cleared allowlisted environment must still start with the compact adviser disabled"
 pass "the remote route keeps the compact-adviser switch through the cleared allowlisted environment"
 
+# --- a claude second mate launches through the REMOTE host's account wrapper -
+# The remote entrypoint re-derives HOME from the account database, so the
+# remote fm-spawn looks the wrapper up in the remote account home, never in the
+# spawner's HOME. The spawner's HOME carries a wrapper here, so a launch
+# resolved on the spawner would name that path instead.
+printf 'claude\n' > "$PARENT/config/secondmate-harness"
+SPAWNER_HOME="$TMP_ROOT/spawner-home"
+mkdir -p "$SPAWNER_HOME/bin"
+printf '#!/bin/sh\nexit 0\n' > "$SPAWNER_HOME/bin/claude"
+chmod +x "$SPAWNER_HOME/bin/claude"
+ACCOUNT_HOME=$(env -u HOME bash -c 'cd ~ && pwd -P')
+HOME="$SPAWNER_HOME" run_remote_launch 'remote claude wrapper'
+LAUNCH=$(remote_launch_command)
+assert_not_contains "$LAUNCH" "$SPAWNER_HOME" \
+  "the spawner's own wrapper path must not reach the remote launch"
+if [ -x "$ACCOUNT_HOME/bin/claude" ]; then
+  assert_contains "$LAUNCH" "'\\''$ACCOUNT_HOME/bin/claude'\\'' --dangerously-skip-permissions" \
+    "a remote claude second mate must launch through the wrapper in the remote account home"
+else
+  assert_contains "$LAUNCH" " claude --dangerously-skip-permissions" \
+    "a remote claude second mate must fall back to bare claude when the remote host has no wrapper"
+fi
+pass "a remote claude second mate resolves the account wrapper on the remote host"
+
 echo "ALL TESTS PASSED"
