@@ -1,0 +1,22 @@
+## A: a1 83% weekly, 20% 5h; a3 10% weekly, 5% 5h
+account=account-3
+config_dir=/home/justin/.cache/tmp/tmp.ARPjetQn5y/s3
+reason=account-3: 90% weekly left, resets in 144h (0.63%/h), 5h 5%; others: account-1 eligible 0.35%/h
+## B: a3 5h at 95% (no headroom)
+account=account-1
+config_dir=/home/justin/.cache/tmp/tmp.ARPjetQn5y/s1
+reason=account-1: 17% weekly left, resets in 48h (0.35%/h), 5h 20%; others: account-3 excluded-5h
+## C: both 5h saturated -> inherited
+account=inherited
+config_dir=/home/justin/.cache/tmp/tmp.ARPjetQn5y/s1
+reason=fallback: no eligible account (account-1 excluded-5h, account-3 excluded-5h); kept the current account
+## D: absent config
+rc=0
+## E: malformed
+error: bad: line 1: unknown keyword 'bogus' (expected '# comment', 'snapshot <absolute path>', or 'account <label> <absolute store dir> [<absolute sign-in file>]')
+rc=2
+## log lines
+3 log.jsonl
+{"task":"t1","chosen":"account-3","fallback":false,"reason":"account-3: 90% weekly left, resets in 144h (0.63%/h), 5h 5%; others: account-1 eligible 0.35%/h"}
+{"task":"t2","chosen":"account-1","fallback":false,"reason":"account-1: 17% weekly left, resets in 48h (0.35%/h), 5h 20%; others: account-3 excluded-5h"}
+{"task":"t3","chosen":"inherited","fallback":true,"reason":"fallback: no eligible account (account-1 excluded-5h, account-3 excluded-5h); kept the current account"}
