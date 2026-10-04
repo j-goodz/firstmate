@@ -1934,7 +1934,7 @@ launch_template() {
       printf '%s' 'codex __MODELFLAG____EFFORTFLAG__--dangerously-bypass-approvals-and-sandbox --disable hooks -c "notify=[\"bash\",\"-c\",\"touch __TURNEND__\"]" "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     fi
     ;;
-  opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' __OPENCODEKEYWRAP__opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   pi | pi-signed)
     printf '%s' '__PIBIN____PITUIMODE__'
     if [ "$kind" = secondmate ]; then
@@ -2288,6 +2288,125 @@ if [ "$HARNESS" = omp ]; then
 fi
 if [ "$HARNESS" = agy ]; then
   agy_model_validate "$AGY_BIN" "$MODEL" || exit 1
+fi
+
+# --- opencode provider keys -------------------------------------------------
+# A lane pane loads the operator's ~/.env.<service> provider keys because its
+# shell is interactive and sources the fleet bashrc, whose key block is gated on
+# an interactive shell (the keys_interactive_only policy). The remote second-mate
+# path never runs an interactive shell - the remote-entrypoint job worker reports
+# "no shell startup files are evaluated" - and the fm-remote Herdr server is born
+# from a non-interactive login, so a pane it spawns inherits no keys either.
+# opencode then treats a requested model's provider as unknown, silently falls
+# back to its configured default, and dies on an invalid key.
+#
+# The fleet's sanctioned non-interactive key loader is with-keys: it reads the
+# named ~/.env.<service> files into the exec'd command's environment and never
+# prints or copies a value, so no secret enters this script, the launch file, or
+# a log. This runs on the host that creates the pane (a remote second-mate runs
+# the remote host's own fm-spawn), so $HOME is the target host's.
+resolve_with_keys_binary() {
+  local candidate
+  candidate=$(command -v with-keys 2>/dev/null || true)
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  for candidate in "${HOME:-}/bin/with-keys" "${HOME:-}/.local/bin/with-keys"; do
+    [ -n "${HOME:-}" ] && [ -x "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+# Print the with-keys service names that carry <provider>'s opencode credential,
+# space-separated, or nothing when the provider needs no environment key.
+# opencode resolves providers from its models.dev catalog and reads each one's
+# fixed environment variable, while this fleet stores those keys in
+# ~/.env.<service> files, so the provider-to-file mapping is stated here once.
+# A provider absent from the table falls back to a same-named service file, which
+# is the fleet's naming for providers whose key file already matches the provider.
+opencode_provider_services() { # <provider>
+  case "$1" in
+  deepseek) printf '%s' 'opencode' ;;
+  freellm) printf '%s' 'freellmapi' ;;
+  zhipuai) printf '%s' 'zhipuai' ;;
+  moonshot | moonshotai) printf '%s' 'moonshot' ;;
+  openrouter) printf '%s' 'openrouter' ;;
+  groq) printf '%s' 'groq' ;;
+  cerebras) printf '%s' 'cerebras' ;;
+  gemini | google) printf '%s' 'gemini' ;;
+  replicate) printf '%s' 'replicate' ;;
+  lmstudio | lmstudio-legion | ollama) printf '%s' '' ;;
+  '') printf '%s' 'opencode freellmapi' ;;
+  *)
+    case "$1" in
+    *[!A-Za-z0-9._-]*) return 0 ;;
+    esac
+    if [ -n "${HOME:-}" ] && [ -f "$HOME/.env.$1" ]; then printf '%s' "$1"; fi
+    ;;
+  esac
+}
+
+# Print the command prefix that launches an opencode worker with its model's
+# provider keys loaded, ending in "-- ", or nothing when no mapping applies or
+# with-keys is not installed. A table-mapped provider is wrapped even when its
+# key file is absent: with-keys then fails loudly, so the preflight below turns a
+# missing credential into a provider-named refusal instead of a silent fallback.
+# An unmapped provider is wrapped only when its own ~/.env.<provider> file exists,
+# so a provider authenticated by opencode's own store is left to that store.
+opencode_key_wrap_for_model() { # <model>
+  local model=$1 provider services wk
+  provider=${model%%/*}
+  [ "$provider" != "$model" ] || provider=''
+  services=$(opencode_provider_services "$provider")
+  [ -n "$services" ] || return 0
+  wk=$(resolve_with_keys_binary) || return 0
+  printf '%s %s -- ' "$(shell_quote "$wk")" "$services"
+}
+
+# Resolve the opencode executable this host will launch, for the provider
+# preflight only. The pane resolves a bare `opencode` through its own PATH, which
+# a remote worker's composed PATH also carries via ~/.local/bin, so the fallbacks
+# mirror the herdr/tmux launch environments rather than relying on this process's
+# PATH alone.
+resolve_opencode_binary() {
+  local candidate
+  candidate=$(command -v opencode 2>/dev/null || true)
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  for candidate in "${HOME:-}/.local/bin/opencode" "${HOME:-}/bin/opencode"; do
+    [ -n "${HOME:-}" ] && [ -x "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+OPENCODE_KEY_WRAP=
+OPENCODE_PROBE_MESSAGE=
+if [ "$HARNESS" = opencode ]; then
+  OPENCODE_KEY_WRAP=$(opencode_key_wrap_for_model "$MODEL")
+  OPENCODE_PROVIDER=
+  case "$MODEL" in
+  */*) OPENCODE_PROVIDER=${MODEL%%/*} ;;
+  esac
+  if [ -n "$OPENCODE_PROVIDER" ]; then
+    OPENCODE_PROBE_BIN=$(resolve_opencode_binary) || {
+      echo "error: opencode executable not found on PATH; cannot verify provider '$OPENCODE_PROVIDER' before launching model '$MODEL'" >&2
+      exit 1
+    }
+    OPENCODE_PROBE_TIMEOUT=${FM_OPENCODE_PROBE_TIMEOUT:-45}
+    OPENCODE_PROBE_CMD=
+    if command -v timeout >/dev/null 2>&1; then
+      OPENCODE_PROBE_CMD="timeout $OPENCODE_PROBE_TIMEOUT "
+    fi
+    OPENCODE_PROBE_CMD="$OPENCODE_PROBE_CMD$OPENCODE_KEY_WRAP$(shell_quote "$OPENCODE_PROBE_BIN") models $(shell_quote "$OPENCODE_PROVIDER")"
+    if ! OPENCODE_PROBE_MESSAGE=$(eval "$OPENCODE_PROBE_CMD" 2>&1 >/dev/null); then
+      OPENCODE_PROBE_MESSAGE=$(printf '%s' "$OPENCODE_PROBE_MESSAGE" | tr '\n' ' ')
+      echo "error: opencode provider '$OPENCODE_PROVIDER' is not available in the launch environment for model '$MODEL', so the agent was not started${OPENCODE_PROBE_MESSAGE:+: $OPENCODE_PROBE_MESSAGE}" >&2
+      exit 1
+    fi
+  fi
 fi
 
 secondmate_registry_value() {
@@ -4708,6 +4827,7 @@ MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT" "$MODEL") || exit 1
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
 LAUNCH=${LAUNCH//__EFFORTFLAG__/$EFFORTFLAG}
+LAUNCH=${LAUNCH//__OPENCODEKEYWRAP__/$OPENCODE_KEY_WRAP}
 LAUNCH=${LAUNCH//__CLAUDEPERMFLAG__/$CLAUDE_PERM_FLAG}
 if [ "$HARNESS" = rovo ]; then
   ROVOCONFIGOVERRIDE=$(rovo_config_override_flag "$EFFORT" "$DATA" "$STATE" "$ID") || {

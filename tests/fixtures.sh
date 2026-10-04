@@ -356,14 +356,30 @@ EOF
 }
 
 # fm_test_make_spawn_fakebin <dir> [extra-exit0-tool...]
-# Creates <dir>/fakebin with the spawn tmux stub, a no-op treehouse, and any
-# extra exit-0 tools. Echoes the fakebin path.
+# Creates <dir>/fakebin with the spawn tmux stub, a no-op treehouse, an exit-0
+# opencode, a pass-through with-keys, and any extra exit-0 tools. Echoes the
+# fakebin path.
+#
+# opencode and with-keys are stubs for every spawn suite because a spawn now
+# preflights an opencode model's provider and wraps the opencode launch in the
+# fleet key loader: without the stubs the preflight would resolve the HOST's real
+# opencode and with-keys, whose HOME-derived paths do not exist in a fixture, and
+# every opencode spawn test would fail for an unrelated reason. opencode answers
+# any arguments with success; with-keys skips its service names and execs the
+# command it wraps, so a wrapped probe observes the wrapped command's own status.
 fm_test_make_spawn_fakebin() {
   local dir=$1 fakebin
   shift
   fakebin=$(fm_fakebin "$dir")
   fm_test_fake_tmux_spawn "$fakebin"
-  fm_fake_exit0 "$fakebin" treehouse "$@"
+  fm_fake_exit0 "$fakebin" treehouse opencode "$@"
+  cat > "$fakebin/with-keys" <<'SH'
+#!/usr/bin/env bash
+while [ "${1:-}" != "--" ] && [ "$#" -gt 0 ]; do shift; done
+[ "$#" -gt 0 ] && shift
+exec "$@"
+SH
+  chmod +x "$fakebin/with-keys"
   printf '%s\n' "$fakebin"
 }
 

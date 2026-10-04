@@ -14,6 +14,7 @@ Verified on 2026-06-11 across versions 1.15.7 through 1.17.6, with busy-queue be
 | Model flag | `--model <provider/model>`. |
 | Effort flag | None for Firstmate's interactive `opencode --prompt` launch verified on 1.17.6; `opencode run` has `--variant`, but that is not this path. |
 | Model discovery | Run `opencode models [provider]` to list available provider/model identifiers. |
+| Provider keys | A launch is wrapped in the fleet's non-interactive `with-keys` loader for its model provider's `~/.env.<service>` file, and preflighted with `opencode models <provider>` in that same environment, because a pane born outside an interactive login (the remote second-mate path) inherits no shell-loaded provider keys. `../../../bin/fm-spawn.sh` owns the provider-to-service mapping and the refusal. |
 | Trust dialog | None. |
 | Marker | None; OpenCode publishes no identity marker, so `../../../bin/fm-harness.sh` identifies it from process ancestry. |
 
