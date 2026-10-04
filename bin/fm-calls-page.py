@@ -204,9 +204,6 @@ def render_card(call):
     origin = []
     if call.get("since"):
         origin.append("Asked " + nice_date(call["since"]))
-    if home != LOCAL:
-        origin.append("held by " + call["home_label"])
-    origin.append("task " + call["id"])
     reason = f'<p class="ctx">{esc(call["reason"])}</p>' if call.get("reason") else ""
     if call.get("prior"):
         reason += f'<p class="prior">You said: {esc(call["prior"])}</p>'
@@ -216,7 +213,7 @@ def render_card(call):
         f' data-asked="{esc(call["asked"])}" data-lavish-question="{esc(qid)}">\n'
         f'  <h3>{esc(call["title"])}</h3>\n'
         f'  {reason}\n'
-        f'  <p class="origin">{esc(" · ".join(origin))}</p>\n'
+        + (f'  <p class="origin">{esc(" · ".join(origin))}</p>\n' if origin else '') +
         f'  <fieldset>{"".join(rows)}</fieldset>\n'
         f'  <textarea name="note" placeholder="{placeholder}"></textarea>\n'
         f'  <p class="hint" hidden>Pick an option or write an answer first.</p>\n'
