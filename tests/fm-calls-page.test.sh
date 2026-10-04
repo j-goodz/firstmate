@@ -75,12 +75,16 @@ EOF
   Captain hold set: 2026-10-02T10:00:00Z
 - [ ] r2 - Buzz answered in chat (repo: buzz) (kind: captain) (since 2026-10-02) (hold: Already answered through the parent) (hold-kind: captain)
   Captain hold set: 2026-10-02T10:00:00Z
+- [ ] r3 - Buzz parked and answered (repo: buzz) (kind: captain) (since 2026-10-02) (hold: Parked but already answered) (hold-kind: captain) (hold-until: 2026-10-20)
+  Captain hold set: 2026-10-02T10:00:00Z
 ## Done
 EOF
   printf '%s\n' \
     'needs-decision [key=captain-hold-r1-1]: captain hold r1: Approve the calendar layout' \
     'needs-decision [key=captain-hold-r2-1]: captain hold r2: Already answered' \
     'resolved [key=captain-hold-r2-1]: answered: yes' \
+    'needs-decision [key=captain-hold-r3-1]: captain hold r3: Parked but already answered' \
+    'resolved [key=captain-hold-r3-1]: answered: yes' \
     > "$home/state/swiftmate.status"
 }
 
@@ -162,6 +166,7 @@ for id in a1 w1 e1; do
 done
 assert_grep 'data-call="r1" data-home="swiftmate"' "$PAGE" "open second-mate call renders with its owning home"
 assert_no_grep 'data-call="r2"' "$PAGE" "a second-mate call whose latest captain-hold record is resolved never renders"
+assert_no_grep 'data-call="r3"' "$PAGE" "a resolved second-mate call is not listed even while its park date is still in the future"
 assert_no_grep 'data-call="v1"' "$PAGE" "a local call the status log reads as already answered never renders"
 assert_no_grep 'data-call="d1"' "$PAGE" "an answered call never renders"
 assert_no_grep 'data-call="x1"' "$PAGE" "a hold that is not the captain's never renders"

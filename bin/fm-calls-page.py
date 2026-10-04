@@ -75,6 +75,8 @@ def select(homes, today):
                 continue
             if record.get("state") == "done":
                 continue
+            if record["id"] in resolved:
+                continue
             call = {
                 "home": home["home"],
                 "home_label": home.get("label") or home["home"],
@@ -84,14 +86,13 @@ def select(homes, today):
                 "kind": record.get("kind") or "",
                 "reason": record.get("hold_reason") or "",
                 "since": record.get("since") or "",
-                "asked": record.get("hold_set") or record.get("since") or "",
+                "asked": "|".join([record.get("hold_set") or record.get("since") or "",
+                                   record.get("hold_until") or ""]),
                 "until": record.get("hold_until") or "",
                 "options": call_options(record.get("body_lines")),
             }
             if call["until"] and call["until"] > today:
                 parked.append(call)
-            elif record["id"] in resolved:
-                continue
             else:
                 open_calls.append(call)
     return open_calls, parked, errors
@@ -290,9 +291,12 @@ SCRIPT = """
         window.lavish.queuePrompt(text, { tag: 'call-answer', queueKey: 'call.' + form.dataset.home + '.' + form.dataset.call,
                                           element: form, text: title, data: data });
         if (window.lavish.sendQueuedPrompts) { window.lavish.sendQueuedPrompts(); }
+        if (store) { try { store.setItem(savedKey(form), '1'); } catch (e) {} }
+        form.classList.add('is-saved');
+      } else {
+        hint.textContent = 'Saving needs the Lavish page; this card records nothing here.';
+        hint.hidden = false;
       }
-      if (store) { try { store.setItem(savedKey(form), '1'); } catch (e) {} }
-      form.classList.add('is-saved');
     });
   });
 })();
