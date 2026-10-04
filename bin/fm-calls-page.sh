@@ -24,35 +24,41 @@
 #          state/<secondmate>.status closing as resolved (a chat answer relayed
 #          through bin/fm-send.sh --resolve-key). A home that cannot be read is
 #          named on the page and on stderr; the page still renders.
-#          Cards group by project (the task's repo), in alphabetical order. An
-#          optional curated file data/open-calls/calls.json refines grouping:
+#          Cards group by project (the task's repo); the default sort is newest
+#          asked first across every project, with a Newest / By project switch
+#          (By project keeps the groups in newest-call order). Each card shows
+#          its ask date relatively to the build date ("today", "yesterday", or
+#          "Sep 28") and a one-line why. An optional curated file
+#          data/open-calls/calls.json refines grouping:
 #            [{"project", "feature", "context",
 #              "calls": [{"id", "home", "question",
 #                         "options": [{"value", "label", "detail"}],
 #                         "recommendation"}]}]
 #          A curated call renders under its project and feature, the feature's
-#          context shows once above its cards, its question replaces the task
-#          title, and its recommendation is a marked suggestion, never
-#          pre-selected. "home" is "local" (or "main") for this home, else the
-#          second mate id. A curated call that is not open never renders; an
-#          open call missing from the file renders under its repo.
+#          long context folds into a collapsed details (a one-line why stays on
+#          the card), its question replaces the task title, and its
+#          recommendation is a marked suggestion, never pre-selected. "home" is
+#          "local" (or "main") for this home, else the second mate id. A curated
+#          call that is not open never renders; an open call missing from the
+#          file renders under its repo.
 #          Without curated options, a task body may carry a call-options block:
 #          a line `call-options:` followed by one `- <option>` line per option,
 #          ending at the first line that does not start with `- `. Every card
 #          also offers "Later, park one week", "Not needed, close it", and
 #          "Let's talk about it first", and a text box for the captain's own
 #          words; nothing is pre-selected. A curated call's "his_prior_words"
-#          shows above its options, and its feature context replaces the hold
-#          reason. The curated file may also be an object whose "groups" array
-#          has that shape, and a curated "home" naming a machine instead of a
-#          home id still matches when the task id is open in exactly one home.
+#          folds into a collapsed details above its options. The curated file
+#          may also be an object whose "groups" array has that shape, and a
+#          curated "home" naming a machine instead of a home id still matches
+#          when the task id is open in exactly one home.
 #          Each card has its own save, which queues one Lavish prompt carrying
 #          data {schema: "open-call-answer.v1", call, home, kind, value,
 #          answer, note, asked} (kind: option, text, later, not-needed, or
-#          talk) and sends it at once; a saved card collapses. The collapsed
-#          marker is keyed to the page build, so the next re-render leaves every
-#          still-open card answerable again, and a talk save (nothing recorded)
-#          writes no persistent marker at all.
+#          talk) and sends it at once, confirms what was saved on the card for
+#          1.5 seconds, then collapses it without the next card jumping under
+#          the reader's finger. The collapsed marker is keyed to the page build,
+#          so the next re-render leaves every still-open card answerable again,
+#          and a talk save (nothing recorded) writes no persistent marker at all.
 #          --if-present makes render a silent no-op when the page does not exist
 #          yet, which is how bin/fm-captain-hold.sh calls it after every
 #          successful mutation (best effort: a failed re-render never fails the
@@ -72,23 +78,32 @@
 #                            rather than a call-only task (kind captain);
 #            later           `hold <task> --reason <parked note> --until <today+7>`;
 #            not-needed      answer "Not needed" and close (never --release);
-#            talk            nothing recorded: printed as `talk:` so firstmate
-#                            raises the call with the captain in chat.
+#            talk            with the captain's words, re-`hold` the call with
+#                            those words in its reason so it stays open; with no
+#                            words, record nothing. Either way it is printed as
+#                            `talk:` for firstmate to raise in chat.
+#          Every recorded answer and every talk prints one
+#          `route: <home>/<task> <answer>` line so firstmate acts on it; an
+#          option, text, Later, or Not needed answer for a call held in a second
+#          mate home is also sent to `fm-<home>` through bin/fm-send.sh, so its
+#          home files any follow-up work the decision authorizes (best effort).
 #          A second mate's remote calls go through `fm-on.sh` to its own
 #          fm-captain-hold.sh (`answers` keyed intake on stdin, or `hold`); the
 #          keyed intake shortens each field to 512 characters. An item whose
 #          call is no longer open is reported `skipped:` and records nothing, so
 #          an answer already given in chat is never applied twice. The reserved
 #          value `reconcile` is reported `refused:` and never applied. Then the
-#          page is re-rendered. Exit 1 only when a recording command failed.
+#          page is re-rendered best effort (a failed rebuild is a warning, never
+#          a failed apply). Exit 1 only when a recording command failed.
 #
 # Every render and applied item appends one JSON line to state/calls-page.jsonl
 # (capped to its newest 2000 lines).
 #
 # Environment: FM_CALLS_PAGE_TODAY (YYYY-MM-DD) and FM_CALLS_PAGE_NOW (UTC ISO
 # time) pin the clock; FM_CALLS_PAGE_REMOTE_TIMEOUT bounds each remote read
-# (default 30 seconds); FM_CALLS_PAGE_FM_ON and FM_CALLS_PAGE_CAPTAIN_HOLD
-# replace the transport and the captain-hold command (test seams).
+# (default 30 seconds); FM_CALLS_PAGE_FM_ON, FM_CALLS_PAGE_FM_SEND and
+# FM_CALLS_PAGE_CAPTAIN_HOLD replace the transport, the second-mate send, and
+# the captain-hold command (test seams).
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -112,6 +127,7 @@ LOG="$STATE/calls-page.jsonl"
 HELPER="$SCRIPT_DIR/fm-calls-page.py"
 CAPTAIN_HOLD="${FM_CALLS_PAGE_CAPTAIN_HOLD:-$SCRIPT_DIR/fm-captain-hold.sh}"
 FM_ON="${FM_CALLS_PAGE_FM_ON:-$SCRIPT_DIR/fm-on.sh}"
+FM_SEND="${FM_CALLS_PAGE_FM_SEND:-$SCRIPT_DIR/fm-send.sh}"
 REMOTE_TIMEOUT=${FM_CALLS_PAGE_REMOTE_TIMEOUT:-30}
 TODAY=${FM_CALLS_PAGE_TODAY:-$(date -u +%Y-%m-%d)}
 NOW=${FM_CALLS_PAGE_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
@@ -354,8 +370,54 @@ plus_week() {  # <YYYY-MM-DD>
   python3 -c 'import datetime, sys; print(datetime.date.fromisoformat(sys.argv[1]) + datetime.timedelta(days=7))' "$1"
 }
 
+# Fold a hold reason to the one-line, parenthesis-free form the hold contract
+# requires, so the captain's own words can be recorded without failing the hold.
+sanitize_reason() {
+  printf '%s' "$1" | tr '\n\r\t' '   ' | tr -d '()'
+}
+
+# Tell firstmate about a recorded answer: one route line, and for a second
+# mate also a send into its own home so it files any follow-up work.
+route_line() {  # <home> <task> <text>
+  local text
+  text=$(printf '%s' "$3" | tr '\n\r\t' '   ')
+  [ -n "$text" ] || text='(no words)'
+  printf 'route: %s/%s %s\n' "$1" "$2" "$text"
+}
+
+send_to_mate() {  # <home> <task> <text>
+  local home=$1 task=$2 text=$3
+  [ "$home" != local ] || return 0
+  fm_run_timed "$REMOTE_TIMEOUT" "$FM_SEND" "fm-$home" "Call $task: $text" >/dev/null 2>"$WORK/send.err" \
+    || printf 'warning: the answer for %s/%s is recorded, but it was not sent to %s: %s\n' \
+      "$home" "$task" "$home" "$(tail -1 "$WORK/send.err")" >&2
+  return 0
+}
+
+# Answer text carried to firstmate for each recorded kind.
+route_text() {  # <kind> <answer> <note>
+  case "$1" in
+    option) printf '%s' "$2" ;;
+    not-needed) printf 'Not needed' ;;
+    later) printf 'Later, park one week' ;;
+    *) if [ -n "$3" ]; then printf '%s' "$3"; else printf '%s' "$2"; fi ;;
+  esac
+}
+
+# Rebuild the page best effort: a failed rebuild is a warning, never a failed
+# apply. bin/fm-captain-hold.sh's mutation hook is the same policy.
+render_after_apply() {
+  if ( do_render 2>"$WORK/apply-render.err" ); then
+    [ -s "$WORK/apply-render.err" ] && cat "$WORK/apply-render.err" >&2
+  else
+    [ -s "$WORK/apply-render.err" ] && cat "$WORK/apply-render.err" >&2
+    printf 'warning: the answers are recorded, but the calls page was not rebuilt\n' >&2
+  fi
+  return 0
+}
+
 cmd_apply() {
-  local result=${1:-} items index item home call kind answer note task_kind release words until rc failed=0 lowered
+  local result=${1:-} items index item home call kind answer note task_kind release words until rc failed=0 lowered rtext talk_text
   [ "$#" -eq 1 ] && [ -n "$result" ] || { usage >&2; exit 2; }
   [ -f "$result" ] || die "result file does not exist: $result"
   start_work
@@ -389,8 +451,27 @@ cmd_apply() {
       continue
     fi
     if [ "$kind" = talk ]; then
-      printf 'talk: %s/%s (raise it in chat; nothing recorded) %s\n' "$home" "$call" "$note"
-      log_event --arg event apply --arg home "$home" --arg call "$call" --arg kind talk --arg outcome raised
+      if [ -n "$note" ]; then
+        reason=$(jq -r --arg h "$home" --arg c "$call" 'select(.home == $h and .id == $c) | .reason' <<<"$index" | head -1)
+        talk_reason=$(sanitize_reason "${reason:+$reason - }Captain asked to talk first on $TODAY: $note")
+        rc=0
+        hold_in_home "$home" hold "$call" --reason "$talk_reason" >"$WORK/out" 2>&1 || rc=$?
+        if [ "$rc" -eq 0 ]; then
+          printf 'applied: %s/%s talk\n' "$home" "$call"
+          log_event --arg event apply --arg home "$home" --arg call "$call" --arg kind talk --arg outcome raised
+        else
+          failed=1
+          printf 'failed: %s/%s talk (%s)\n' "$home" "$call" "$(tail -1 "$WORK/out")"
+          log_event --arg event apply --arg home "$home" --arg call "$call" --arg kind talk --arg outcome failed \
+            --arg error "$(tail -1 "$WORK/out")"
+        fi
+      else
+        printf 'talk: %s/%s (raise it in chat; nothing recorded)\n' "$home" "$call"
+        log_event --arg event apply --arg home "$home" --arg call "$call" --arg kind talk --arg outcome raised
+      fi
+      talk_text=$note
+      [ -n "$talk_text" ] || talk_text="Let's talk about it first"
+      route_line "$home" "$call" "$talk_text"
       continue
     fi
     release=0
@@ -422,6 +503,9 @@ cmd_apply() {
     if [ "$rc" -eq 0 ]; then
       printf 'applied: %s/%s %s\n' "$home" "$call" "$kind"
       log_event --arg event apply --arg home "$home" --arg call "$call" --arg kind "$kind" --arg outcome applied
+      rtext=$(route_text "$kind" "$answer" "$note")
+      route_line "$home" "$call" "$rtext"
+      send_to_mate "$home" "$call" "$rtext"
     else
       failed=1
       printf 'failed: %s/%s %s (%s)\n' "$home" "$call" "$kind" "$(tail -1 "$WORK/out")"
@@ -431,7 +515,7 @@ cmd_apply() {
   done <<EOF
 $items
 EOF
-  do_render
+  render_after_apply
   [ "$failed" = 0 ]
 }
 

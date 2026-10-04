@@ -86,6 +86,7 @@ def select(homes, today):
                 "kind": record.get("kind") or "",
                 "reason": record.get("hold_reason") or "",
                 "since": record.get("since") or "",
+                "ask": record.get("hold_set") or record.get("since") or "",
                 "asked": "|".join([record.get("hold_set") or record.get("since") or "",
                                    record.get("hold_until") or ""]),
                 "until": record.get("hold_until") or "",
@@ -150,9 +151,9 @@ def group(open_calls, curated):
                                       "detail": str(o.get("detail") or "")} for o in options]
             merged["recommendation"] = str(item.get("recommendation") or "")
             merged["prior"] = str(item.get("his_prior_words") or "")
-            # The feature context replaces the hold reason, which often only
-            # records how the call was last parked.
-            merged["reason"] = ""
+            # The long feature context folds; the card keeps a one-line why.
+            # The hold reason often only records how the call was last parked.
+            merged["reason"] = one_line(str(feature.get("context") or ""))
             cards.append(merged)
         if cards:
             entry = project_entry(feature.get("project") or cards[0]["repo"])
@@ -164,8 +165,13 @@ def group(open_calls, curated):
             continue
         project_entry(call["repo"])["loose"].append(call)
     for entry in projects.values():
-        entry["loose"].sort(key=lambda c: (c["since"], c["id"], c["home"]))
-    return [projects[k] for k in sorted(projects)]
+        for feature in entry["features"]:
+            feature["calls"].sort(key=_newest_first, reverse=True)
+        entry["loose"].sort(key=_newest_first, reverse=True)
+        asks = [c["ask"] for f in entry["features"] for c in f["calls"]]
+        asks += [c["ask"] for c in entry["loose"]]
+        entry["newest"] = max(asks, default="")
+    return sorted(projects.values(), key=lambda e: e["newest"], reverse=True)
 
 
 def esc(text):
@@ -180,7 +186,33 @@ def nice_date(iso):
     return day.strftime("%b ") + str(day.day)
 
 
-def render_card(call):
+def ask_label(iso, today):
+    """The ask date as today / yesterday / Sep 28, relative to the build date."""
+    try:
+        day = datetime.date.fromisoformat(iso[:10])
+        base = datetime.date.fromisoformat(today[:10])
+    except ValueError:
+        return nice_date(iso)
+    delta = (base - day).days
+    if delta == 0:
+        return "today"
+    if delta == 1:
+        return "yesterday"
+    return nice_date(iso)
+
+
+def _newest_first(call):
+    return (call.get("ask") or call.get("since") or "", call["id"])
+
+
+def one_line(text, limit=160):
+    collapsed = " ".join(str(text).split())
+    if len(collapsed) > limit:
+        collapsed = collapsed[:limit - 1].rstrip() + "…"
+    return collapsed
+
+
+def render_card(call, today, order):
     home = call["home"]
     qid = f"{home}/{call['id']}"
     rows = []
@@ -202,24 +234,29 @@ def render_card(call):
                 '<span><span class="olabel">Let\'s talk about it first</span>'
                 '<span class="detail">Nothing is recorded; it comes up in chat.</span></span></label>')
     placeholder = "Your words (optional)" if call.get("options") else "Your answer"
+    asked_on = call.get("ask") or call.get("since") or ""
     origin = []
-    if call.get("since"):
-        origin.append("Asked " + nice_date(call["since"]))
-    reason = f'<p class="ctx">{esc(call["reason"])}</p>' if call.get("reason") else ""
+    if asked_on:
+        origin.append("Asked " + ask_label(asked_on, today))
+    why = f'<p class="ctx">{esc(call["reason"])}</p>' if call.get("reason") else ""
+    prior = ""
     if call.get("prior"):
-        reason += f'<p class="prior">You said: {esc(call["prior"])}</p>'
+        prior = (f'<details class="prior"><summary>You said earlier</summary>'
+                 f'<p>{esc(call["prior"])}</p></details>')
 
     return (
-        f'<form class="card" data-call="{esc(call["id"])}" data-home="{esc(home)}"'
+        f'<form class="card" style="order:{int(order)}" data-call="{esc(call["id"])}"'
+        f' data-home="{esc(home)}" data-project="{esc((call.get("repo") or "").lower())}"'
         f' data-asked="{esc(call["asked"])}" data-lavish-question="{esc(qid)}">\n'
         f'  <h3>{esc(call["title"])}</h3>\n'
-        f'  {reason}\n'
+        f'  {why}\n'
         + (f'  <p class="origin">{esc(" · ".join(origin))}</p>\n' if origin else '') +
         f'  <fieldset>{"".join(rows)}</fieldset>\n'
         f'  <textarea name="note" placeholder="{placeholder}"></textarea>\n'
         f'  <p class="hint" hidden>Pick an option or write an answer first.</p>\n'
         f'  <button class="save" type="submit">Save this answer</button>\n'
-        f'  <p class="saved">Saved. This call leaves the page once it is recorded.</p>\n'
+        f'  {prior}\n'
+        f'  <p class="saved"></p>\n'
         f'</form>')
 
 
@@ -233,16 +270,21 @@ h1 { font-size:24px; margin:0 0 4px; color:var(--text); }
 .stats { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
 .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 12px; font-size:16px; font-weight:600; color:var(--text); }
 .notice { background:#2a2214; border:1px solid var(--warn); color:#f3dfb8; border-radius:10px; padding:10px 12px; font-size:14px; margin-bottom:14px; }
-section.project > details { margin-bottom:18px; }
-section.project > details > summary { cursor:pointer; font-size:18px; font-weight:700; color:var(--text); padding:6px 0; }
+.sortbar { display:flex; gap:8px; margin:0 0 16px; }
+.sortbtn { flex:1; padding:9px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--text); font:inherit; font-weight:600; cursor:pointer; }
+.sortbtn[aria-pressed="true"] { border-color:var(--accent); background:#22314f; color:#fff; }
+.project { margin-bottom:18px; }
+.project-head { font-size:18px; font-weight:700; color:var(--text); padding:6px 0; margin:0; }
 .count { color:var(--muted); font-weight:400; font-size:14px; }
 .feature { border-left:3px solid var(--line); padding-left:10px; margin:12px 0; }
 .feature h4 { margin:0 0 4px; font-size:16px; color:var(--text); }
-.feature .shared { color:var(--muted); font-size:14px; margin:0 0 10px; }
+.shared { color:var(--muted); font-size:14px; margin:0 0 10px; }
+.shared summary, .prior summary { cursor:pointer; color:var(--muted); }
+.shared p, .prior p { margin:6px 0 0; color:#cdd5e3; font-size:14px; }
 .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; color:var(--text); }
 .card h3 { margin:0 0 6px; font-size:17px; color:var(--text); }
-.card .ctx { margin:0 0 6px; color:var(--text); font-size:15px; }
-.card .prior { margin:0 0 6px; color:#cdd5e3; font-size:14px; font-style:italic; }
+.card .ctx { margin:0 0 6px; color:var(--text); font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.card .prior { margin:8px 0 0; color:#cdd5e3; font-size:14px; font-style:italic; }
 .card .origin { margin:0 0 10px; color:var(--muted); font-size:13px; }
 fieldset { border:0; padding:0; margin:0 0 10px; min-width:0; }
 label.opt { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid var(--line); border-radius:10px; margin-bottom:8px; cursor:pointer; color:var(--text); background:#1d2129; }
@@ -255,8 +297,12 @@ textarea { width:100%; min-height:64px; background:#11141a; color:var(--text); b
 .hint { color:var(--warn); font-size:14px; margin:6px 0 0; }
 button.save { margin-top:10px; width:100%; padding:12px; border:0; border-radius:10px; background:var(--accent); color:#fff; font-size:16px; font-weight:600; }
 .saved { display:none; color:var(--ok); font-weight:600; margin:8px 0 0; }
-.card.is-saved .saved { display:block; }
-.card.is-saved fieldset, .card.is-saved textarea, .card.is-saved button.save, .card.is-saved .ctx, .card.is-saved .hint { display:none; }
+.card.is-confirmed .saved, .card.is-saved .saved { display:block; }
+.card.is-saved { opacity:.72; transition:opacity .25s ease; }
+.card.is-saved h3, .card.is-saved fieldset, .card.is-saved textarea, .card.is-saved button.save, .card.is-saved .ctx, .card.is-saved .hint, .card.is-saved .prior, .card.is-saved .origin { display:none; }
+body.sort-newest #stream { display:flex; flex-direction:column; }
+body.sort-newest .project, body.sort-newest .feature { display:contents; }
+body.sort-newest .project-head, body.sort-newest .feature h4, body.sort-newest .shared { display:none; }
 details.parked { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-top:20px; color:var(--text); }
 details.parked summary { cursor:pointer; font-weight:600; color:var(--text); }
 details.parked ul { margin:10px 0 0; padding-left:18px; color:var(--text); font-size:15px; }
@@ -269,7 +315,43 @@ SCRIPT = """
   var store = null;
   try { store = window.localStorage; } catch (e) { store = null; }
   var build = (document.body && document.body.dataset && document.body.dataset.build) || '';
+  var CONFIRM_MS = 1500;
   function savedKey(form) { return 'fm-calls-saved:' + build + '/' + form.dataset.home + '/' + form.dataset.call + '/' + form.dataset.asked; }
+  function allCards() { return Array.prototype.slice.call(document.querySelectorAll('form.card')); }
+  function visualCards() {
+    var cards = allCards();
+    if (document.body.classList.contains('sort-newest')) {
+      cards.sort(function (a, b) { return (parseInt(a.style.order, 10) || 0) - (parseInt(b.style.order, 10) || 0); });
+    }
+    return cards;
+  }
+  function nextCard(form) {
+    var cards = visualCards();
+    var i = cards.indexOf(form);
+    return (i >= 0 && i + 1 < cards.length) ? cards[i + 1] : null;
+  }
+  function scrollBy(dy) { if (dy && typeof window.scrollBy === 'function') { window.scrollBy(0, dy); } }
+  function collapse(form) {
+    var next = nextCard(form);
+    var anchor = next ? next.getBoundingClientRect().top : null;
+    form.classList.remove('is-confirmed');
+    form.classList.add('is-saved');
+    if (next) { scrollBy(next.getBoundingClientRect().top - anchor); }
+  }
+  function applySort(mode, persist) {
+    if (mode !== 'project') { mode = 'newest'; }
+    document.body.classList.toggle('sort-newest', mode === 'newest');
+    document.querySelectorAll('[data-sort]').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', btn.dataset.sort === mode ? 'true' : 'false');
+    });
+    if (persist && store) { try { store.setItem('fm-calls-sort', mode); } catch (e) {} }
+  }
+  document.querySelectorAll('[data-sort]').forEach(function (btn) {
+    btn.addEventListener('click', function () { applySort(btn.dataset.sort, true); });
+  });
+  var initialSort = 'newest';
+  if (store) { try { initialSort = store.getItem('fm-calls-sort') || 'newest'; } catch (e) {} }
+  applySort(initialSort, false);
   document.querySelectorAll('form.card').forEach(function (form) {
     if (store && store.getItem(savedKey(form))) { form.classList.add('is-saved'); }
     form.addEventListener('submit', function (event) {
@@ -293,7 +375,11 @@ SCRIPT = """
                                           element: form, text: title, data: data });
         if (window.lavish.sendQueuedPrompts) { window.lavish.sendQueuedPrompts(); }
         if (kind !== 'talk' && store) { try { store.setItem(savedKey(form), '1'); } catch (e) {} }
-        form.classList.add('is-saved');
+        var saved = form.querySelector('.saved');
+        if (saved) { saved.textContent = 'Saved: ' + (answer || note); }
+        form.classList.add('is-confirmed');
+        var setT = window.setTimeout;
+        if (setT) { setT(function () { collapse(form); }, CONFIRM_MS); }
       } else {
         hint.textContent = 'Saving needs the Lavish page; this card records nothing here.';
         hint.hidden = false;
@@ -304,15 +390,26 @@ SCRIPT = """
 """
 
 
-def render_page(groups, parked, errors, now, open_count):
+def render_page(groups, parked, errors, now, open_count, today):
     built = now[:10] + " " + now[11:16] + " UTC" if len(now) >= 16 else now
+    all_calls = [c for p in groups for f in p["features"] for c in f["calls"]]
+    all_calls += [c for p in groups for c in p["loose"]]
+    rank = {(c["home"], c["id"]): i for i, c in enumerate(sorted(all_calls, key=_newest_first, reverse=True))}
+
+    def order_of(call):
+        return 2 * rank[(call["home"], call["id"])] + 1
+
     out = ['<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
            '<meta name="viewport" content="width=device-width, initial-scale=1">',
            '<title>Your open calls</title>', '<style>' + CSS + '</style>', '</head>',
-           f'<body data-build="{esc(now)}">', '<main>',
+           f'<body class="sort-newest" data-build="{esc(now)}">', '<main>',
            '<h1>Your open calls</h1>',
            f'<p class="sub">Built {esc(built)} from the live records. A call you answer here or in chat '
            'leaves this page by itself. Each card saves on its own.</p>',
+           '<div class="sortbar" role="group" aria-label="Sort calls">',
+           '<button type="button" class="sortbtn" data-sort="newest" aria-pressed="true">Newest</button>',
+           '<button type="button" class="sortbtn" data-sort="project" aria-pressed="false">By project</button>',
+           '</div>',
            '<div class="stats">',
            f'<div class="stat">{open_count} open</div>',
            f'<div class="stat">{len(parked)} parked</div>',
@@ -322,23 +419,25 @@ def render_page(groups, parked, errors, now, open_count):
                    f'missing from this page. Reason: {esc(err["error"])}</p>')
     if not groups:
         out.append('<p class="empty">Nothing is waiting on you right now.</p>')
+    out.append('<div id="stream">')
     for project in groups:
         cards = sum(len(f["calls"]) for f in project["features"]) + len(project["loose"])
         key = esc(project["name"].strip().lower())
         out.append(f'<section class="project" data-project="{key}">')
-        out.append(f'<details open><summary>{esc(project["name"])} '
-                   f'<span class="count">{cards} open</span></summary>')
+        out.append(f'<h2 class="project-head">{esc(project["name"])} '
+                   f'<span class="count">{cards} open</span></h2>')
         for feature in project["features"]:
             out.append('<div class="feature">')
             if feature["name"]:
                 out.append(f'<h4>{esc(feature["name"])}</h4>')
             if feature["context"]:
-                out.append(f'<p class="shared">{esc(feature["context"])}</p>')
-            out.extend(render_card(c) for c in feature["calls"])
+                out.append('<details class="shared"><summary>Why this is asked</summary>'
+                           f'<p>{esc(feature["context"])}</p></details>')
+            out.extend(render_card(c, today, order_of(c)) for c in feature["calls"])
             out.append('</div>')
-        out.extend(render_card(c) for c in project["loose"])
-        out.append('</details>')
+        out.extend(render_card(c, today, order_of(c)) for c in project["loose"])
         out.append('</section>')
+    out.append('</div>')
     if parked:
         out.append('<details class="parked">')
         out.append(f'<summary>{len(parked)} parked by you. None are asked before their date.</summary>')
@@ -372,7 +471,7 @@ def cmd_render(args):
     curated = args[4] if len(args) > 4 else ""
     open_calls, parked, errors = select(load_manifest(manifest), today)
     groups = group(open_calls, load_curated(curated))
-    write_atomic(out, render_page(groups, parked, errors, now, len(open_calls)))
+    write_atomic(out, render_page(groups, parked, errors, now, len(open_calls), today))
     print(f"open={len(open_calls)} parked={len(parked)}")
 
 
@@ -380,7 +479,7 @@ def cmd_index(args):
     open_calls, _, _ = select(load_manifest(args[0]), args[1])
     for call in open_calls:
         print(json.dumps({"home": call["home"], "id": call["id"], "kind": call["kind"],
-                          "title": call["title"]}))
+                          "title": call["title"], "reason": call["reason"]}))
 
 
 def cmd_parse_result():

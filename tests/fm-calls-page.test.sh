@@ -134,12 +134,24 @@ SH
   chmod +x "$home/captain-stub.sh"
 }
 
+# Stub second-mate send standing in for bin/fm-send.sh: it logs the target and
+# message so routing is asserted without a real backend.
+write_fm_send_stub() {  # <home>
+  local home=$1
+  cat > "$home/fm-send-stub.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'SEND [%s]\n' "$*" >> "$FM_TEST_LOG"
+SH
+  chmod +x "$home/fm-send-stub.sh"
+}
+
 run_calls_at() {  # <home> <now> <args...>
   local home=$1 now=$2
   shift 2
   FM_HOME="$home" FM_STATE_OVERRIDE='' FM_DATA_OVERRIDE='' \
     FM_CALLS_PAGE_TODAY=$TODAY FM_CALLS_PAGE_NOW="$now" \
     FM_CALLS_PAGE_FM_ON="$home/fm-on-stub.sh" \
+    FM_CALLS_PAGE_FM_SEND="$home/fm-send-stub.sh" \
     FM_TEST_REMOTE_DIR="$home/remote-swiftmate" FM_TEST_LOG="$home/calls.log" \
     "$CALLS" "$@"
 }
@@ -184,17 +196,17 @@ assert_grep '4 open' "$PAGE" "header shows the open count"
 assert_grep '1 parked' "$PAGE" "header shows the parked count"
 assert_grep '2026-10-04 21:00 UTC' "$PAGE" "header shows the build time"
 assert_no_grep ' checked' "$PAGE" "nothing is pre-selected"
-# Groups by project in a stable order, each call under its own project.
+# Project sections run newest call first, each call under its own project.
 b=$(line_of "$PAGE" 'data-project="buzz"')
 m=$(line_of "$PAGE" 'data-project="marketwatch"')
 n=$(line_of "$PAGE" 'data-project="nexus"')
-if [ -n "$b" ] && [ -n "$m" ] && [ -n "$n" ] && [ "$b" -lt "$m" ] && [ "$m" -lt "$n" ]; then
-  pass "projects render in stable alphabetical order"
+if [ -n "$b" ] && [ -n "$m" ] && [ -n "$n" ] && [ "$n" -lt "$b" ] && [ "$b" -lt "$m" ]; then
+  pass "project sections run newest call first"
 else
-  fail "projects render in stable alphabetical order (buzz=$b marketwatch=$m nexus=$n)"
+  fail "project sections run newest call first (buzz=$b marketwatch=$m nexus=$n)"
 fi
 e=$(line_of "$PAGE" 'data-call="e1"'); a=$(line_of "$PAGE" 'data-call="a1"')
-if [ "$e" -gt "$m" ] && [ "$e" -lt "$n" ] && [ "$a" -gt "$n" ]; then
+if [ "$e" -gt "$m" ] && [ "$a" -gt "$n" ]; then
   pass "each call renders under its own project"
 else
   fail "each call renders under its own project (e1=$e a1=$a)"
@@ -211,10 +223,11 @@ assert_equals "4" "$later" "every card offers Later, park one week"
 assert_equals "4" "$notneeded" "every card offers Not needed, close it"
 assert_grep 'Save this answer' "$PAGE" "each card has its own save button"
 assert_grep 'Asked Oct 2' "$PAGE" "each card shows when the call was asked"
+assert_grep 'data-sort="newest"' "$PAGE" "the page offers the Newest sort"
+assert_grep 'data-sort="project"' "$PAGE" "the page offers the By project sort"
 assert_no_grep 'held by swiftmate' "$PAGE" "cards carry no internal home line"
 assert_no_grep 'task a1' "$PAGE" "cards carry no internal task id line"
 assert_grep 'open-call-answer.v1' "$PAGE" "saves carry the open-call-answer.v1 schema"
-assert_grep 'sendQueuedPrompts' "$PAGE" "a save sends its one prompt at once"
 assert_grep 'width=device-width' "$PAGE" "the page is mobile first"
 if [ -z "$(find "$H/data/open-calls" -name '*.tmp*' -print)" ]; then
   pass "render leaves no temporary file behind"
@@ -239,8 +252,9 @@ cat > "$H/data/open-calls/calls.json" <<'EOF'
 ]
 EOF
 run_calls "$H" render >/dev/null 2>&1
-ctx_count=$(grep -c 'Legion runs Logi Options today' "$PAGE")
-assert_equals "1" "$ctx_count" "a curated feature's shared context renders once"
+shared_count=$(grep -c '<details class="shared">' "$PAGE")
+assert_equals "1" "$shared_count" "a curated feature's long context folds once above its cards"
+assert_grep '<details class="shared"><summary>Why this is asked</summary>' "$PAGE" "the feature context is folded, collapsed by default"
 assert_grep 'Which mouse software should legion run?' "$PAGE" "the curated question replaces the task title"
 assert_grep 'Mouse software' "$PAGE" "the curated feature heading renders"
 assert_grep 'Open source' "$PAGE" "a curated option's detail renders"
@@ -267,6 +281,7 @@ EOF
 run_calls "$H" render >/dev/null 2>&1
 assert_grep 'Which calendar should Buzz show?' "$PAGE" "a groups-object curated file is read"
 assert_grep 'data-call="r1" data-home="swiftmate"' "$PAGE" "a curated call named by machine keeps its owning home"
+assert_grep '<details class="prior"><summary>You said earlier</summary>' "$PAGE" "the captain's earlier words fold above the question"
 assert_grep '2026-09-28: we can use google calendar' "$PAGE" "the captain's earlier words show above the question"
 pass "a curated groups object with machine-named homes renders"
 rm -f "$H/data/open-calls/calls.json"
@@ -314,6 +329,7 @@ write_local_backlog "$A"
 add_remote_mate "$A"
 write_fm_on_stub "$A"
 write_captain_stub "$A"
+write_fm_send_stub "$A"
 run_calls "$A" render >/dev/null 2>&1
 cat > "$A/result.txt" <<'EOF'
 session:
@@ -354,11 +370,62 @@ assert_contains "$out" "skipped: local/v1" "the skip is reported"
 a1_count=$(grep -c -F 'HOLD [answer] [a1]' <<<"$LOG")
 assert_equals "1" "$a1_count" "the reserved value reconcile is never applied"
 assert_contains "$out" "refused: local/a1" "the reconcile item is reported as refused"
-assert_contains "$out" "talk: local/e1" "Let's talk is reported for firstmate to raise in chat"
-e1_count=$(grep -c -F '[e1]' <<<"$LOG")
-assert_equals "1" "$e1_count" "Let's talk records nothing on the call"
+# Let's talk with the captain's words re-holds the call with those words and
+# routes it to firstmate; it never closes or releases the call.
+assert_contains "$LOG" "Captain asked to talk first on 2026-10-04: call me" "Let's talk records the captain's words on the call"
+assert_contains "$out" "route: local/e1 call me" "Let's talk routes the captain's words to firstmate"
+assert_contains "$out" "route: local/a1 Switch to Solaar" "a local answer prints a route line"
+assert_contains "$out" "route: swiftmate/r1 Not needed" "a second-mate answer prints a route line"
+assert_contains "$LOG" "SEND [fm-swiftmate Call r1: Not needed]" "a second-mate answer is sent to that mate through fm-send"
+assert_not_contains "$LOG" "SEND [fm-local" "a local answer is not sent as a second-mate message"
 assert_contains "$out" "rendered:" "apply re-renders the page"
 pass "apply maps option, text, Later, and Not needed answers onto the owning home's captain-hold record"
+
+# --- apply: talk with no words records nothing and still routes ------------------
+
+TW=$(make_home talkempty)
+write_local_backlog "$TW"
+write_captain_stub "$TW"
+write_fm_send_stub "$TW"
+run_calls "$TW" render >/dev/null 2>&1
+cat > "$TW/result.txt" <<'EOF'
+session:
+  file: /tmp/calls.html
+  status: feedback
+prompts[1]{uid,prompt,selector,tag,text}:
+  "1","Call a1: talk\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"a1\",\n  \"home\": \"local\",\n  \"kind\": \"talk\",\n  \"answer\": \"Let's talk about it first\",\n  \"note\": \"\"\n}","form",call-answer,"Pick the mouse path"
+EOF
+out=$(FM_CALLS_PAGE_CAPTAIN_HOLD="$TW/captain-stub.sh" FM_TEST_REAL_CAPTAIN="$ROOT/bin/fm-captain-hold.sh" run_calls "$TW" apply "$TW/result.txt" 2>"$TW/err"); rc=$?
+LOG=$(cat "$TW/calls.log" 2>/dev/null)
+expect_code 0 "$rc" "talk with no words applies cleanly"
+assert_contains "$out" "talk: local/a1" "talk with no words is reported for firstmate"
+assert_contains "$out" "route: local/a1 Let's talk about it first" "talk with no words still prints a route line"
+assert_not_contains "$LOG" "HOLD" "talk with no words records nothing on the call"
+pass "talk with no words records nothing and still routes"
+
+# --- apply: a failed post-apply re-render never fails the apply ------------------
+
+BR=$(make_home besteffort)
+write_local_backlog "$BR"
+write_captain_stub "$BR"
+write_fm_send_stub "$BR"
+run_calls "$BR" render >/dev/null 2>&1
+cat > "$BR/result.txt" <<'EOF'
+session:
+  file: /tmp/calls.html
+  status: feedback
+prompts[1]{uid,prompt,selector,tag,text}:
+  "1","Call a1: option\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"a1\",\n  \"home\": \"local\",\n  \"kind\": \"option\",\n  \"value\": \"solaar\",\n  \"answer\": \"Switch to Solaar\",\n  \"note\": \"\"\n}","form",call-answer,"Pick the mouse path"
+EOF
+chmod 555 "$BR/data/open-calls"
+out=$(FM_CALLS_PAGE_CAPTAIN_HOLD="$BR/captain-stub.sh" FM_TEST_REAL_CAPTAIN="$ROOT/bin/fm-captain-hold.sh" run_calls "$BR" apply "$BR/result.txt" 2>"$BR/err"); rc=$?
+chmod 755 "$BR/data/open-calls"
+LOG=$(cat "$BR/calls.log" 2>/dev/null)
+expect_code 0 "$rc" "a failed re-render does not fail the apply"
+assert_contains "$LOG" "HOLD [answer] [a1]" "the answer is still recorded when the re-render fails"
+assert_contains "$out" "applied: local/a1 option" "the answer is reported applied"
+assert_contains "$(cat "$BR/err")" "the calls page was not rebuilt" "the failed re-render is warned on stderr"
+pass "a failed post-apply re-render never fails the apply"
 
 # --- apply: not-needed on a held work item never releases ------------------------
 #
@@ -394,6 +461,7 @@ cat > "$NE/remote-swiftmate/backlog.md" <<'EOF'
 EOF
 write_fm_on_stub "$NE"
 write_captain_stub "$NE"
+write_fm_send_stub "$NE"
 run_calls "$NE" render >/dev/null 2>&1
 cat > "$NE/result.txt" <<'EOF'
 session:
@@ -466,6 +534,7 @@ pass "a home without the page gets none from a mutation"
 if command -v node >/dev/null 2>&1; then
   S=$(make_home savedmarker)
   write_local_backlog "$S"
+  add_remote_mate "$S"
   write_fm_on_stub "$S"
   HARNESS="$ROOT/tests/assets/calls-page-harness.mjs"
   SPAGE=$(page_of "$S")
@@ -474,28 +543,44 @@ if command -v node >/dev/null 2>&1; then
   run_calls_at "$S" 2026-10-04T22:00:00Z render >/dev/null 2>&1
   cp "$SPAGE" "$S/build-b.html"
 
-  # A talk save queues a prompt and shows the confirmation overlay, but records
-  # nothing and persists no marker, so the card stays answerable.
+  # A save confirms on the card first (its one prompt was queued), then
+  # collapses after the 1.5s timer, keeping the next card anchored.
+  cat > "$S/option.json" <<'EOF'
+{"submit": {"call": "a1", "home": "local", "choice": "Keep Logi Options"}}
+EOF
+  opt_out=$(node "$HARNESS" "$S/build-a.html" "$S/option.json")
+  assert_equals "true" "$(jq -r '.confirmed == ["a1"]' <<<"$opt_out")" "a save confirms on its card before collapsing"
+  assert_equals "1" "$(jq -r '.queued | length' <<<"$opt_out")" "a save queues exactly one prompt"
+  assert_equals "1" "$(jq -r '.sent' <<<"$opt_out")" "a save sends its one queued prompt at once"
+  assert_equals "option" "$(jq -r '.queued[0].kind' <<<"$opt_out")" "the queued prompt carries the saved kind"
+  assert_equals "true" "$(jq -r '.collapsed == ["a1"]' <<<"$opt_out")" "the card collapses after the confirmation"
+  assert_equals "1" "$(jq -r '.store | length' <<<"$opt_out")" "a recorded save persists one saved marker"
+  assert_equals "true" "$(jq -r '(.scrolled | length) > 0' <<<"$opt_out")" "collapsing keeps the next card anchored"
+  printf '{"store": %s}\n' "$(jq -c '.store' <<<"$opt_out")" > "$S/reload-option.json"
+  failed_out=$(node "$HARNESS" "$S/build-b.html" "$S/reload-option.json")
+  assert_equals "false" "$(jq -r '.loaded | index("a1") != null' <<<"$failed_out")" "a failed apply leaves the card answerable after a re-render"
+
+  # A talk save confirms and collapses too, but records nothing and persists no
+  # marker, so the card stays answerable after a re-render.
   cat > "$S/talk.json" <<'EOF'
 {"submit": {"call": "a1", "home": "local", "choice": "__talk__"}}
 EOF
   talk_out=$(node "$HARNESS" "$S/build-a.html" "$S/talk.json")
-  assert_equals "true" "$(jq -r '.submitted == ["a1"]' <<<"$talk_out")" "a talk save confirms on the card"
+  assert_equals "true" "$(jq -r '.confirmed == ["a1"]' <<<"$talk_out")" "a talk save confirms on the card"
   assert_equals "0" "$(jq -r '.store | length' <<<"$talk_out")" "a talk save persists no saved marker"
   printf '{"store": %s}\n' "$(jq -c '.store' <<<"$talk_out")" > "$S/reload-talk.json"
   reload_out=$(node "$HARNESS" "$S/build-b.html" "$S/reload-talk.json")
   assert_equals "false" "$(jq -r '.loaded | index("a1") != null' <<<"$reload_out")" "a talked-about call is answerable after a re-render"
 
-  # A recorded save persists a marker for its own build; a re-render where the
-  # call is still open (a failed apply) must not reuse it.
-  cat > "$S/option.json" <<'EOF'
-{"submit": {"call": "a1", "home": "local", "choice": "Keep Logi Options"}}
-EOF
-  opt_out=$(node "$HARNESS" "$S/build-a.html" "$S/option.json")
-  assert_equals "1" "$(jq -r '.store | length' <<<"$opt_out")" "a recorded save persists one saved marker"
-  printf '{"store": %s}\n' "$(jq -c '.store' <<<"$opt_out")" > "$S/reload-option.json"
-  failed_out=$(node "$HARNESS" "$S/build-b.html" "$S/reload-option.json")
-  assert_equals "false" "$(jq -r '.loaded | index("a1") != null' <<<"$failed_out")" "a failed apply leaves the card answerable after a re-render"
+  # The default order is newest asked first; the By project switch regroups.
+  printf '{}\n' > "$S/none.json"
+  printf '{"sort": "project"}\n' > "$S/sort.json"
+  sort_default=$(node "$HARNESS" "$S/build-a.html" "$S/none.json")
+  assert_equals "newest" "$(jq -r '.sortMode' <<<"$sort_default")" "the page defaults to the Newest sort"
+  assert_equals "r1,a1,w1,e1" "$(jq -r '.visualOrder | join(",")' <<<"$sort_default")" "the default order is newest asked first"
+  sort_project=$(node "$HARNESS" "$S/build-a.html" "$S/sort.json")
+  assert_equals "project" "$(jq -r '.sortMode' <<<"$sort_project")" "the By project switch is active after clicking it"
+  assert_equals "a1,w1,r1,e1" "$(jq -r '.visualOrder | join(",")' <<<"$sort_project")" "By project groups each call under its project"
 
   # A recorded answer removes the card from the re-render entirely.
   printf 'Yes, do it\n' > "$S/decision.txt"
