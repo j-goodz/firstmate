@@ -1373,12 +1373,25 @@ test_secondmate_spawn_requires_seeded_matching_home() {
 exit 0
 SH
   chmod +x "$fakeroot/bin/fm-guard.sh"
+  # A fake FM_ROOT must satisfy every bin script fm-spawn reads before it
+  # validates the home; config/claude-accounts validation runs early, so the
+  # account picker needs a stub here or the spawn dies before path validation.
+  cat > "$fakeroot/bin/fm-account-pick.sh" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+  chmod +x "$fakeroot/bin/fm-account-pick.sh"
   mkdir -p "$ancestor_active_home/data" "$ancestor_active_home/state" "$active_ancestor/data" "$root_ancestor/data" "$root_inside/bin"
   cat > "$root_inside/bin/fm-guard.sh" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
   chmod +x "$root_inside/bin/fm-guard.sh"
+  cat > "$root_inside/bin/fm-account-pick.sh" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+  chmod +x "$root_inside/bin/fm-account-pick.sh"
   fakebin=$(make_fake_tmux "$TMP_ROOT/spawn-validate-fake")
   log="$TMP_ROOT/spawn-validate-fake/tmux.log"
   err="$TMP_ROOT/spawn-validate.err"

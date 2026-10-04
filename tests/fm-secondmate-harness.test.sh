@@ -2202,7 +2202,7 @@ SH
 
 test_config_reread_serializes_concurrent_pushes() {
   local w head fakebin marker entered log first_out second_out first_pid first_status second_status
-  local first_instr second_instr first_line second_line
+  local first_instr second_instr first_line second_line deadline
   w=$(new_world config-reread-serialized-pushes)
   head=$(git -C "$w/main" rev-parse HEAD)
   add_sm_worktree "$w" sm "$head"
@@ -2236,11 +2236,14 @@ SH
       "$ROOT/bin/fm-config-push.sh" > "$first_out" 2>&1
   ) &
   first_pid=$!
-  for _ in $(seq 1 100); do
-    [ -e "$entered" ] && break
-    sleep 0.02
+  # The first push cold-starts fm-config-push - library loads, propagation, then
+  # the reread send the fake tmux records - which routinely outlasts two seconds
+  # on a loaded host. Poll against a wall-clock budget instead of a fixed count.
+  deadline=$(( $(date +%s) + 60 ))
+  while [ ! -e "$entered" ] && [ "$(date +%s)" -lt "$deadline" ]; do
+    sleep 0.05
   done
-  [ -e "$entered" ] || fail "first config push did not reach pointer delivery"
+  [ -e "$entered" ] || fail "first config push did not reach pointer delivery within 60s"
   first_instr=$(reread_instruction_path "$w/sm") \
     || fail "first concurrent push did not publish its generation"
   printf 'two\n' > "$w/home/config/crew-harness"

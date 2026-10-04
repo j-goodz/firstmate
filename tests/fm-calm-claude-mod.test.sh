@@ -25,7 +25,7 @@ PI_SPRITE="$ROOT/.pi/extensions/lib/fm-calm-working-ship-sprite.ts"
 OPERATIONAL_INPUT="$ROOT/bin/fm-operational-input.sh"
 TMP_ROOT=$(fm_test_tmproot fm-calm-claude-mod)
 
-command -v node >/dev/null 2>&1 || { echo "skip: node not found for the Claude Code Calm mod checks"; exit 0; }
+fm_require_node_typescript "the Claude Code Calm mod checks" || exit 0
 
 run_node() {  # <script-file>
   node --input-type=module <"$1"

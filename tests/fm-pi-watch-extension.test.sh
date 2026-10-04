@@ -12,6 +12,8 @@ EXT="$ROOT/.pi/extensions/fm-primary-pi-watch.ts"
 # unrelated to plugin output, which the assertions intentionally require empty.
 export NODE_NO_WARNINGS=1
 
+fm_require_node_typescript "the Pi primary watcher extension checks" || exit 0
+
 # One owner for the readiness budget every unready-successor test below spends
 # on purpose. Both plugins start a successor arm through a login shell and
 # SIGTERM it when it stays silent past this budget, so the budget has to outlast

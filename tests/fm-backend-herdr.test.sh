@@ -566,15 +566,19 @@ test_exhausted_settle_window_keeps_a_non_shell_foreground_live() {
 }
 
 test_registered_agent_with_an_agent_descendant_outside_the_foreground_stays_alive() {
-  local lab sleep_bin shell_pid out shell_verdict
+  local lab sleep_bin shell_pid out shell_verdict pi_bin
   sleep_bin=$(command -v sleep) || fail "sleep not found"
   lab="$TMP_ROOT/stale-reg-descendant-bin"; mkdir -p "$lab"
-  # A symlink to a real long-running binary so the kernel records `pi` as the
+  # A symlink to a long-running binary so the kernel records `pi` as the
   # executable identity (a copied platform binary fails code signing on macOS).
-  ln -sf "$sleep_bin" "$lab/pi"
+  # `sleep` cannot carry the name: on a host where it is a coreutils or busybox
+  # multicall it dispatches on argv[0] and rejects the unknown program `pi`.
+  # python3 stays one process named `pi` and exits on TERM with no orphaned child.
+  pi_bin=$(command -v python3) || fail "python3 not found for a long-running named process"
+  ln -sf "$pi_bin" "$lab/pi"
   # A real shell whose child is that agent-named process, while the canned
   # foreground view shows only the shell (a suspended or backgrounded agent).
-  sh -c "'$lab/pi' 300; :" &
+  sh -c "'$lab/pi' -c 'import time; time.sleep(300)'; :" &
   shell_pid=$!
   sleep 0.3
   out=$(stale_registration_case descendant idle "$(shell_only_process_info "$shell_pid")")
@@ -595,14 +599,16 @@ test_registered_agent_with_an_agent_descendant_outside_the_foreground_stays_aliv
 }
 
 test_agent_descendant_under_a_spaced_install_path_stays_alive() {
-  local lab sleep_bin shell_pid out
+  local lab sleep_bin shell_pid out pi_bin
   sleep_bin=$(command -v sleep) || fail "sleep not found"
   # The executable path the process table reports contains a space (the macOS
   # `/Library/Application Support/...` shape), so a field-split read of the
-  # process table sees only a fragment of the name.
+  # process table sees only a fragment of the name. python3 carries the name
+  # `pi` (a multicall `sleep` would reject it) and exits on TERM without a child.
   lab="$TMP_ROOT/stale-reg-spaced-bin/Application Support/Some Dir"; mkdir -p "$lab"
-  ln -sf "$sleep_bin" "$lab/pi"
-  sh -c "'$lab/pi' 300; :" &
+  pi_bin=$(command -v python3) || fail "python3 not found for a long-running named process"
+  ln -sf "$pi_bin" "$lab/pi"
+  sh -c "'$lab/pi' -c 'import time; time.sleep(300)'; :" &
   shell_pid=$!
   sleep 0.3
   out=$(stale_registration_case spaced-descendant idle "$(shell_only_process_info "$shell_pid")")

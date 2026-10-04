@@ -81,6 +81,7 @@ EOF
 
 test_pi_extension_semantic_lifecycle() {
   local rec id=busy-pi-1 out state ext
+  fm_require_node_typescript "the Pi busy extension lifecycle case" || return 0
   rec=$(make_spawn_case pi-lifecycle pi "$id")
   read_case_record "$rec"
   out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
@@ -123,6 +124,7 @@ test_pi_extension_semantic_lifecycle() {
 
 test_pi_extension_serializes_settle_before_next_start() {
   local rec id=busy-pi-order out state ext
+  fm_require_node_typescript "the Pi busy extension settle-order case" || return 0
   rec=$(make_spawn_case pi-order pi "$id")
   read_case_record "$rec"
   out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
@@ -138,6 +140,7 @@ test_pi_extension_serializes_settle_before_next_start() {
 
 test_pi_extension_stale_incarnation_rejected() {
   local rec id=busy-pi-2 out state ext
+  fm_require_node_typescript "the Pi busy extension stale-incarnation case" || return 0
   rec=$(make_spawn_case pi-stale pi "$id")
   read_case_record "$rec"
   out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
@@ -181,6 +184,7 @@ oc_idle() {  # <sessionID>
 
 test_opencode_plugin_semantic_lifecycle() {
   local rec id=busy-oc-1 out state plugin
+  fm_require_node_typescript "the opencode busy plugin lifecycle case" || return 0
   rec=$(make_spawn_case oc-lifecycle opencode "$id")
   read_case_record "$rec"
   out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")

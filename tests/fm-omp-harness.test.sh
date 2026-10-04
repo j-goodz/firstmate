@@ -47,6 +47,10 @@ HARNESS="$ROOT/bin/fm-harness.sh"
 TMP_ROOT=$(fm_test_tmproot fm-omp-harness)
 export NODE_NO_WARNINGS=1
 
+# The extension cases below load tracked .ts over node; skip the whole suite when
+# node cannot type-strip rather than reporting a host gap as a product failure.
+fm_require_node_typescript "the omp extension checks" || exit 0
+
 # A process whose kernel-recorded identity is the bare name `omp`: a SYMLINK to
 # the system shell, never a copy (a copied platform binary fails macOS code
 # signing). macOS reports the symlink name through `ps -o comm=`, which is the
