@@ -434,8 +434,10 @@ test_local_secondmate_answer_marked_and_closed() {
 # answer time: closing its captain-hold-<task>-<n> key rebuilds the page.
 test_secondmate_captain_call_answer_rebuilds_calls_page() {
   local dir fb log home mate rc page
-  command -v tasks-axi >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1 \
-    || { pass "fm-send --resolve-key: calls page rebuild (skipped: tasks-axi or python3 missing)"; return 0; }
+  if ! command -v tasks-axi >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
+    pass "fm-send --resolve-key: calls page rebuild (skipped: tasks-axi or python3 missing)"
+    return 0
+  fi
   dir="$TMP_ROOT/calls-page"; mkdir -p "$dir"
   fb=$(make_stubs "$dir"); log="$dir/send.log"
   home=$(setup_home calls-page)
