@@ -49,7 +49,10 @@
 #          Each card has its own save, which queues one Lavish prompt carrying
 #          data {schema: "open-call-answer.v1", call, home, kind, value,
 #          answer, note, asked} (kind: option, text, later, not-needed, or
-#          talk) and sends it at once; a saved card collapses.
+#          talk) and sends it at once; a saved card collapses. The collapsed
+#          marker is keyed to the page build, so the next re-render leaves every
+#          still-open card answerable again, and a talk save (nothing recorded)
+#          writes no persistent marker at all.
 #          --if-present makes render a silent no-op when the page does not exist
 #          yet, which is how bin/fm-captain-hold.sh calls it after every
 #          successful mutation (best effort: a failed re-render never fails the

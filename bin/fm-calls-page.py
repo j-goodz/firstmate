@@ -268,7 +268,8 @@ SCRIPT = """
 (function () {
   var store = null;
   try { store = window.localStorage; } catch (e) { store = null; }
-  function savedKey(form) { return 'fm-calls-saved:' + form.dataset.home + '/' + form.dataset.call + '/' + form.dataset.asked; }
+  var build = (document.body && document.body.dataset && document.body.dataset.build) || '';
+  function savedKey(form) { return 'fm-calls-saved:' + build + '/' + form.dataset.home + '/' + form.dataset.call + '/' + form.dataset.asked; }
   document.querySelectorAll('form.card').forEach(function (form) {
     if (store && store.getItem(savedKey(form))) { form.classList.add('is-saved'); }
     form.addEventListener('submit', function (event) {
@@ -291,7 +292,7 @@ SCRIPT = """
         window.lavish.queuePrompt(text, { tag: 'call-answer', queueKey: 'call.' + form.dataset.home + '.' + form.dataset.call,
                                           element: form, text: title, data: data });
         if (window.lavish.sendQueuedPrompts) { window.lavish.sendQueuedPrompts(); }
-        if (store) { try { store.setItem(savedKey(form), '1'); } catch (e) {} }
+        if (kind !== 'talk' && store) { try { store.setItem(savedKey(form), '1'); } catch (e) {} }
         form.classList.add('is-saved');
       } else {
         hint.textContent = 'Saving needs the Lavish page; this card records nothing here.';
@@ -307,7 +308,8 @@ def render_page(groups, parked, errors, now, open_count):
     built = now[:10] + " " + now[11:16] + " UTC" if len(now) >= 16 else now
     out = ['<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
            '<meta name="viewport" content="width=device-width, initial-scale=1">',
-           '<title>Your open calls</title>', '<style>' + CSS + '</style>', '</head>', '<body>', '<main>',
+           '<title>Your open calls</title>', '<style>' + CSS + '</style>', '</head>',
+           f'<body data-build="{esc(now)}">', '<main>',
            '<h1>Your open calls</h1>',
            f'<p class="sub">Built {esc(built)} from the live records. A call you answer here or in chat '
            'leaves this page by itself. Each card saves on its own.</p>',

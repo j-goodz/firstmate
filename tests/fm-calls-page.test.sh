@@ -134,14 +134,20 @@ SH
   chmod +x "$home/captain-stub.sh"
 }
 
-run_calls() {  # <home> <args...>
-  local home=$1
-  shift
+run_calls_at() {  # <home> <now> <args...>
+  local home=$1 now=$2
+  shift 2
   FM_HOME="$home" FM_STATE_OVERRIDE='' FM_DATA_OVERRIDE='' \
-    FM_CALLS_PAGE_TODAY=$TODAY FM_CALLS_PAGE_NOW=2026-10-04T21:00:00Z \
+    FM_CALLS_PAGE_TODAY=$TODAY FM_CALLS_PAGE_NOW="$now" \
     FM_CALLS_PAGE_FM_ON="$home/fm-on-stub.sh" \
     FM_TEST_REMOTE_DIR="$home/remote-swiftmate" FM_TEST_LOG="$home/calls.log" \
     "$CALLS" "$@"
+}
+
+run_calls() {  # <home> <args...>
+  local home=$1
+  shift
+  run_calls_at "$home" 2026-10-04T21:00:00Z "$@"
 }
 
 page_of() { printf '%s/data/open-calls/calls.html\n' "$1"; }
@@ -394,3 +400,56 @@ printf '## In flight\n\n## Queued\n\n## Done\n' > "$Q/data/backlog.md"
 captain "$Q" hold q1 --title "No page call" --repo nexus --reason "No page here" >/dev/null 2>&1
 assert_absent "$(page_of "$Q")" "a home that never rendered the page gets none from a mutation"
 pass "a home without the page gets none from a mutation"
+
+# --- saved marker scoped to one page build ---------------------------------------
+#
+# The saved marker keeps a just-saved card collapsed if the browser reloads
+# before the answer is applied, but it must not outlive the page build: a
+# re-render (after a recorded answer, a talk note, or a failed apply) has to
+# leave every still-open card answerable. tests/assets/calls-page-harness.mjs
+# runs the page's own inline script under a minimal DOM shim and reports the
+# marker it wrote and the cards it collapsed.
+
+if command -v node >/dev/null 2>&1; then
+  S=$(make_home savedmarker)
+  write_local_backlog "$S"
+  write_fm_on_stub "$S"
+  HARNESS="$ROOT/tests/assets/calls-page-harness.mjs"
+  SPAGE=$(page_of "$S")
+  run_calls_at "$S" 2026-10-04T21:00:00Z render >/dev/null 2>&1
+  cp "$SPAGE" "$S/build-a.html"
+  run_calls_at "$S" 2026-10-04T22:00:00Z render >/dev/null 2>&1
+  cp "$SPAGE" "$S/build-b.html"
+
+  # A talk save queues a prompt and shows the confirmation overlay, but records
+  # nothing and persists no marker, so the card stays answerable.
+  cat > "$S/talk.json" <<'EOF'
+{"submit": {"call": "a1", "home": "local", "choice": "__talk__"}}
+EOF
+  talk_out=$(node "$HARNESS" "$S/build-a.html" "$S/talk.json")
+  assert_equals "true" "$(jq -r '.submitted == ["a1"]' <<<"$talk_out")" "a talk save confirms on the card"
+  assert_equals "0" "$(jq -r '.store | length' <<<"$talk_out")" "a talk save persists no saved marker"
+  printf '{"store": %s}\n' "$(jq -c '.store' <<<"$talk_out")" > "$S/reload-talk.json"
+  reload_out=$(node "$HARNESS" "$S/build-b.html" "$S/reload-talk.json")
+  assert_equals "false" "$(jq -r '.loaded | index("a1") != null' <<<"$reload_out")" "a talked-about call is answerable after a re-render"
+
+  # A recorded save persists a marker for its own build; a re-render where the
+  # call is still open (a failed apply) must not reuse it.
+  cat > "$S/option.json" <<'EOF'
+{"submit": {"call": "a1", "home": "local", "choice": "Keep Logi Options"}}
+EOF
+  opt_out=$(node "$HARNESS" "$S/build-a.html" "$S/option.json")
+  assert_equals "1" "$(jq -r '.store | length' <<<"$opt_out")" "a recorded save persists one saved marker"
+  printf '{"store": %s}\n' "$(jq -c '.store' <<<"$opt_out")" > "$S/reload-option.json"
+  failed_out=$(node "$HARNESS" "$S/build-b.html" "$S/reload-option.json")
+  assert_equals "false" "$(jq -r '.loaded | index("a1") != null' <<<"$failed_out")" "a failed apply leaves the card answerable after a re-render"
+
+  # A recorded answer removes the card from the re-render entirely.
+  printf 'Yes, do it\n' > "$S/decision.txt"
+  FM_HOME="$S" FM_STATE_OVERRIDE='' FM_DATA_OVERRIDE='' FM_CONFIG_OVERRIDE='' \
+    FM_CALLS_PAGE_TODAY=$TODAY "$ROOT/bin/fm-captain-hold.sh" answer a1 --decision-file "$S/decision.txt" >/dev/null 2>&1
+  assert_no_grep 'data-call="a1"' "$SPAGE" "a recorded answer removes the card from the re-render"
+  pass "the saved marker is scoped to one page build and never hides a still-open call"
+else
+  pass "saved-marker browser behavior (node absent, skipped)"
+fi
