@@ -1532,15 +1532,23 @@ spawn_thermal_gate_int() {  # <file> <key> -> non-negative integer, else empty
   esac
   printf '%s' "$value"
 }
-spawn_thermal_gate_live_count() {  # -> this home's non-secondmate task records
-  local live=0 meta kind
+spawn_thermal_gate_live_count() {  # -> this home's BUSY non-secondmate workers
+  local busy=0 meta id kind verdict
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
     kind=$(grep '^kind=' "$meta" 2>/dev/null | tail -1 | cut -d= -f2-)
     [ "$kind" != secondmate ] || continue
-    live=$((live + 1))
+    id=$(basename "$meta" .meta)
+    # Only a record whose semantic busy state classifies as busy is a worker
+    # actually running work. An idle, done, missing, or stale-generation record
+    # - the shape a finished or waiting task leaves behind - must not consume
+    # the cap, or an idle home could hold every spawn forever. bin/fm-busy-lib.sh
+    # owns that classification.
+    verdict=$(fm_busy_classify_meta "$meta" "$id" "$STATE" 2>/dev/null || true)
+    [ "${verdict%% *}" = busy ] || continue
+    busy=$((busy + 1))
   done
-  printf '%s' "$live"
+  printf '%s' "$busy"
 }
 spawn_apply_thermal_gate() {
   local gate_file temp temp_rc limit live max_workers hot_c hold_c tier jobs line temp_desc

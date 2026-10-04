@@ -64,11 +64,21 @@ run_case_spawn() {  # <args...>
     fm_test_run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$@"
 }
 
-# seed_live_worker <home> <id>: a plain kind=ship task record, counted by the gate.
-seed_live_worker() {  # <home> <id>
-  fm_write_meta "$1/state/$2.meta" \
-    "window=firstmate:fm-$2" "endpoint_task_id=$2" "kind=ship" \
-    "mode=no-mistakes" "yolo=off"
+# seed_worker <home> <id> <busy|idle|missing>: a plain kind=ship task record plus
+# its semantic busy-state sidecars. The gate counts only a record whose busy
+# state classifies as busy, so an idle or missing record must not count. The
+# harness is claude so the record's claude-hook source is trusted without any
+# harness-specific verification gate.
+seed_worker() {  # <home> <id> <busy|idle|missing>
+  local home=$1 id=$2 state=$3
+  local gen="gen-$id"
+  fm_write_meta "$home/state/$id.meta" \
+    "window=firstmate:fm-$id" "endpoint_task_id=$id" "harness=claude" \
+    "kind=ship" "mode=no-mistakes" "yolo=off"
+  [ "$state" = missing ] && return 0
+  printf '%s\n' "$gen" > "$home/state/$id.busy-gen"
+  printf 'v1 gen=%s seq=1 state=%s source=claude-hook event=%s ts=1700000000\n' \
+    "$gen" "$state" "ev-$id" > "$home/state/$id.busy-state"
 }
 
 # --- gate absent / cool -----------------------------------------------------
@@ -107,7 +117,7 @@ test_at_the_cap_refuses() {
   read_case "$rec"
   set_sysfs "x86_pkg_temp:55000"
   printf 'max_workers=1\n' > "$HOME_DIR/config/thermal-gate"
-  seed_live_worker "$HOME_DIR" live-one
+  seed_worker "$HOME_DIR" live-one busy
   out=$(run_case_spawn at-cap-a1 "$PROJ_DIR" --mode no-mistakes --yolo off)
   status=$?
   [ "$status" -ne 0 ] || fail "a spawn at the cap must be refused"
@@ -116,6 +126,40 @@ test_at_the_cap_refuses() {
   assert_contains "$out" "limit 1" "the refusal must name the limit"
   assert_contains "$out" "live 1" "the refusal must name the live count"
   pass "a spawn at the max_workers cap is refused with a clear line"
+}
+
+# Swift's failure mode: many finished or waiting task records, none of them
+# running work. They must not consume the cap, or the gate holds every spawn
+# forever on an idle home.
+test_idle_records_do_not_count_toward_the_cap() {
+  local rec out status
+  rec=$(make_case idle)
+  read_case "$rec"
+  set_sysfs "x86_pkg_temp:50000"
+  printf 'max_workers=1\n' > "$HOME_DIR/config/thermal-gate"
+  seed_worker "$HOME_DIR" idle-one idle
+  seed_worker "$HOME_DIR" idle-two idle
+  seed_worker "$HOME_DIR" missing-one missing
+  out=$(run_case_spawn idle-a1 "$PROJ_DIR" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "idle, finished, and missing records must not hold the cap: $out"
+  assert_contains "$out" "spawned idle-a1" "an idle home must still be able to spawn"
+  pass "idle, finished, and missing task records do not count toward the cap"
+}
+
+test_busy_records_consume_the_cap() {
+  local rec out status
+  rec=$(make_case busy)
+  read_case "$rec"
+  set_sysfs "x86_pkg_temp:50000"
+  printf 'max_workers=1\n' > "$HOME_DIR/config/thermal-gate"
+  seed_worker "$HOME_DIR" idle-one idle
+  seed_worker "$HOME_DIR" busy-one busy
+  out=$(run_case_spawn busy-a1 "$PROJ_DIR" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a busy record must consume the cap"
+  assert_contains "$out" "live 1" "only the busy record must count as live"
+  pass "a busy task record counts toward the cap while its idle sibling does not"
 }
 
 test_hot_caps_at_one_worker() {
@@ -132,7 +176,7 @@ test_hot_caps_at_one_worker() {
   read_case "$rec"
   set_sysfs "x86_pkg_temp:75000"
   printf 'max_workers=4\nhot_c=70\n' > "$HOME_DIR/config/thermal-gate"
-  seed_live_worker "$HOME_DIR" live-one
+  seed_worker "$HOME_DIR" live-one busy
   out=$(run_case_spawn hot-full-a1 "$PROJ_DIR" --mode no-mistakes --yolo off)
   status=$?
   [ "$status" -ne 0 ] || fail "a second worker while hot must be refused"
@@ -172,7 +216,7 @@ test_unreadable_sensor_warns_and_applies_max_workers() {
   read_case "$rec"
   mkdir -p "$CASE_DIR/sysfs"
   printf 'max_workers=1\n' > "$HOME_DIR/config/thermal-gate"
-  seed_live_worker "$HOME_DIR" live-one
+  seed_worker "$HOME_DIR" live-one busy
   out=$(run_case_spawn unreadable-full-a1 "$PROJ_DIR" --mode no-mistakes --yolo off)
   status=$?
   [ "$status" -ne 0 ] || fail "an unreadable sensor must still apply max_workers"
@@ -226,7 +270,9 @@ EOF
   [ "$lines" = 1 ] || fail "expected exactly one paused parent-channel line, got $lines: $(cat "$main/state/mate.status")"
   assert_grep 'thermal gate' "$main/state/mate.status" \
     "the parent line must say the thermal gate held the spawn"
-  pass "a refusal in a secondmate home publishes exactly one paused parent line"
+  grep -Eq '^paused \[key=thermal-gate-[^]]+\] \[at=[0-9]+\]:' "$main/state/mate.status" \
+    || fail "the paused parent line must carry an [at=<epoch>] stamp like every other status line: $(cat "$main/state/mate.status")"
+  pass "a refusal in a secondmate home publishes exactly one stamped paused parent line"
 }
 
 # --- jobs env ---------------------------------------------------------------
@@ -250,6 +296,8 @@ test_jobs_reaches_the_launch_file() {
 test_gate_absent_leaves_spawn_unchanged
 test_cool_under_the_cap_spawns
 test_at_the_cap_refuses
+test_idle_records_do_not_count_toward_the_cap
+test_busy_records_consume_the_cap
 test_hot_caps_at_one_worker
 test_hold_refuses_even_when_idle
 test_unreadable_sensor_warns_and_applies_max_workers
