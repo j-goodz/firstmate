@@ -1,0 +1,34 @@
+##### SCENARIO C1: configured opencode spawn carries compaction #####
+warning: /home/justin/.cache/tmp/opencode/test-live-01M447/out3/c1/home/data/c1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+spawned c1 harness=opencode kind=ship mode=no-mistakes yolo=off window=firstmate:fm-c1 worktree=/home/justin/.cache/tmp/opencode/test-live-01M447/out3/c1/wt
+STATUS=0
+--- launch delivered ---
+export COMPACT_ADVISER_DISABLE=1; export NEXUS_CACHE_MODE=off; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI OPENCODE_CONFIG_CONTENT='{"permission":{"*":"allow"},"compaction":{"auto":true,"prune":true,"tail_turns":15,"preserve_recent_tokens":60000,"reserved":20000}}' '/home/justin/.cache/tmp/opencode/test-live-01M447/out3/c1/fake/fakebin/with-keys' opencode -- opencode --model 'deepseek/deepseek-flash' --prompt "$('/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M447JKRKF8C61DF41030E7Q0/bin/fm-operational-input.sh' encode launch-brief < '/home/justin/.cache/tmp/opencode/test-live-01M447/out3/c1/home/data/c1/launch-brief.md')"
+--- meta (harness/opencode lines) ---
+harness=opencode
+opencode_compaction=on
+
+##### SCENARIO C2: unconfigured opencode spawn stays base/off #####
+warning: /home/justin/.cache/tmp/opencode/test-live-01M447/out3/c2/home/data/c2/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+spawned c2 harness=opencode kind=ship mode=no-mistakes yolo=off window=firstmate:fm-c2 worktree=/home/justin/.cache/tmp/opencode/test-live-01M447/out3/c2/wt
+STATUS=0
+--- launch delivered ---
+export COMPACT_ADVISER_DISABLE=1; export NEXUS_CACHE_MODE=off; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI OPENCODE_CONFIG_CONTENT='{"permission":{"*":"allow"}}' '/home/justin/.cache/tmp/opencode/test-live-01M447/out3/c2/fake/fakebin/with-keys' opencode -- opencode --model 'deepseek/deepseek-flash' --prompt "$('/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M447JKRKF8C61DF41030E7Q0/bin/fm-operational-input.sh' encode launch-brief < '/home/justin/.cache/tmp/opencode/test-live-01M447/out3/c2/home/data/c2/launch-brief.md')"
+--- meta (harness/opencode lines) ---
+harness=opencode
+
+##### SCENARIO C3: malformed file, no launch #####
+error: config/opencode-compaction values are invalid; auto and prune must be booleans, tail_turns, preserve_recent_tokens and reserved must be positive integers, and at least one option is required
+STATUS=1
+--- launch delivered ---
+--- meta (harness/opencode lines) ---
+grep: /home/justin/.cache/tmp/opencode/test-live-01M447/out3/c3/home/state/c3.meta: No such file or directory
+launch bytes: 0
+
+##### SCENARIO C4: malformed file refuses a claude harness too #####
+error: config/opencode-compaction has unknown key(s): unknown; accepted keys are auto, prune, tail_turns, preserve_recent_tokens, reserved
+STATUS=1
+--- launch delivered ---
+--- meta (harness/opencode lines) ---
+grep: /home/justin/.cache/tmp/opencode/test-live-01M447/out3/c4/home/state/c4.meta: No such file or directory
+launch bytes: 0

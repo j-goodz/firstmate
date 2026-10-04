@@ -1,0 +1,8 @@
+ok - an absent opencode-compaction setting leaves the launch unchanged
+ok - the opt-in compaction setting lands in the opencode launch config
+ok - a partial compaction object merges only its keys
+ok - malformed JSON refuses the spawn with a clear error
+ok - an unknown compaction key refuses the spawn with a clear error
+ok - an invalid compaction value refuses the spawn with a clear error
+ok - an empty compaction object refuses the spawn with a clear error
+# all fm-spawn-opencode-compaction tests passed

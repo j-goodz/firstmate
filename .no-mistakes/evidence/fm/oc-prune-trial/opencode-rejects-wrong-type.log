@@ -1,0 +1,10 @@
+timestamp=2026-10-04T20:00:29.083Z level=INFO run=cb96647c message="creating instance" directory=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M447JKRKF8C61DF41030E7Q0
+timestamp=2026-10-04T20:00:29.086Z level=INFO run=cb96647c message=fromDirectory directory=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M447JKRKF8C61DF41030E7Q0
+timestamp=2026-10-04T20:00:29.179Z level=INFO run=cb96647c message=bootstrapping directory=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M447JKRKF8C61DF41030E7Q0
+timestamp=2026-10-04T20:00:29.206Z level=INFO run=cb96647c message=loading path=/home/justin/.config/opencode-checker-xdg/opencode/config.json
+timestamp=2026-10-04T20:00:29.208Z level=INFO run=cb96647c message=loading path=/home/justin/.config/opencode-checker-xdg/opencode/opencode.json
+timestamp=2026-10-04T20:00:29.220Z level=INFO run=cb96647c message=loading path=/home/justin/.config/opencode-checker-xdg/opencode/opencode.jsonc
+timestamp=2026-10-04T20:00:29.277Z level=INFO run=cb96647c message=loading path=/home/justin/.opencode/opencode.json
+timestamp=2026-10-04T20:00:29.279Z level=INFO run=cb96647c message=loading path=/home/justin/.opencode/opencode.jsonc
+[91m[1mError: [0mConfiguration is invalid at OPENCODE_CONFIG_CONTENT
+↳ Expected number | undefined, got "many" compaction.tail_turns

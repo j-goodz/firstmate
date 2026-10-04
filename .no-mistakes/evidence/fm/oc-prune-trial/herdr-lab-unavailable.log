@@ -1,0 +1,3 @@
+$ bin/fm-herdr-lab.sh prepare fm-lab-ocprune-82339-32167
+fm-herdr-lab: fleet-state tripwire requires exactly one running default session
+exit=1

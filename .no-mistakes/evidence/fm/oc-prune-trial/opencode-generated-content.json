@@ -1,0 +1,12 @@
+{
+  "permission": {
+    "*": "allow"
+  },
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "tail_turns": 15,
+    "preserve_recent_tokens": 60000,
+    "reserved": 20000
+  }
+}
