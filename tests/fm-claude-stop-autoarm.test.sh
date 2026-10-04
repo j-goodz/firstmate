@@ -186,6 +186,37 @@ printf 'stale: fixture-win actionable\n'
 exit 0
 SH
       ;;
+    resurface-after-handled)
+      # First cycle: the 2026-10-03 shape. The watcher's start-up recovery check
+      # announced the episode, the handling turn then drained and acknowledged
+      # it, and the watcher's later rearm-resurface close left that acked marker
+      # in place. Every later cycle is an ordinary bindable actionable close.
+      cat > "$dir/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+echo "$$" >> "$FM_HOME/state/arm-ran"
+touch "$FM_HOME/state/.last-watcher-beat"
+printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+if [ "$(wc -l < "$FM_HOME/state/arm-ran" | tr -d ' ')" -eq 1 ]; then
+  printf 'acked:handling:fixture-generation\n' > "$FM_HOME/state/.watcher-down"
+  printf 'check: rearm-resurface\n'
+else
+  printf 'pending:downtime:fixture-next\n' > "$FM_HOME/state/.watcher-down"
+  printf 'signal: task.status done: after handled resurface\n'
+fi
+exit 0
+SH
+      ;;
+    resurface-always-handled)
+      cat > "$dir/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+echo "$$" >> "$FM_HOME/state/arm-ran"
+touch "$FM_HOME/state/.last-watcher-beat"
+printf 'acked:handling:fixture-generation\n' > "$FM_HOME/state/.watcher-down"
+printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+printf 'check: rearm-resurface\n'
+exit 0
+SH
+      ;;
     records-grace)
       cat > "$dir/bin/fm-watch-arm.sh" <<'SH'
 #!/usr/bin/env bash
@@ -442,6 +473,45 @@ test_actionable_close_with_live_successor_rewakes_once() {
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
   pass "auto-arm: actionable close survives a healthy successor without duplicate delivery"
+}
+
+# Regression (2026-10-03): a rearm-resurface close whose recovery episode the
+# handling turn had already drained and acknowledged could not bind a rewake, so
+# the owner exited 0 with its claim frozen at "arming" and no watcher. The Stop
+# that ended the handling turn had deferred to that live claim, so nothing ever
+# re-armed while the session sat idle. The owner must keep supervising instead.
+test_handled_resurface_close_rearms_instead_of_going_silent() {
+  local dir out status
+  dir=$(make_primary_dir "$TMP_ROOT/handled-resurface")
+  : > "$dir/state/task.meta"
+  write_arm_fixture "$dir" resurface-after-handled
+  out=$(run_autoarm "$dir" 2>/dev/null); status=$?
+  [ "$(epoch_outcome "$dir")" != arming ] \
+    || fail "an unbindable resurface close left the claim frozen at arming with no watcher"
+  [ "$(wc -l < "$dir/state/arm-ran" | tr -d ' ')" -eq 2 ] \
+    || fail "an unbindable resurface close must re-arm once more, got $(wc -l < "$dir/state/arm-ran" | tr -d ' ') arms"
+  expect_code 2 "$status" "the re-armed cycle's actionable close must rewake"
+  [ "$(epoch_outcome "$dir")" = rewake ] || fail "the re-armed cycle must record outcome=rewake, got: $(epoch_outcome "$dir")"
+  [ "$(epoch_field "$dir" recovery_generation)" = fixture-next ] \
+    || fail "the rewake must bind the re-armed cycle's recovery generation"
+  assert_contains "$out" "signal: task.status done: after handled resurface" "rewake must carry the re-armed cycle's reason"
+  assert_not_contains "$out" "check: rearm-resurface" "the already-handled resurface must not be re-delivered"
+  assert_not_contains "$out" "automatic supervision mechanism is broken" "a handled resurface is not a mechanism failure"
+  pass "auto-arm: a resurface close of an already-handled episode re-arms instead of going silent"
+}
+
+test_unbindable_closes_exhaust_loudly_never_silently() {
+  local dir out status
+  dir=$(make_primary_dir "$TMP_ROOT/handled-resurface-exhausted")
+  : > "$dir/state/task.meta"
+  write_arm_fixture "$dir" resurface-always-handled
+  out=$(run_autoarm "$dir" 2>/dev/null); status=$?
+  expect_code 2 "$status" "exhausted unbindable closes must still continue the session"
+  [ "$(epoch_outcome "$dir")" = failed ] || fail "exhausted unbindable closes must record outcome=failed, got: $(epoch_outcome "$dir")"
+  [ "$(wc -l < "$dir/state/arm-ran" | tr -d ' ')" -eq 2 ] || fail "unbindable closes must stay within the bounded attempts"
+  assert_contains "$out" "automatic supervision mechanism is broken" "exhausted unbindable closes must report the automatic failure"
+  assert_present "$dir/state/.claude-autoarm-failure-notified" "exhausted unbindable closes must open a failure episode"
+  pass "auto-arm: repeated unbindable closes exhaust into the loud failure path, never a silent arming claim"
 }
 
 test_failed_close_rewakes_with_failure_banner() {
@@ -1243,6 +1313,8 @@ test_resolves_outermost_claude_pid_in_nested_bgspare_chain
 test_inert_when_fleet_idle
 test_actionable_close_rewakes_with_reason
 test_actionable_close_with_live_successor_rewakes_once
+test_handled_resurface_close_rearms_instead_of_going_silent
+test_unbindable_closes_exhaust_loudly_never_silently
 test_failed_close_rewakes_with_failure_banner
 test_failed_cycles_notify_once_and_keep_retrying
 test_failure_notice_marker_write_refuses_delivery_and_retries
