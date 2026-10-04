@@ -218,7 +218,13 @@ EOF
     echo "mode=no-mistakes"
     echo "yolo=off"
     echo "tasktmp=/tmp/fm-$id"
-    echo "model=default"
+    if [ "$harness" = claude ]; then
+      # A claude launch must name a model (captain rule 2026-10-04); a fixture
+      # task pinned to a non-Opus model relaunches through fm-spawn cleanly.
+      echo "model=sonnet"
+    else
+      echo "model=default"
+    fi
     echo "effort=default"
   } > "$home/state/$id.meta"
   printf '%s\n' "fm-$id" > "$dir/fake/windows"
@@ -649,7 +655,7 @@ test_harness_switch_does_not_carry_the_old_profile_axes() {
   local dir out rc
   dir=$(new_case profile rl5)
   add_ship_task "$dir" rl5 claude
-  sed 's/^model=default$/model=opus/; s/^effort=default$/effort=xhigh/' \
+  sed 's/^model=sonnet$/model=opus/; s/^effort=default$/effort=xhigh/' \
     "$dir/home/state/rl5.meta" > "$dir/home/state/rl5.meta.tmp"
   mv "$dir/home/state/rl5.meta.tmp" "$dir/home/state/rl5.meta"
   printf 'codex' > "$dir/fake/becomes"
@@ -673,7 +679,7 @@ test_harness_switch_resolves_a_prefixed_recorded_harness() {
   printf '%s\n' "$dir/home/state/rl32.turn-ended" > "$auth"
   printf 'token=fm.abcdefabcdef\n' > "$dir/wt/.fm-grok-turnend"
 
-  out=$(run_control "$dir" rl32 relaunch --harness claude --note "switching runtime"); rc=$?
+  out=$(run_control "$dir" rl32 relaunch --harness claude --model sonnet --note "switching runtime"); rc=$?
   expect_code 0 "$rc" "relaunch should resolve a prefixed recorded harness"$'\n'"$out"
   [ "$(sed -n '1p' "$dir/fake/literal")" = /exit ] \
     || fail "relaunch should stop a grok-prefixed task with grok's exit command"
@@ -724,12 +730,12 @@ test_same_harness_relaunch_keeps_the_profile_axes() {
   local dir out rc
   dir=$(new_case keepprofile rl6)
   add_ship_task "$dir" rl6 claude
-  sed 's/^model=default$/model=opus/; s/^effort=default$/effort=high/' \
+  sed 's/^model=sonnet$/model=haiku/; s/^effort=default$/effort=high/' \
     "$dir/home/state/rl6.meta" > "$dir/home/state/rl6.meta.tmp"
   mv "$dir/home/state/rl6.meta.tmp" "$dir/home/state/rl6.meta"
   out=$(run_control "$dir" rl6 relaunch --note "same runtime"); rc=$?
   expect_code 0 "$rc" "a same-harness relaunch should succeed"$'\n'"$out"
-  [ "$(meta_field "$dir" rl6 model)" = opus ] || fail "the model should carry across a same-harness relaunch"
+  [ "$(meta_field "$dir" rl6 model)" = haiku ] || fail "the model should carry across a same-harness relaunch"
   [ "$(meta_field "$dir" rl6 effort)" = high ] || fail "the effort should carry across a same-harness relaunch"
   pass "fm-control relaunch: a same-harness relaunch keeps the profile axes it was running with"
 }
@@ -1018,7 +1024,7 @@ test_spawn_relaunch_without_a_harness_reuses_the_recorded_one() {
   mkdir -p "$dir/home/config"
   printf 'codex\n' > "$dir/home/config/crew-harness"
   printf 'zsh' > "$dir/fake/command"
-  out=$(run_spawn "$dir" rl21 --relaunch)
+  out=$(run_spawn "$dir" rl21 --relaunch --model sonnet)
   [ "$(meta_field "$dir" rl21 harness)" = claude ] \
     || fail "fm-spawn --relaunch without --harness must reuse the recorded harness, got '$(meta_field "$dir" rl21 harness)'"
   assert_contains "$out" "spawned rl21 harness=claude" "the launch should report the recorded harness"
@@ -1046,7 +1052,8 @@ test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
       echo "harness=claude"
       echo "kind=scout"
       echo "tasktmp=/tmp/fm-$id"
-      echo "model=default"
+      # A claude launch must name a model (captain rule 2026-10-04).
+      echo "model=sonnet"
       echo "effort=default"
     } > "$home/state/$id.meta"
     printf '%s\n' "fm-$id" > "$dir/fake/windows"
@@ -1061,7 +1068,7 @@ test_promoted_scout_relaunch_receives_the_current_delivery_contract() {
       "$mode: the reproduction fixture lost the stale scout prohibition"
 
     printf 'zsh' > "$dir/fake/command"
-    out=$(run_spawn "$dir" "$id" --relaunch) \
+    out=$(run_spawn "$dir" "$id" --relaunch --model sonnet) \
       || fail "$mode: promoted scout relaunch should succeed: $out"
     launch="$home/data/$id/launch-brief.md"
     assert_grep "This task is now kind=ship with mode=$mode" "$launch" \
@@ -1105,7 +1112,7 @@ test_prefixed_prior_harness_wiring_is_still_retired() {
   printf '%s\n' "$dir/home/state/rl30.turn-ended" > "$auth"
   printf 'token=fm.abcdefabcdef\n' > "$dir/wt/.fm-grok-turnend"
   printf 'zsh' > "$dir/fake/command"
-  run_spawn "$dir" rl30 --relaunch --harness claude >/dev/null
+  run_spawn "$dir" rl30 --relaunch --harness claude --model sonnet >/dev/null
   [ ! -e "$auth" ] \
     || fail "a prefixed prior harness must still have its turn-end registry entry revoked"
   [ ! -e "$dir/home/state/rl30.grok-turnend-token" ] \
@@ -1127,7 +1134,7 @@ test_muse_session_binding_is_retired_on_a_harness_switch() {
     > "$dir/home/state/rl31.muse-session"
   printf '/nonexistent/session.jsonl\n' > "$dir/home/state/rl31.muse-session-current"
   printf 'zsh' > "$dir/fake/command"
-  run_spawn "$dir" rl31 --relaunch --harness claude >/dev/null
+  run_spawn "$dir" rl31 --relaunch --harness claude --model sonnet >/dev/null
   [ ! -e "$dir/home/state/rl31.muse-session" ] \
     || fail "the retired muse incarnation's session binding must not outlive it"
   [ ! -e "$dir/home/state/rl31.muse-session-current" ] \
@@ -1142,7 +1149,7 @@ test_cursor_session_binding_is_retired_on_a_harness_switch() {
   printf 'workspace=%s\nprior_conversation=old-conversation\n' "$dir/wt" \
     > "$dir/home/state/rl35.cursor-session"
   printf 'zsh' > "$dir/fake/command"
-  run_spawn "$dir" rl35 --relaunch --harness claude >/dev/null
+  run_spawn "$dir" rl35 --relaunch --harness claude --model sonnet >/dev/null
   [ ! -e "$dir/home/state/rl35.cursor-session" ] \
     || fail "the retired cursor incarnation's session binding must not outlive it"
   pass "fm-spawn --relaunch: switching away from cursor retires its session binding"
@@ -1372,7 +1379,7 @@ test_secondmate_relaunch_checkpoints_child_work_and_spares_the_charter() {
   dir=$(new_case sm sm1)
   home="$dir/home"
   mkdir -p "$home/config"
-  printf 'claude\n' > "$home/config/secondmate-harness"
+  printf 'claude sonnet\n' > "$home/config/secondmate-harness"
   fm_git_worktree "$dir/proj" "$dir/smhome" sm-branch
   mkdir -p "$dir/smhome/state" "$dir/smhome/data" "$dir/smhome/bin"
   printf 'sm1\n' > "$dir/smhome/.fm-secondmate-home"
@@ -1527,7 +1534,7 @@ test_direct_spawn_relaunch_participates_in_the_lifecycle_lock() {
     i=$((i + 1))
   done
   [ -e "$lock" ] || fail "could not stage the lifecycle lock"
-  out=$(run_spawn "$dir" rl26 --relaunch --harness claude); rc=$?
+  out=$(run_spawn "$dir" rl26 --relaunch --harness claude --model sonnet); rc=$?
   kill "$holder" 2>/dev/null || true
   wait "$holder" 2>/dev/null || true
   expect_code 1 "$rc" "direct relaunch spawn should refuse a held lifecycle lock"
@@ -1571,7 +1578,7 @@ test_spawn_relaunch_refuses_a_live_agent() {
   local dir out rc
   dir=$(new_case live rl15)
   add_ship_task "$dir" rl15 claude
-  out=$(run_spawn "$dir" rl15 --relaunch --harness claude); rc=$?
+  out=$(run_spawn "$dir" rl15 --relaunch --harness claude --model sonnet); rc=$?
   expect_code 1 "$rc" "relaunching into a live endpoint should refuse"
   assert_contains "$out" "positively agent-free endpoint" "the refusal should demand an agent-free endpoint"
   assert_contains "$out" "fm-control.sh rl15 exit" "the refusal should point at the way to stop it"
@@ -1594,7 +1601,7 @@ exec "$dir/fakebin/tmux-real" "\$@"
 SH
   chmod +x "$dir/fakebin/tmux"
 
-  out=$(run_spawn "$dir" rl37 --relaunch --harness claude); rc=$?
+  out=$(run_spawn "$dir" rl37 --relaunch --harness claude --model sonnet); rc=$?
   expect_code 1 "$rc" "relaunching from symlinked metadata should refuse"
   assert_contains "$out" "task record resolves outside its authorized directory" \
     "relaunch did not identify the unsafe task record"
@@ -1626,7 +1633,7 @@ exec "$dir/fakebin/tmux-real" "\$@"
 SH
   chmod +x "$dir/fakebin/tmux"
 
-  out=$(run_spawn "$dir" rl38 --relaunch --harness claude); rc=$?
+  out=$(run_spawn "$dir" rl38 --relaunch --harness claude --model sonnet); rc=$?
   expect_code 0 "$rc" "relaunch with one continuous meta lock should succeed"$'\n'"$out"
   assert_present "$dir/lock-observation-started" \
     "test did not observe the relaunch-held meta lock"
@@ -1649,7 +1656,7 @@ test_spawn_relaunch_refuses_a_pending_authoritative_close() {
     "$dir/home/data" > "$marker"
   printf 'zsh' > "$dir/fake/command"
 
-  out=$(run_spawn "$dir" rl36 --relaunch --harness claude); rc=$?
+  out=$(run_spawn "$dir" rl36 --relaunch --harness claude --model sonnet); rc=$?
   expect_code 1 "$rc" "relaunching over a pending close should refuse"
   assert_contains "$out" "pending authoritative backlog close" \
     "the refusal should identify the close that still owns the task"
@@ -1694,7 +1701,7 @@ test_spawn_relaunch_refuses_a_pane_outside_the_worktree() {
   add_ship_task "$dir" rl18 claude
   printf 'zsh' > "$dir/fake/command"
   printf '%s' "$dir/proj" > "$dir/fake/cwd"
-  out=$(run_spawn "$dir" rl18 --relaunch --harness claude); rc=$?
+  out=$(run_spawn "$dir" rl18 --relaunch --harness claude --model sonnet); rc=$?
   expect_code 1 "$rc" "a pane outside the worktree should refuse"
   assert_contains "$out" "not its recorded worktree" "the refusal should name the wrong location"
   [ ! -s "$dir/fake/keys" ] || fail "a refused tmux relaunch must send nothing to the pane"
@@ -1727,7 +1734,7 @@ strand_endpoint() {  # <case-dir> <id>
 assert_tmux_missing_refuses() {  # <case-dir> <id> <what-was-staged>
   local dir=$1 id=$2 what=$3 out rc brief_before
 
-  out=$(run_spawn "$dir" "$id" --relaunch --harness claude); rc=$?
+  out=$(run_spawn "$dir" "$id" --relaunch --harness claude --model sonnet); rc=$?
   expect_code 1 "$rc" "relaunch must refuse a tmux endpoint whose absence cannot be proven ($what)"$'\n'"$out"
   assert_absent "$dir/fake/created-windows" "a refused relaunch must not create a window ($what)"
   assert_absent "$dir/fake/created-sessions" "a refused relaunch must not create a session ($what)"
@@ -1790,7 +1797,7 @@ test_reclaim_refuses_an_unreadable_endpoint() {
   # endpoint.
   : > "$dir/fake/inventory-broken"
 
-  out=$(run_spawn "$dir" rl63 --relaunch --harness claude); rc=$?
+  out=$(run_spawn "$dir" rl63 --relaunch --harness claude --model sonnet); rc=$?
   expect_code 1 "$rc" "an unreadable endpoint must still refuse"
   assert_contains "$out" "positively agent-free endpoint" \
     "only a POSITIVELY proven agent-free endpoint may be relaunched into"
@@ -1934,7 +1941,8 @@ EOF
     echo "mode=no-mistakes"
     echo "yolo=off"
     echo "tasktmp=/tmp/fm-$id"
-    echo "model=default"
+    # A claude launch must name a model (captain rule 2026-10-04).
+    echo "model=sonnet"
     echo "effort=default"
     echo "backend=herdr"
     echo "herdr_session=$ses"
@@ -1972,7 +1980,7 @@ test_herdr_reclaim_adopts_a_pane_that_outlived_its_server() {
   }
   dir=$HERDR_CASE_DIR
 
-  out=$(run_spawn "$dir" rl68 --relaunch --harness claude) || rc=$?
+  out=$(run_spawn "$dir" rl68 --relaunch --harness claude --model sonnet) || rc=$?
   log=$(cat "$dir/fake/herdr-log")
   expect_code 0 "$rc" "a pane that outlived its stopped server is adoptable"$'\n'"$out"$'\n'"$log"
 
@@ -2032,7 +2040,7 @@ test_herdr_rebind_stays_in_the_recorded_session() {
   }
   dir=$HERDR_CASE_DIR
 
-  out=$(run_spawn "$dir" rl73 --relaunch --harness claude) || rc=$?
+  out=$(run_spawn "$dir" rl73 --relaunch --harness claude --model sonnet) || rc=$?
   log=$(cat "$dir/fake/herdr-log")
   expect_code 0 "$rc" "a herdr pane that did not survive its server should be rebound"$'\n'"$out"$'\n'"$log"
 
@@ -2060,7 +2068,7 @@ test_herdr_reclaim_refuses_an_agent_that_came_back() {
   # in this task's worktree, which is the whole reason absence is re-proven.
   : > "$dir/fake/herdr-agent-live"
 
-  out=$(run_spawn "$dir" rl74 --relaunch --harness claude); rc=$?
+  out=$(run_spawn "$dir" rl74 --relaunch --harness claude --model sonnet); rc=$?
   log=$(cat "$dir/fake/herdr-log")
   expect_code 1 "$rc" "a returning agent must refuse, never be duplicated"$'\n'"$out"$'\n'"$log"
   assert_contains "$out" "alive" "the refusal should name the state it actually read"
@@ -2135,7 +2143,7 @@ test_herdr_rebind_failure_from_a_plain_shell_names_the_real_cause() {
   dir=$HERDR_CASE_DIR
   : > "$dir/fake/herdr-workspace-create-fails"
 
-  out=$(run_spawn "$dir" rl77 --relaunch --harness claude); rc=$?
+  out=$(run_spawn "$dir" rl77 --relaunch --harness claude --model sonnet); rc=$?
   expect_code 1 "$rc" "a container that cannot be ensured must refuse"$'\n'"$out"
   assert_contains "$out" "fmlab" "the refusal should name the session the reclaim was targeting"
   assert_not_contains "$out" "this seat is running in herdr session" \
@@ -2154,7 +2162,7 @@ test_herdr_reclaim_of_a_secondmate_names_its_own_owner() {
   dir=$HERDR_CASE_DIR
   printf '%s\n' "kind=secondmate" "home=$dir/wt" >> "$dir/home/state/rl76.meta"
 
-  out=$(run_spawn "$dir" rl76 --relaunch --harness claude); rc=$?
+  out=$(run_spawn "$dir" rl76 --relaunch --harness claude --model sonnet); rc=$?
   expect_code 1 "$rc" "a secondmate reclaim belongs to the secondmate respawn path"
   assert_contains "$out" "--secondmate" "the refusal should name the path that owns this recovery"
   assert_not_contains "$(cat "$dir/fake/herdr-log")" "tab create" \

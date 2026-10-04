@@ -156,7 +156,7 @@ spawn_secondmate_claude() {
   fakebin=$(make_spawn_fakebin "$case_dir/fake" claude)
   fm_test_spawn_home "$primary" claude
   FM_TEST_CLAUDE_CONFIG_DIR="$case_dir/claude-config" FM_FAKE_LAUNCH_LOG="$case_dir/launch.log" \
-    fm_test_run_spawn "$primary" "$home" "$fakebin" "$id" "$home" claude --secondmate
+    fm_test_run_spawn "$primary" "$home" "$fakebin" "$id" "$home" claude --model sonnet --secondmate
 }
 
 test_fresh_worktree_is_trusted() {
@@ -610,7 +610,7 @@ test_refused_spawn_leaves_no_task_state() {
   fm_git_worktree "$proj" "$wt" wt-refused
   fm_test_spawn_brief "$home" "$id"
   out=$(FM_TEST_CLAUDE_CONFIG_DIR="$config" \
-    fm_test_run_spawn "$home" "$wt" "$fakebin" "$id" "$proj" claude \
+    fm_test_run_spawn "$home" "$wt" "$fakebin" "$id" "$proj" claude --model sonnet \
     --mode no-mistakes --yolo off)
   expect_code 1 $? "a spawn whose trust registration is refused must fail: $out"
   assert_contains "$out" "workspace trust" "the spawn did not report the trust refusal"
@@ -640,7 +640,7 @@ test_claude_spawn_pretrusts_its_worktree_and_reaches_the_brief() {
   fm_git_worktree "$proj" "$wt" wt-spawn
   fm_test_spawn_brief "$home" trustspawn
   out=$(FM_TEST_CLAUDE_CONFIG_DIR="$config" FM_FAKE_LAUNCH_LOG="$launch_log" \
-    fm_test_run_spawn "$home" "$wt" "$fakebin" trustspawn "$proj" claude \
+    fm_test_run_spawn "$home" "$wt" "$fakebin" trustspawn "$proj" claude --model sonnet \
     --mode no-mistakes --yolo off)
   expect_code 0 $? "the claude spawn must succeed: $out"
   assert_trusted "$config/.claude.json" "$wt" \

@@ -1163,6 +1163,8 @@ one-element array use is accepted^{"rules":[{"when":"focused feature","use":[{"h
 default array is accepted^{"default":[{"harness":"pi","model":"anthropic/claude-sonnet-5"},{"harness":"grok"}]}^empty^
 provider-less multi-provider profile remains accepted without opt-in^{"rules":[{"when":"cross-provider work","use":{"harness":"opencode","model":"anthropic/claude-sonnet-4-5"}}],"default":{"harness":"pi","model":"anthropic/claude-sonnet-5"}}^empty^
 one-element default array is accepted^{"default":[{"harness":"codex"}]}^empty^
+opus claude profile is flagged^{"rules":[{"when":"strong coding","use":{"harness":"claude","model":"claude-opus-4-1"}}]}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - opus build profile: claude:claude-opus-4-1 (Opus for a build requires the captain to pass --captain-override-model at launch, not a standing profile)
+non-opus claude profile is accepted^{"rules":[{"when":"strong coding","use":{"harness":"claude","model":"claude-sonnet-5"}}]}^empty^
 empty array use is flagged^{"rules":[{"when":"big feature","use":[]}]}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - each rule needs at least one use profile
 array profile without harness is flagged^{"rules":[{"when":"big feature","use":[{"model":"gpt-5.5"}]}]}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - each use profile needs harness
 array profile with malformed model is flagged^{"rules":[{"when":"big feature","use":[{"harness":"codex","model":5}]}]}^exact^CREW_DISPATCH: invalid config/crew-dispatch.json - use profile model and effort must be non-empty strings, and provider must match ^[a-z0-9]+(-[a-z0-9]+)*\z when present

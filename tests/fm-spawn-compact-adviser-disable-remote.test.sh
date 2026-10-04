@@ -194,7 +194,7 @@ pass "the remote route keeps the compact-adviser switch through the cleared allo
 # remote fm-spawn looks the wrapper up in the remote account home, never in the
 # spawner's HOME. The spawner's HOME carries a wrapper here, so a launch
 # resolved on the spawner would name that path instead.
-printf 'claude\n' > "$PARENT/config/secondmate-harness"
+printf 'claude sonnet\n' > "$PARENT/config/secondmate-harness"
 SPAWNER_HOME="$TMP_ROOT/spawner-home"
 mkdir -p "$SPAWNER_HOME/bin"
 printf '#!/bin/sh\nexit 0\n' > "$SPAWNER_HOME/bin/claude"

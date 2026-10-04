@@ -238,7 +238,7 @@ test_claude_hooks_semantic_lifecycle() {
   local rec id=busy-cl-1 out state settings
   rec=$(make_spawn_case claude-lifecycle claude "$id")
   read_case_record "$rec"
-  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR" --model sonnet)
   expect_code 0 $? "claude spawn should succeed: $out"
   state="$HOME_DIR/state"
   settings="$WT_DIR/.claude/settings.local.json"
@@ -276,7 +276,7 @@ test_claude_hooks_stale_incarnation_harmless() {
   local rec id=busy-cl-2 out state settings
   rec=$(make_spawn_case claude-stale claude "$id")
   read_case_record "$rec"
-  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR" --model sonnet)
   expect_code 0 $? "claude spawn should succeed: $out"
   state="$HOME_DIR/state"
   settings="$WT_DIR/.claude/settings.local.json"
