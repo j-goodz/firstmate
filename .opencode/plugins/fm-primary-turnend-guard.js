@@ -1,8 +1,11 @@
 import { spawn } from "node:child_process";
-import { appendFileSync, mkdirSync, realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, realpathSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
 import { resolveSessionModel } from "./lib/fm-session-model.js";
+
+const ADAPTER_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
 
@@ -25,17 +28,37 @@ function resetGuardBudget() {
   failureRecorded = false;
 }
 
+// Record one failure line locally, returning it so the caller can publish the
+// same line on the home's parent channel. A record that cannot be written must
+// never keep the loop running.
 function recordGuardFailure(state, sessionID) {
+  const epoch = Math.floor(Date.now() / 1000);
+  const line = `failed [at=${epoch}]: opencode turn-end guard stopped after ${MAX_CONSECUTIVE_FOLLOW_UPS} consecutive follow-ups with no tool call and supervision still missing (session ${sessionID})`;
   try {
     mkdirSync(state, { recursive: true });
-    const epoch = Math.floor(Date.now() / 1000);
-    appendFileSync(
-      `${state}/.opencode-turnend-guard.status`,
-      `failed [at=${epoch}]: opencode turn-end guard stopped after ${MAX_CONSECUTIVE_FOLLOW_UPS} consecutive follow-ups with no tool call and supervision still missing (session ${sessionID})\n`,
-    );
+    appendFileSync(`${state}/.opencode-turnend-guard.status`, `${line}\n`);
   } catch {
-    // A record that cannot be written must never keep the loop running.
+    // The parent-channel publish below still carries the failure.
   }
+  return line;
+}
+
+// A bound that stops supervision must alert loudly, not only to a dotfile.
+// Publish the same line through the parent channel, exactly as
+// bin/fm-pr-check.sh does. A main home has no channel and this resolves to a
+// silent no-op there (rc 1); any other failure stays harmless to the guard.
+function publishGuardFailureToParent(home, state, line) {
+  const lib = `${ADAPTER_ROOT}/bin/fm-parent-channel-lib.sh`;
+  if (!existsSync(lib)) return Promise.resolve();
+  return new Promise((resolveResult) => {
+    const child = spawn(
+      "bash",
+      ["-c", '. "$1" || exit 1; fm_parent_channel_report "$2" "$3" "$4"', "bash", lib, home, state, line],
+      { stdio: ["ignore", "ignore", "ignore"] },
+    );
+    child.on("error", () => resolveResult());
+    child.on("close", () => resolveResult());
+  });
 }
 
 function runProcess(command, args, input = "") {
@@ -86,7 +109,8 @@ async function watchArmStatus(sessionID, client) {
 
 export const FmPrimaryTurnendGuard = async ({ client, directory, worktree }) => {
   const root = worktree ? resolvePath(worktree) : await resolveRoot(directory);
-  const state = process.env.FM_STATE_OVERRIDE || `${process.env.FM_HOME || process.env.FM_ROOT_OVERRIDE || root}/state`;
+  const home = process.env.FM_HOME || process.env.FM_ROOT_OVERRIDE || root;
+  const state = process.env.FM_STATE_OVERRIDE || `${home}/state`;
 
   return {
     "tool.execute.before": async () => {
@@ -119,8 +143,9 @@ export const FmPrimaryTurnendGuard = async ({ client, directory, worktree }) => 
 
       if (consecutiveNoToolFollowUps >= MAX_CONSECUTIVE_FOLLOW_UPS) {
         if (!failureRecorded) {
-          recordGuardFailure(state, sessionID);
+          const line = recordGuardFailure(state, sessionID);
           failureRecorded = true;
+          await publishGuardFailureToParent(home, state, line);
         }
         return;
       }

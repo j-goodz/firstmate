@@ -135,7 +135,7 @@ The generated prompts use the canonical `turn-end-guard` kind after the U+2063 `
 Each passive adapter owns a loop latch.
 Pi keeps the latch across internal tool turns and clears it only when the generated follow-up settles or delivery fails.
 OpenCode's forced follow-up is supported for persistent TUI sessions and remains fail-open in headless `opencode run`.
-It runs on the model the session is currently using (the most recent user message's model, else the session's stored launch model) so an injected turn never silently falls back to the agent's configured default, and it stops after three consecutive follow-ups that produce no tool call, appending one `failed` line to `state/.opencode-turnend-guard.status`; a normal turn or an armed watcher resets the count.
+It runs on the model the session is currently using (the most recent user message's model, else the session's stored launch model) so an injected turn never silently falls back to the agent's configured default, and it stops after three consecutive follow-ups that produce no tool call, appending one `failed` line to `state/.opencode-turnend-guard.status` and publishing the same line through `bin/fm-parent-channel-lib.sh` so a second-mate home alerts its parent (a main home has no channel and stays a silent no-op); a normal turn or an armed watcher resets the count.
 
 Grok makes exactly one typed capability decision from each running Stop payload.
 A boolean `stopHookActive` selects native blocking, including both false on the initial stop and true on the bounded continuation.

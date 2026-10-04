@@ -4672,6 +4672,72 @@ EOF
   pass "OpenCode guard resets its consecutive-failure bound after a normal turn"
 }
 
+# Defect 3: a guard bound that stops supervision must alert the parent, not only
+# a local dotfile. A marked second-mate home publishes exactly one failed line on
+# its parent channel (bin/fm-parent-channel-lib.sh), and keeps the local record.
+test_opencode_guard_failure_reaches_parent_channel() {
+  local plugin mate parent out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-turnend-guard.js"
+  mate="$TMP_ROOT/opencode-guard-parent-mate"
+  parent="$TMP_ROOT/opencode-guard-parent-home"
+  mkdir -p "$mate/bin" "$mate/state" "$mate/config" "$parent/state"
+  git init -q "$mate"
+  : > "$mate/AGENTS.md"
+  printf 'swift\n' > "$mate/.fm-secondmate-home"
+  printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$parent" > "$mate/.fm-secondmate-parent"
+  cat > "$mate/bin/fm-turnend-guard.sh" <<'SH'
+#!/usr/bin/env bash
+cat >/dev/null
+printf 'watcher cycle is missing, failed, or unhealthy\n' >&2
+exit 2
+SH
+  chmod +x "$mate/bin/fm-turnend-guard.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$mate" FM_HOME="$mate" FM_PARENT_HOME="$parent" node 2>&1 <<'EOF'
+import { existsSync, readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+const client = {
+  session: {
+    messages: async () => ({
+      data: [{ info: { role: "user", model: { providerID: "deepseek", modelID: "deepseek-flash" } }, parts: [] }],
+    }),
+    get: async () => ({ data: { model: { id: "auto", providerID: "freellm" } } }),
+    promptAsync: async () => {},
+  },
+};
+const hooks = await mod.FmPrimaryTurnendGuard({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+const idle = { event: { type: "session.idle", properties: { sessionID: "session-test" } } };
+for (let i = 0; i < 4; i += 1) await hooks.event(idle);
+const channel = `${process.env.FM_PARENT_HOME}/state/swift.status`;
+if (!existsSync(channel)) {
+  console.error("guard bound did not publish a failure line to the parent channel");
+  process.exit(1);
+}
+const lines = readFileSync(channel, "utf8").trim().split("\n").filter((line) => line.includes("failed"));
+if (lines.length !== 1) {
+  console.error(`parent channel carried ${lines.length} failure lines, expected 1`);
+  process.exit(1);
+}
+if (!existsSync(`${process.env.FM_HOME}/state/.opencode-turnend-guard.status`)) {
+  console.error("guard dropped its local record while publishing to the parent");
+  process.exit(1);
+}
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode guard must publish its bound failure on the parent channel"
+  [ -z "$out" ] || fail "OpenCode guard parent-channel test printed output: $out"
+  [ "$(grep -c 'failed' "$parent/state/swift.status" 2>/dev/null || true)" = 1 ] \
+    || fail "parent channel did not carry exactly one failed line"
+  pass "OpenCode guard publishes exactly one failure line to the parent channel"
+}
+
 test_pi_extension_reports_external_healthy_watcher
 test_pi_tool_returns_agent_tool_result
 test_pi_redundant_tool_call_is_owned_noop
@@ -4728,3 +4794,4 @@ test_opencode_guard_followup_carries_session_model
 test_opencode_watcher_wake_carries_session_model
 test_opencode_guard_bounds_failing_followups
 test_opencode_guard_normal_turn_resets_bound
+test_opencode_guard_failure_reaches_parent_channel
