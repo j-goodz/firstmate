@@ -1179,6 +1179,18 @@ crew_dispatch_validate() {
           end);
     def malformed_profile_floors($items):
       ($items | any(has("floor") and floor_bad(.floor; false)));
+    # An Opus model in a standing profile is refused: a profile is the system
+    # automatic model choice for a crewmate or scout, and Opus for a build (or a
+    # supervisor) needs the captain to say so explicitly at launch, never a
+    # standing rule (captain rule 2026-10-04). Scouts may still be launched on
+    # Opus with an explicit model and the --captain-override-model flag at the
+    # launch.
+    def opus_model($m): ($m | type) == "string" and (($m | ascii_downcase) | test("opus"));
+    def bad_opus_profiles:
+      configured_profiles
+      | map(select((.harness == "claude") and opus_model(.model)))
+      | map("\(.harness):\(.model)")
+      | unique;
     def bad_efforts:
       configured_profiles
       | map({h: .harness, m: .model, e: .effort})
@@ -1220,7 +1232,8 @@ crew_dispatch_validate() {
         | map(select(. != null))
         | map(select(. as $h | verified($h) | not))
         | unique) as $bad_harnesses
-      | if ($bad_harnesses | length) > 0 then "unverified harness: " + ($bad_harnesses | join(", "))
+      | if (bad_opus_profiles | length) > 0 then "opus build profile: " + (bad_opus_profiles | join(", ")) + " (Opus for a build requires the captain to pass --captain-override-model at launch, not a standing profile)"
+        elif ($bad_harnesses | length) > 0 then "unverified harness: " + ($bad_harnesses | join(", "))
         elif (bad_efforts | length) > 0 then "invalid effort: " + (bad_efforts | join(", "))
         else empty
         end

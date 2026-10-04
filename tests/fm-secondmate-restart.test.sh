@@ -137,7 +137,8 @@ SH
 new_case() {
   local dir="$TMP_ROOT/$1-$RANDOM"
   mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config" "$dir/fake"
-  printf 'claude\n' > "$dir/home/config/secondmate-harness"
+  # A claude secondmate needs an explicit model (captain rule 2026-10-04).
+  printf 'claude sonnet\n' > "$dir/home/config/secondmate-harness"
   : > "$dir/fake/literal"
   : > "$dir/fake/keys"
   : > "$dir/fake/rings"
@@ -675,8 +676,8 @@ test_relaunches_do_not_block_persist_polling() {
     "the slow first relaunch blocked lifecycle progress for the second mate"
   assert_contains "$out" "summary: 2 of 2 restarted, 0 nudged, 0 unreached" \
     "parallel relaunches were not both accounted for"
-  assert_grep 'fm-remote-secondmate-control.sh relaunch sm1 claude default default' "$dir/ssh.log" \
-    "an absent remote model and effort pin were not expressed as explicit defaults"
+  assert_grep 'fm-remote-secondmate-control.sh relaunch sm1 claude sonnet default' "$dir/ssh.log" \
+    "the remote relaunch did not receive the resolved model pin and an explicit default effort"
   pass "T12 relaunch waits do not block fleet persistence polling"
 }
 

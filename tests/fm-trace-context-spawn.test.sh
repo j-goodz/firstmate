@@ -138,7 +138,7 @@ run_spawn() {
     FM_FAKE_TRACE_METADATA_APPEND_FAIL="${FM_FAKE_TRACE_METADATA_APPEND_FAIL:-0}" \
     FM_FAKE_META_PATH="$home/state/$1.meta" \
     FM_FAKE_LAUNCH_LOG="$launchlog" PATH="$fakebin:$PATH" \
-    "$SPAWN" "$@" --mode no-mistakes --yolo off 2>&1
+    "$SPAWN" "$@" --model sonnet --mode no-mistakes --yolo off 2>&1
 }
 
 # Same, but with an explicit FM_TRACE_CONTEXT override, to prove the env decides.
@@ -156,7 +156,7 @@ run_spawn_tc() {
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
     FM_FAKE_LAUNCH_LOG="$launchlog" PATH="$fakebin:$PATH" \
-    "$SPAWN" "$@" --mode no-mistakes --yolo off 2>&1
+    "$SPAWN" "$@" --model sonnet --mode no-mistakes --yolo off 2>&1
 }
 
 start_trace_session() {
@@ -228,7 +228,7 @@ run_two_level() {
     FM_PROJECTS_OVERRIDE="$prim/projects" FM_CONFIG_OVERRIDE="$prim/config" \
     FM_SPAWN_NO_GUARD=1 CLAUDECODE=1 TMUX="fake,1,0" \
     FM_FAKE_LAUNCH_LOG="$smlog" PATH="$smfake:$PATH" \
-    "$SPAWN" "$sm_id" "$sm" --secondmate >/dev/null 2>&1 || true
+    "$SPAWN" "$sm_id" "$sm" --model sonnet --secondmate >/dev/null 2>&1 || true
 
   # Extract the EXACT env the primary put on the secondmate: the normalized
   # FM_TRACE_CONTEXT in the launch prefix, and the TRACEPARENT carrier (if any).
@@ -255,7 +255,7 @@ run_two_level() {
     FM_PROJECTS_OVERRIDE="$sm/projects" FM_CONFIG_OVERRIDE="$sm/config" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wwt" TMUX="fake,1,0" \
     FM_FAKE_LAUNCH_LOG="$wlog" PATH="$wfake:$PATH" \
-    "$SPAWN" "$worker_id" "$wproj" --mode no-mistakes --yolo off >/dev/null 2>&1 || true
+    "$SPAWN" "$worker_id" "$wproj" --model sonnet --mode no-mistakes --yolo off >/dev/null 2>&1 || true
 
   TL_WORKER_TP=$(meta_traceparent "$sm/state/$worker_id.meta")
   TL_SM_FILE=absent

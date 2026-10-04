@@ -606,7 +606,7 @@ run_spawn() {  # <case-dir> <args...>
 
 run_ship_spawn() {  # <case-dir> <id>
   local case_dir=$1 id=$2
-  run_spawn "$case_dir" "$id" "$case_dir/project" --mode no-mistakes --yolo off
+  run_spawn "$case_dir" "$id" "$case_dir/project" --model sonnet --mode no-mistakes --yolo off
 }
 
 # Teardown against a recorded worktree that no longer exists: the landed-work and
@@ -1483,7 +1483,7 @@ test_deferred_signal_verification_outlives_an_unresponsive_tasks_axi() {
     FM_FAKE_PANE_PATH="$case_dir/wt" TMUX="fake,1,0" CLAUDE_CONFIG_DIR='' \
     FM_TASKS_AXI_TIMEOUT=3 PATH="$case_dir/fakebin:$PATH" \
     timeout -k 5 30 "$SPAWN" "$id" "$case_dir/project" \
-    --mode no-mistakes --yolo off 2>&1) || rc=$?
+    --model sonnet --mode no-mistakes --yolo off 2>&1) || rc=$?
   [ "$rc" -ne 0 ] || fail "an interrupted spawn reported success"
   case "$rc" in
     124|137) fail "the verification hung on the unresponsive start instead of timing out: $out" ;;
@@ -2779,7 +2779,7 @@ test_spawn_refuses_a_special_file_tasks_config() {
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$case_dir/wt" TMUX="fake,1,0" \
     CLAUDE_CONFIG_DIR='' \
     PATH="$case_dir/fakebin:$PATH" \
-    timeout 60 "$SPAWN" "$id" "$case_dir/project" --mode no-mistakes --yolo off 2>&1) || rc=$?
+    timeout 60 "$SPAWN" "$id" "$case_dir/project" --model sonnet --mode no-mistakes --yolo off 2>&1) || rc=$?
   [ "$rc" -ne 124 ] || fail "spawn hung reading a special-file tasks-axi config"
   [ "$rc" -ne 0 ] || fail "spawn accepted a special-file tasks-axi config"
   assert_contains "$out" "tasks-axi config is not a regular file" \
@@ -2986,7 +2986,7 @@ test_a_persistent_secondmate_is_never_a_backlog_item() {
 
   # No backlog item exists for the mate, and none should be required: agents are
   # not work items. The dispatch must succeed anyway.
-  out=$(run_spawn "$case_dir" "$id" "$mate" --secondmate) \
+  out=$(run_spawn "$case_dir" "$id" "$mate" --model sonnet --secondmate) \
     || fail "secondmate spawn failed: $out"
   assert_contains "$out" "spawned $id" "secondmate spawn did not report success"
   assert_present "$(home_of "$case_dir")/state/$id.meta" "secondmate spawn published no record"

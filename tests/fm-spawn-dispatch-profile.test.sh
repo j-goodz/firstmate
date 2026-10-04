@@ -126,16 +126,16 @@ test_no_profile_keeps_claude_profile_defaults() {
   rec=$(make_spawn_case profile-off claude "$id")
   read_case_record "$rec"
 
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "claude spawn without profile flags should succeed"
   assert_contains "$out" "spawned $id harness=claude" "spawn did not report claude"
-  assert_meta_profile "$HOME_DIR/state/$id.meta" claude default default
+  assert_meta_profile "$HOME_DIR/state/$id.meta" claude sonnet default
 
   launch=$(cat "$LAUNCH_LOG")
-  expected="export COMPACT_ADVISER_DISABLE=1; export NEXUS_CACHE_MODE=off; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false}}' $CLAUDE_CONTROL_CHANNEL_FLAG \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < '$HOME_DIR/data/$id/launch-brief.md')\""
+  expected="export COMPACT_ADVISER_DISABLE=1; export NEXUS_CACHE_MODE=off; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false}}' $CLAUDE_CONTROL_CHANNEL_FLAG --model 'sonnet' \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < '$HOME_DIR/data/$id/launch-brief.md')\""
   [ "$launch" = "$expected" ] || fail "no-profile claude launch did not use the canonical launch kind"$'\n'"expected: $expected"$'\n'"actual:   $launch"
-  pass "no --model/--effort records defaults and types the claude launch instructions"
+  pass "a claude launch with a pinned model records the model and types the launch instructions"
 }
 
 test_non_cursor_launch_clears_inherited_cursor_markers() {
@@ -145,7 +145,7 @@ test_non_cursor_launch_clears_inherited_cursor_markers() {
   read_case_record "$rec"
 
   out=$(CURSOR_AGENT=1 CURSOR_INVOKED_AS=cursor-agent \
-    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "claude spawn under Cursor markers should succeed"
   launch=$(cat "$LAUNCH_LOG")
@@ -880,7 +880,7 @@ test_claude_forwards_firstmate_config_dir_when_set() {
   # (bin/fm-claude-trust.sh), so an unwritable directory is a genuine blocker.
   # The forwarding assertion below is what this case proves and is unchanged.
   out=$(FM_TEST_CLAUDE_CONFIG_DIR="$CASE_DIR/claude-work" \
-    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "claude spawn with CLAUDE_CONFIG_DIR set should succeed"
   launch=$(cat "$LAUNCH_LOG")
@@ -918,7 +918,7 @@ test_claude_account_routing_launches_on_the_picked_store() {
 
   # Firstmate itself runs on account-1; routing must override that inheritance.
   out=$(FM_TEST_CLAUDE_CONFIG_DIR="$CASE_DIR/account-1" \
-    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" 2>&1)
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet 2>&1)
   status=$?
   expect_code 0 "$status" "claude spawn with account routing should succeed"$'\n'"$out"
   launch=$(cat "$LAUNCH_LOG")
@@ -977,7 +977,7 @@ test_claude_without_account_routing_writes_no_account_meta() {
   rec=$(make_spawn_case profile-claude-noaccount claude "$id")
   read_case_record "$rec"
 
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" 2>&1)
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet 2>&1)
   status=$?
   expect_code 0 "$status" "claude spawn without account routing should succeed"
   assert_no_grep "account=" "$HOME_DIR/state/$id.meta" "absent routing config must not add an account= meta line"
@@ -991,7 +991,7 @@ test_lavish_server_address_is_exported_to_worker_launch() {
   rec=$(make_spawn_case profile-lavish-host claude "$id")
   read_case_record "$rec"
   printf '%s\n' '100.99.161.42' > "$HOME_DIR/config/lavish-axi-host"
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "a configured Lavish server address should allow the worker spawn"
   launch=$(cat "$LAUNCH_LOG")
@@ -1013,7 +1013,7 @@ printf '%s\n' "${LAVISH_AXI_HOST-unset}" > "$FM_LAVISH_SEEN"
 SH
   chmod +x "$FAKEBIN_DIR/claude"
   out=$(FM_FAKE_PANE_LOG="$pane_log" \
-    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "an absent Lavish host configuration should allow the worker spawn"
   launch=$(cat "$LAUNCH_LOG")
@@ -1036,7 +1036,7 @@ test_claude_omits_config_dir_prefix_when_unset() {
 
   # run_spawn pins CLAUDE_CONFIG_DIR empty by default, exercising the single-store
   # default path where fm-spawn adds no prefix.
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "claude spawn without CLAUDE_CONFIG_DIR should succeed"
   launch=$(cat "$LAUNCH_LOG")
@@ -1056,7 +1056,7 @@ test_claude_launches_through_the_account_wrapper_when_present() {
   chmod +x "$HOME_DIR/user-home/bin/claude"
 
   out=$(FM_TEST_CLAUDE_CONFIG_DIR="$CASE_DIR/account-3" \
-    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+    run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "claude spawn with an account wrapper should succeed"
   launch=$(cat "$LAUNCH_LOG")
@@ -1077,7 +1077,7 @@ test_claude_secondmate_launches_through_the_account_wrapper_when_present() {
   chmod +x "$HOME_DIR/user-home/bin/claude"
   make_seeded_secondmate_home "$CASE_DIR/secondmate-home" "$id"
 
-  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$CASE_DIR/secondmate-home" --secondmate)
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$CASE_DIR/secondmate-home" --secondmate --model sonnet)
   status=$?
   expect_code 0 "$status" "claude secondmate spawn with an account wrapper should succeed: $out"
   launch=$(cat "$LAUNCH_LOG")
@@ -1092,7 +1092,7 @@ test_claude_falls_back_to_bare_claude_without_the_account_wrapper() {
   rec=$(make_spawn_case profile-claude-nowrapper claude "$id")
   read_case_record "$rec"
 
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "claude spawn without a wrapper should succeed"
   launch=$(cat "$LAUNCH_LOG")
@@ -1135,7 +1135,7 @@ test_claude_task_launch_carries_control_channel_authority() {
   rec=$(make_spawn_case profile-claude-control-channel claude "$id")
   read_case_record "$rec"
 
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "claude crewmate spawn should succeed"$'\n'"$out"
   launch=$(cat "$LAUNCH_LOG")
@@ -1161,7 +1161,7 @@ test_claude_secondmate_launch_omits_task_control_channel_authority() {
   make_seeded_secondmate_home "$sm" "$id"
 
   out=$(FM_TEST_CLAUDE_CONFIG_DIR="$CASE_DIR/claude-work" \
-    run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate)
+    run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate --model sonnet)
   status=$?
   expect_code 0 "$status" "secondmate claude spawn should succeed"$'\n'"$out"
   launch=$(cat "$LAUNCH_LOG")
@@ -1176,7 +1176,7 @@ test_claude_long_launch_is_delivered_intact() {
   rec=$(make_spawn_case profile-claude-long-launch claude "$id")
   read_case_record "$rec"
 
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "long Claude launch should succeed"$'\n'"$out"
   launch=$(cat "$LAUNCH_LOG")
@@ -1196,7 +1196,7 @@ test_claude_crewmate_launch_carries_the_attribution_policy() {
   rec=$(make_spawn_case profile-claude-attribution claude "$id")
   read_case_record "$rec"
 
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "claude crewmate spawn should succeed"$'\n'"$out"
   launch=$(cat "$LAUNCH_LOG")
@@ -1213,7 +1213,7 @@ test_claude_secondmate_launch_carries_the_attribution_policy() {
   make_seeded_secondmate_home "$sm" "$id"
 
   out=$(FM_TEST_CLAUDE_CONFIG_DIR="$CASE_DIR/claude-work" \
-    run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate)
+    run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate --model sonnet)
   status=$?
   expect_code 0 "$status" "secondmate claude spawn should succeed"$'\n'"$out"
   launch=$(cat "$LAUNCH_LOG")
@@ -1545,7 +1545,7 @@ SH
 # permission flag, and any other token refuses before endpoint or metadata.
 claude_expected_launch() {  # <home> <id> <permission-flag>
   local home=$1 id=$2 flag=$3
-  printf '%s' "export COMPACT_ADVISER_DISABLE=1; export NEXUS_CACHE_MODE=off; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude $flag --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false}}' $CLAUDE_CONTROL_CHANNEL_FLAG \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < '$home/data/$id/launch-brief.md')\""
+  printf '%s' "export COMPACT_ADVISER_DISABLE=1; export NEXUS_CACHE_MODE=off; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude $flag --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false}}' $CLAUDE_CONTROL_CHANNEL_FLAG --model 'sonnet' \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < '$home/data/$id/launch-brief.md')\""
 }
 
 test_claude_permission_mode_bypass_matches_absent_launch() {
@@ -1555,7 +1555,7 @@ test_claude_permission_mode_bypass_matches_absent_launch() {
   read_case_record "$rec"
   printf 'bypass\n' > "$HOME_DIR/config/claude-permission-mode"
 
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "claude spawn with claude-permission-mode=bypass should succeed"
   launch=$(cat "$LAUNCH_LOG")
@@ -1572,7 +1572,7 @@ test_claude_permission_mode_auto_swaps_only_the_permission_flag() {
   # Surrounding whitespace is trimmed, so an editor's trailing newline or indent is fine.
   printf '  auto\n' > "$HOME_DIR/config/claude-permission-mode"
 
-  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet)
   status=$?
   expect_code 0 "$status" "claude spawn with claude-permission-mode=auto should succeed"
   assert_contains "$out" "spawned $id harness=claude" "auto spawn did not report claude"
@@ -1590,7 +1590,7 @@ test_claude_permission_mode_auto_reaches_scout_launch() {
   read_case_record "$rec"
   printf 'auto\n' > "$HOME_DIR/config/claude-permission-mode"
 
-  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --scout)
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --scout --model sonnet)
   status=$?
   expect_code 0 "$status" "claude scout spawn with claude-permission-mode=auto should succeed"
   launch=$(cat "$LAUNCH_LOG")
@@ -1631,6 +1631,139 @@ test_non_claude_harness_ignores_claude_permission_mode() {
   assert_contains "$launch" "codex " "codex launch did not run codex"
   assert_not_contains "$launch" "--permission-mode" "the claude permission flag must not leak into a codex launch"
   pass "config/claude-permission-mode changes claude launches only"
+}
+
+# --- claude model pinning (captain rule 2026-10-04) -------------------------
+# A claude launch must name an explicit model, and Opus is refused for a build
+# or a supervisor unless the captain's own words authorize it. These use the
+# same stub harness as the rest of the file: a refusal must happen before any
+# endpoint or record, and a successful launch records the override.
+test_claude_unpinned_ship_is_refused() {
+  local rec id out status
+  id=modelguard-unpinned-ship
+  rec=$(make_spawn_case modelguard-unpinned-ship claude "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" 2>&1)
+  status=$?
+  expect_code 1 "$status" "an unpinned claude ship must be refused"
+  assert_contains "$out" "harness claude resolved no model" "refusal must name the missing model"
+  [ ! -s "$LAUNCH_LOG" ] || fail "unpinned claude refusal must launch nothing"
+  assert_absent "$HOME_DIR/state/$id.meta" "refusal must happen before meta is written"
+  pass "an unpinned claude ship is refused before any endpoint or record"
+}
+
+test_claude_unpinned_secondmate_is_refused() {
+  local rec id sm out status
+  id=modelguard-unpinned-sm
+  rec=$(make_spawn_case modelguard-unpinned-sm claude "$id")
+  read_case_record "$rec"
+  sm="$CASE_DIR/secondmate-home"
+  make_seeded_secondmate_home "$sm" "$id"
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate 2>&1)
+  status=$?
+  expect_code 1 "$status" "an unpinned claude secondmate must be refused"
+  assert_contains "$out" "harness claude resolved no model" "secondmate refusal must name the missing model"
+  assert_absent "$HOME_DIR/state/$id.meta" "secondmate refusal must happen before meta is written"
+  pass "an unpinned claude secondmate is refused before any endpoint or record"
+}
+
+test_claude_opus_ship_is_refused_without_override() {
+  local rec id out status
+  id=modelguard-opus-ship
+  rec=$(make_spawn_case modelguard-opus-ship claude "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model claude-opus-4-1 2>&1)
+  status=$?
+  expect_code 1 "$status" "an Opus claude ship must be refused without the captain override"
+  assert_contains "$out" "Opus" "refusal must name Opus"
+  assert_contains "$out" "--captain-override-model" "refusal must name the override flag"
+  [ ! -s "$LAUNCH_LOG" ] || fail "Opus ship refusal must launch nothing"
+  assert_absent "$HOME_DIR/state/$id.meta" "Opus ship refusal must happen before meta is written"
+  pass "an Opus claude ship is refused without the captain override"
+}
+
+test_claude_opus_secondmate_is_refused_without_override() {
+  local rec id sm out status
+  id=modelguard-opus-sm
+  rec=$(make_spawn_case modelguard-opus-sm claude "$id")
+  read_case_record "$rec"
+  sm="$CASE_DIR/secondmate-home"
+  make_seeded_secondmate_home "$sm" "$id"
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate --model opus 2>&1)
+  status=$?
+  expect_code 1 "$status" "an Opus claude secondmate must be refused without the captain override"
+  assert_contains "$out" "not allowed for a secondmate" "secondmate refusal must name the kind"
+  assert_absent "$HOME_DIR/state/$id.meta" "Opus secondmate refusal must happen before meta is written"
+  pass "an Opus claude secondmate is refused without the captain override"
+}
+
+test_claude_opus_ship_with_override_launches_and_records() {
+  local rec id out status launch words
+  id=modelguard-opus-override
+  rec=$(make_spawn_case modelguard-opus-override claude "$id")
+  read_case_record "$rec"
+  words="Captain said use Opus for this one"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
+    --model opus --captain-override-model "$words" 2>&1)
+  status=$?
+  expect_code 0 "$status" "an Opus claude ship with the captain override must launch"$'\n'"$out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "--model 'opus'" "override launch did not keep the Opus model"
+  assert_grep "model_override=$words" "$HOME_DIR/state/$id.meta" "meta must record the captain override text"
+  assert_grep "model=opus" "$HOME_DIR/state/$id.meta" "meta must record the Opus model"
+  jq -e --arg id "$id" --arg words "$words" \
+    'select(.task == $id and .model == "opus" and .override == $words)' \
+    "$HOME_DIR/user-home/.nexus/launches.jsonl" >/dev/null \
+    || fail "launch ledger did not record the Opus override"
+  pass "an Opus claude ship with the captain override launches and records the override"
+}
+
+test_claude_opus_scout_with_explicit_model_launches() {
+  local rec id out status launch
+  id=modelguard-opus-scout
+  rec=$(make_spawn_case modelguard-opus-scout claude "$id")
+  read_case_record "$rec"
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --scout --model opus 2>&1)
+  status=$?
+  expect_code 0 "$status" "an explicit-model Opus scout must launch"$'\n'"$out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "--model 'opus'" "Opus scout launch did not keep its explicit model"
+  pass "an Opus claude scout launches with an explicit model"
+}
+
+test_claude_sonnet_ship_launches() {
+  local rec id out status launch
+  id=modelguard-sonnet-ship
+  rec=$(make_spawn_case modelguard-sonnet-ship claude "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model sonnet 2>&1)
+  status=$?
+  expect_code 0 "$status" "a pinned claude ship must launch"$'\n'"$out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "--model 'sonnet'" "sonnet ship launch did not keep its model"
+  pass "a pinned claude ship launches"
+}
+
+test_opencode_launch_is_unaffected_by_claude_pinning() {
+  local rec id out status launch
+  id=modelguard-opencode
+  rec=$(make_spawn_case modelguard-opencode opencode "$id")
+  read_case_record "$rec"
+
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" 2>&1)
+  status=$?
+  expect_code 0 "$status" "an unpinned opencode launch must still succeed"$'\n'"$out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "opencode" "opencode launch did not run opencode"
+  assert_not_contains "$launch" "--model" "unpinned opencode launch must stay unchanged"
+  pass "opencode launches are unaffected by the claude model pinning"
 }
 
 test_worker_launch_delivers_role_scope
@@ -1690,5 +1823,13 @@ test_claude_long_launch_is_delivered_intact
 test_claude_crewmate_launch_carries_the_attribution_policy
 test_claude_secondmate_launch_carries_the_attribution_policy
 test_active_dispatch_profile_does_not_block_secondmate_launch
+test_claude_unpinned_ship_is_refused
+test_claude_unpinned_secondmate_is_refused
+test_claude_opus_ship_is_refused_without_override
+test_claude_opus_secondmate_is_refused_without_override
+test_claude_opus_ship_with_override_launches_and_records
+test_claude_opus_scout_with_explicit_model_launches
+test_claude_sonnet_ship_launches
+test_opencode_launch_is_unaffected_by_claude_pinning
 
 echo "# all fm-spawn-dispatch-profile tests passed"

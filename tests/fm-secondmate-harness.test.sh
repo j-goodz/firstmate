@@ -457,13 +457,15 @@ make_seeded_home() {
   printf 'charter\n' > "$home/data/charter.md"
 }
 
-# spawn_secondmate <world> <id> <home> [explicit-harness]
+# spawn_secondmate <world> <id> <home> [explicit-harness] [model]
 # Runs fm-spawn.sh in secondmate mode. FM_ROOT is the real repo (so fm-harness.sh
 # resolves), the primary config dir is <world>/home/config, and CLAUDECODE over a
 # blinded ancestry walk pins detect_own. stderr is discarded (the local-HEAD ff sync harmlessly skips a
 # non-worktree home). Inspect <world>/home/state/<id>.meta and <home>/config after.
+# A model is passed for a claude secondmate because fm-spawn now refuses a claude
+# launch with no explicit model (captain rule 2026-10-04).
 spawn_secondmate() {
-  local world=$1 id=$2 home=$3 harness=${4:-} fakebin
+  local world=$1 id=$2 home=$3 harness=${4:-} model=${5:-} fakebin
   mkdir -p "$world/home/state" "$world/home/data"
   fakebin=$(make_noop_tmux "$world/tmux-$id")
   # An empty harness must contribute zero args, not an empty positional; build the
@@ -471,6 +473,7 @@ spawn_secondmate() {
   local spawn_args=("$id" "$home")
   [ -n "$harness" ] && spawn_args+=("$harness")
   spawn_args+=(--secondmate)
+  [ -z "$model" ] || spawn_args+=(--model "$model")
   PATH="$fakebin:$BLIND_BIN:$BASE_PATH" TMUX='' CLAUDECODE=1 \
     FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$world/home" HOME="$world/home/user-home" CLAUDE_CONFIG_DIR='' \
     FM_STATE_OVERRIDE="$world/home/state" FM_DATA_OVERRIDE="$world/home/data" \
@@ -545,7 +548,7 @@ test_spawn_bare_backward_compat() {
   sm="$w/sm"
   make_seeded_home "$sm" sm
 
-  spawn_secondmate "$w" sm "$sm"
+  spawn_secondmate "$w" sm "$sm" "" sonnet
 
   meta="$w/home/state/sm.meta"
   [ "$(meta_harness "$meta")" = claude ] \
@@ -564,7 +567,7 @@ test_spawn_explicit_harness_wins() {
   printf 'codex\n' > "$w/home/config/secondmate-harness"
   make_seeded_home "$sm" sm
 
-  spawn_secondmate "$w" sm "$sm" claude
+  spawn_secondmate "$w" sm "$sm" claude sonnet
 
   meta="$w/home/state/sm.meta"
   [ "$(meta_harness "$meta")" = claude ] \
@@ -715,7 +718,7 @@ test_spawn_backend_precedence_over_inherited_config() {
   make_seeded_home "$sm" sm
 
   out=$(FM_BACKEND=tmux spawn_secondmate_capture \
-    "$w" sm "$sm" "$launchlog" 2>&1); status=$?
+    "$w" sm "$sm" "$launchlog" --model sonnet 2>&1); status=$?
   expect_code 0 "$status" \
     "FM_BACKEND=tmux should beat inherited config/backend=herdr"$'\n'"$out"
 
@@ -737,7 +740,7 @@ test_spawn_explicit_backend_precedence_over_env_and_inherited_config() {
   make_seeded_home "$sm" sm
 
   out=$(FM_BACKEND=zellij spawn_secondmate_capture \
-    "$w" sm "$sm" "$launchlog" --backend tmux 2>&1); status=$?
+    "$w" sm "$sm" "$launchlog" --model sonnet --backend tmux 2>&1); status=$?
   expect_code 0 "$status" \
     "explicit --backend tmux should beat FM_BACKEND=zellij and inherited config/backend=herdr"$'\n'"$out"
 
@@ -752,26 +755,29 @@ test_spawn_explicit_backend_precedence_over_env_and_inherited_config() {
 # A bare "<harness>" secondmate-harness file (today's format) must launch with
 # NO --model/--effort flag at all, and meta must keep recording model=default,
 # effort=default - the core backward-compat requirement of the new format.
+# The harness here is codex: a bare claude launch is now refused for want of an
+# explicit model (captain rule 2026-10-04).
 test_spawn_bare_harness_no_model_effort_flag() {
   local w sm meta launchlog launch out status
   w="$TMP_ROOT/spawn-bare-tokens"
   sm="$w/sm"
   launchlog="$w/launch.log"
   mkdir -p "$w/home/config"
-  printf 'claude\n' > "$w/home/config/secondmate-harness"
+  printf 'codex\n' > "$w/home/config/secondmate-harness"
   make_seeded_home "$sm" sm
 
   out=$(spawn_secondmate_capture "$w" sm "$sm" "$launchlog" 2>&1); status=$?
   expect_code 0 "$status" "bare-harness secondmate spawn should succeed"
 
   meta="$w/home/state/sm.meta"
+  [ "$(meta_field "$meta" harness)" = codex ] || fail "bare-tokens: meta harness not codex (got '$(meta_field "$meta" harness)')"
   [ "$(meta_field "$meta" model)" = default ] || fail "bare-tokens: meta model not default (got '$(meta_field "$meta" model)')"
   [ "$(meta_field "$meta" effort)" = default ] || fail "bare-tokens: meta effort not default (got '$(meta_field "$meta" effort)')"
   launch=$(cat "$launchlog")
-  assert_contains "$launch" "CLAUDE_CODE_SEND_FEEDBACK=0 claude" \
-    "bare-tokens: Claude secondmate launch did not disable feedback drafts"
+  assert_contains "$launch" "codex --dangerously-bypass-approvals-and-sandbox" \
+    "bare-tokens: codex secondmate launch did not use the codex launch shape"
   assert_not_contains "$launch" "--model" "bare-tokens: launch must not carry a --model flag"
-  assert_not_contains "$launch" "--effort" "bare-tokens: launch must not carry an --effort flag"
+  assert_not_contains "$launch" "model_reasoning_effort" "bare-tokens: launch must not carry an effort flag"
   pass "C2 spawn: a bare harness-only secondmate-harness file launches with no model/effort flag (backward-compat)"
 }
 
@@ -783,18 +789,18 @@ test_spawn_secondmate_harness_model_token() {
   sm="$w/sm"
   launchlog="$w/launch.log"
   mkdir -p "$w/home/config"
-  printf 'claude opus\n' > "$w/home/config/secondmate-harness"
+  printf 'claude sonnet\n' > "$w/home/config/secondmate-harness"
   make_seeded_home "$sm" sm
 
   spawn_secondmate_capture "$w" sm "$sm" "$launchlog" >/dev/null 2>&1
 
   meta="$w/home/state/sm.meta"
   [ "$(meta_field "$meta" harness)" = claude ] || fail "model-token: meta harness not claude"
-  [ "$(meta_field "$meta" model)" = opus ] || fail "model-token: meta model not opus (got '$(meta_field "$meta" model)')"
+  [ "$(meta_field "$meta" model)" = sonnet ] || fail "model-token: meta model not sonnet (got '$(meta_field "$meta" model)')"
   [ "$(meta_field "$meta" effort)" = default ] || fail "model-token: meta effort not default (got '$(meta_field "$meta" effort)')"
   launch=$(cat "$launchlog")
-  assert_contains "$launch" "claude --dangerously-skip-permissions --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false}}' --model 'opus'" \
-    "model-token: launch did not carry --model opus"
+  assert_contains "$launch" "claude --dangerously-skip-permissions --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false}}' --model 'sonnet'" \
+    "model-token: launch did not carry --model sonnet"
   assert_not_contains "$launch" "--effort" "model-token: launch must not carry an --effort flag"
   pass "C3 spawn: config/secondmate-harness's model token threads --model into the launch and meta"
 }
@@ -806,17 +812,17 @@ test_spawn_secondmate_harness_model_and_effort_tokens() {
   sm="$w/sm"
   launchlog="$w/launch.log"
   mkdir -p "$w/home/config"
-  printf 'claude opus high\n' > "$w/home/config/secondmate-harness"
+  printf 'claude sonnet high\n' > "$w/home/config/secondmate-harness"
   make_seeded_home "$sm" sm
 
   spawn_secondmate_capture "$w" sm "$sm" "$launchlog" >/dev/null 2>&1
 
   meta="$w/home/state/sm.meta"
-  [ "$(meta_field "$meta" model)" = opus ] || fail "model-effort-tokens: meta model not opus"
+  [ "$(meta_field "$meta" model)" = sonnet ] || fail "model-effort-tokens: meta model not sonnet"
   [ "$(meta_field "$meta" effort)" = high ] || fail "model-effort-tokens: meta effort not high (got '$(meta_field "$meta" effort)')"
   launch=$(cat "$launchlog")
-  assert_contains "$launch" "claude --dangerously-skip-permissions --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false}}' --model 'opus' --effort 'high'" \
-    "model-effort-tokens: launch did not carry both --model opus and --effort high"
+  assert_contains "$launch" "claude --dangerously-skip-permissions --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false}}' --model 'sonnet' --effort 'high'" \
+    "model-effort-tokens: launch did not carry both --model sonnet and --effort high"
   pass "C4 spawn: config/secondmate-harness's model+effort tokens thread into the launch and meta"
 }
 
@@ -849,13 +855,13 @@ test_spawn_explicit_effort_overrides_secondmate_harness_token() {
   sm="$w/sm"
   launchlog="$w/launch.log"
   mkdir -p "$w/home/config"
-  printf 'claude opus high\n' > "$w/home/config/secondmate-harness"
+  printf 'claude sonnet high\n' > "$w/home/config/secondmate-harness"
   make_seeded_home "$sm" sm
 
   spawn_secondmate_capture "$w" sm "$sm" "$launchlog" --effort low >/dev/null 2>&1
 
   meta="$w/home/state/sm.meta"
-  [ "$(meta_field "$meta" model)" = opus ] || fail "explicit-effort: file's model token should still apply"
+  [ "$(meta_field "$meta" model)" = sonnet ] || fail "explicit-effort: file's model token should still apply"
   [ "$(meta_field "$meta" effort)" = low ] \
     || fail "explicit-effort: meta effort not low (got '$(meta_field "$meta" effort)'), explicit flag did not win over file token"
   launch=$(cat "$launchlog")
@@ -924,7 +930,12 @@ test_spawned_secondmate_uses_its_harness_supervision_model() {
     mkdir -p "$w/home/config"
     printf '%s\n' "$harness" > "$w/home/config/secondmate-harness"
     make_seeded_home "$sm" sm
-    spawn_secondmate_capture "$w" sm "$sm" "$launchlog" >/dev/null 2>&1
+    if [ "$harness" = claude ]; then
+      # An unpinned claude launch is refused (captain rule 2026-10-04).
+      spawn_secondmate_capture "$w" sm "$sm" "$launchlog" --model sonnet >/dev/null 2>&1
+    else
+      spawn_secondmate_capture "$w" sm "$sm" "$launchlog" >/dev/null 2>&1
+    fi
     fm_write_meta "$sm/state/task.meta" "window=firstmate:fm-task" "kind=ship"
     touch "$sm/state/.last-watcher-beat"
     fakebin="$w/tmux-sm/fakebin"
@@ -1424,7 +1435,7 @@ test_spawn_secondmate_claude_permission_mode_auto() {
   sm="$w/sm"
   launchlog="$w/launch.log"
   mkdir -p "$w/home/config"
-  printf 'claude opus\n' > "$w/home/config/secondmate-harness"
+  printf 'claude sonnet\n' > "$w/home/config/secondmate-harness"
   printf 'auto\n' > "$w/home/config/claude-permission-mode"
   make_seeded_home "$sm" sm
 
@@ -1434,7 +1445,7 @@ test_spawn_secondmate_claude_permission_mode_auto() {
   meta="$w/home/state/sm.meta"
   [ "$(meta_field "$meta" harness)" = claude ] || fail "permmode: meta harness not claude"
   launch=$(cat "$launchlog")
-  assert_contains "$launch" "claude --permission-mode auto --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false}}' --model 'opus'" \
+  assert_contains "$launch" "claude --permission-mode auto --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false}}' --model 'sonnet'" \
     "permmode: secondmate launch did not swap the permission flag while keeping --model"
   assert_not_contains "$launch" "--dangerously-skip-permissions" "permmode: secondmate launch must not request bypass mode"
   pass "C2b spawn: config/claude-permission-mode=auto reaches a Claude secondmate launch"

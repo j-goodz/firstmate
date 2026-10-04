@@ -603,6 +603,8 @@ BACKEND_ARG=
 MODE=
 YOLO=
 TRACEPARENT_ARG=
+CAPTAIN_OVERRIDE_MODEL=
+CAPTAIN_OVERRIDE_MODEL_SET=0
 HARNESS_SET=0
 MODEL_SET=0
 EFFORT_SET=0
@@ -649,6 +651,10 @@ for a in "$@"; do
     traceparent)
       TRACEPARENT_ARG=$a
       TRACEPARENT_SET=1
+      ;;
+    captain_override_model)
+      CAPTAIN_OVERRIDE_MODEL=$a
+      CAPTAIN_OVERRIDE_MODEL_SET=1
       ;;
     *)
       echo "error: internal parser state for --$want_value" >&2
@@ -703,6 +709,11 @@ for a in "$@"; do
     TRACEPARENT_ARG=${a#--traceparent=}
     TRACEPARENT_SET=1
     ;;
+  --captain-override-model) want_value=captain_override_model ;;
+  --captain-override-model=*)
+    CAPTAIN_OVERRIDE_MODEL=${a#--captain-override-model=}
+    CAPTAIN_OVERRIDE_MODEL_SET=1
+    ;;
   *) POS+=("$a") ;;
   esac
 done
@@ -736,6 +747,10 @@ done
 }
 [ "$TRACEPARENT_SET" -eq 0 ] || [ -n "$TRACEPARENT_ARG" ] || {
   echo "error: --traceparent requires a non-empty value" >&2
+  exit 1
+}
+[ "$CAPTAIN_OVERRIDE_MODEL_SET" -eq 0 ] || [ -n "$CAPTAIN_OVERRIDE_MODEL" ] || {
+  echo "error: --captain-override-model requires a non-empty value" >&2
   exit 1
 }
 # A parent-delivered carrier replaces this home's own resolution, so it is
@@ -1009,8 +1024,8 @@ spawn_remote_secondmate() {
   if [ "$(fm_trace_context_session_effective "$STATE/.trace-context-effective")" = on ]; then
     remote_traceparent=$(FM_TRACE_CONTEXT=on fm_trace_context_resolve "$CONFIG" "$meta" || true)
   fi
-  launch_args=("$id" "$harness" "$model" "$effort" "$backend")
-  [ -z "$remote_traceparent" ] || launch_args+=("$remote_traceparent")
+  launch_args=("$id" "$harness" "$model" "$effort" "$backend" "$remote_traceparent")
+  [ -z "$CAPTAIN_OVERRIDE_MODEL" ] || launch_args+=("$CAPTAIN_OVERRIDE_MODEL")
   if out=$("$SCRIPT_DIR/fm-on.sh" "$id" fm-remote-secondmate-control.sh launch \
     "${launch_args[@]}" </dev/null 2>&1); then
     rc=0
@@ -1073,6 +1088,7 @@ spawn_remote_secondmate() {
     echo "tasktmp="
     echo "model=${model#-}"
     echo "effort=${effort#-}"
+    [ -z "$CAPTAIN_OVERRIDE_MODEL" ] || echo "model_override=$(printf '%s' "$CAPTAIN_OVERRIDE_MODEL" | tr '\n' ' ')"
     echo "home=$home"
     echo "projects=$(secondmate_registry_field "$DATA/secondmates.md" "$id" projects)"
     echo "remote_host=$host"
@@ -2288,6 +2304,41 @@ if [ "$HARNESS" = omp ]; then
 fi
 if [ "$HARNESS" = agy ]; then
   agy_model_validate "$AGY_BIN" "$MODEL" || exit 1
+fi
+
+# Claude model pinning (captain rule 2026-10-04). A claude launch must name an
+# explicit model: with none, Claude Code falls back to its own default, which
+# was Opus and is how the swift second mate plus six swift lanes ran Opus with
+# no one choosing it. Opus itself is then refused for a build (ship) or a
+# supervisor (secondmate) unless the captain's own words authorize it through
+# --captain-override-model. Scouts may run Opus, but only with an explicit
+# model, so the no-model refusal above still applies to them. A raw launch
+# command resolves to its own basename here, so a raw `claude ...` is covered
+# too. This sits before any endpoint, worktree, or record is created, so the
+# refusal leaves nothing behind.
+claude_model_is_opus() { # <model>
+  local model_lc
+  model_lc=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  case "$model_lc" in
+  *opus*) return 0 ;;
+  esac
+  return 1
+}
+if [ "$HARNESS" = claude ]; then
+  case "$MODEL" in
+  '' | default)
+    echo "error: refusing to launch $ID: harness claude resolved no model, so Claude Code would run its own default. Pass --model <id> (resolved from the dispatch profile or an explicit choice) to pin one." >&2
+    exit 1
+    ;;
+  esac
+  case "$KIND" in
+  ship | secondmate)
+    if claude_model_is_opus "$MODEL" && [ -z "$CAPTAIN_OVERRIDE_MODEL" ]; then
+      echo "error: refusing to launch $ID: harness claude with model '$MODEL' (Opus) is not allowed for a $KIND. Choose a non-Opus model, or pass --captain-override-model \"<the captain's words>\" to authorize Opus explicitly." >&2
+      exit 1
+    fi
+    ;;
+  esac
 fi
 
 # --- opencode provider keys -------------------------------------------------
@@ -4669,7 +4720,7 @@ SPAWN_META_PATH=$SPAWN_META_TMP
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort account busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
+      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort model_override account busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -4687,6 +4738,7 @@ preserve_relaunch_meta() {
   echo "tasktmp=$TASK_TMP"
   echo "model=${MODEL:-default}"
   echo "effort=${EFFORT:-default}"
+  [ -z "$CAPTAIN_OVERRIDE_MODEL" ] || echo "model_override=$(printf '%s' "$CAPTAIN_OVERRIDE_MODEL" | tr '\n' ' ')"
   [ -z "$ACCOUNT_PICK" ] || echo "account=$ACCOUNT_PICK"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
@@ -5158,6 +5210,23 @@ fi
 # This is the commit point: all endpoint and harness delivery that can reject
 # the spawn has succeeded. Re-read and transition while holding the same
 # per-task lock as metadata publication, then and only then report success.
+# The launch ledger records this successful delivery first (captain rule
+# 2026-10-04): one JSON row per launch so the per-job scorecard can attribute
+# harness, model, kind, and any captain Opus override. Best-effort - a ledger
+# failure never fails a launch that has already delivered.
+if command -v jq >/dev/null 2>&1 && mkdir -p "${HOME:-}/.nexus" 2>/dev/null; then
+  jq -nc \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg home "$FM_HOME" \
+    --arg task "$ID" \
+    --arg kind "$KIND" \
+    --arg harness "$HARNESS" \
+    --arg model "${MODEL:-default}" \
+    --arg override "${CAPTAIN_OVERRIDE_MODEL:-}" \
+    '{ts:$ts, home:$home, task:$task, kind:$kind, harness:$harness, model:$model, override:$override}' \
+    >>"${HOME:-}/.nexus/launches.jsonl" 2>/dev/null ||
+    echo "warning: could not append the launch record for $ID to ${HOME:-}/.nexus/launches.jsonl" >&2
+fi
 if [ "$SPAWN_META_LOCK_HELD" != 1 ]; then
   SPAWN_META_LOCK=$(fm_meta_lock_path "$STATE/$ID.meta") || exit 1
   fm_lock_acquire_wait "$SPAWN_META_LOCK"
