@@ -2398,20 +2398,109 @@ opencode_provider_services() { # <provider>
   esac
 }
 
-# Print the command prefix that launches an opencode worker with its model's
-# provider keys loaded, ending in "-- ", or nothing when no mapping applies or
-# with-keys is not installed. A table-mapped provider is wrapped even when its
-# key file is absent: with-keys then fails loudly, so the preflight below turns a
-# missing credential into a provider-named refusal instead of a silent fallback.
-# An unmapped provider is wrapped only when its own ~/.env.<provider> file exists,
-# so a provider authenticated by opencode's own store is left to that store.
+# Strip `//` line comments from JSONC without touching a `//` inside a string, so
+# jq can read the file. The user's opencode.jsonc carries only line comments and
+# no trailing commas in this fleet, so this stays deliberately small; anything it
+# fails to parse is skipped by the caller rather than blocking a launch.
+opencode_strip_jsonc() {
+  awk '
+    {
+      out = ""; n = length($0); i = 1; in_str = 0; esc = 0
+      while (i <= n) {
+        c = substr($0, i, 1)
+        if (in_str) {
+          out = out c
+          if (esc) esc = 0
+          else if (c == "\\") esc = 1
+          else if (c == "\"") in_str = 0
+          i++; continue
+        }
+        if (c == "\"") { in_str = 1; out = out c; i++; continue }
+        if (c == "/" && substr($0, i + 1, 1) == "/") break
+        out = out c; i++
+      }
+      print out
+    }
+  '
+}
+
+# Print one top-level string field from a JSON object on stdin, or nothing.
+_opencode_json_field() { # <field>
+  local field=$1 out
+  out=$(jq -r --arg f "$field" 'if type == "object" then (.[$f] // empty) else empty end' 2>/dev/null) || return 0
+  [ -n "$out" ] && printf '%s' "$out"
+}
+
+# Print the effective value of a top-level opencode config field (model,
+# small_model) - the config the launched process will use. OPENCODE_CONFIG_CONTENT
+# (inline config, the highest-precedence source) wins, then the user global
+# opencode.jsonc and opencode.json, which opencode merges with jsonc over json.
+# Prints nothing when no source sets the field, the field is not a string, or jq
+# is unavailable: this only decides which extra provider keys to load, so a miss
+# must never block a launch.
+opencode_effective_config_field() { # <field>
+  local field=$1 dir content file value
+  command -v jq >/dev/null 2>&1 || return 0
+  content=${OPENCODE_CONFIG_CONTENT:-}
+  if [ -n "$content" ]; then
+    value=$(printf '%s' "$content" | _opencode_json_field "$field")
+    [ -n "$value" ] && { printf '%s' "$value"; return 0; }
+  fi
+  dir="${XDG_CONFIG_HOME:-${HOME:-}/.config}/opencode"
+  for file in "$dir/opencode.jsonc" "$dir/opencode.json"; do
+    [ -f "$file" ] || continue
+    case "$file" in
+    *.jsonc) value=$(opencode_strip_jsonc <"$file" | _opencode_json_field "$field") ;;
+    *) value=$(_opencode_json_field "$field" <"$file") ;;
+    esac
+    [ -n "$value" ] && { printf '%s' "$value"; return 0; }
+  done
+  return 0
+}
+
+# Print the command prefix that launches an opencode worker with the keys for
+# every provider the launch can reach loaded by one with-keys call, ending in
+# "-- ", or nothing when no mapping applies or with-keys is not installed. The
+# requested model's provider is the primary: a table-mapped provider is kept even
+# when its key file is absent, so with-keys fails loudly and the preflight below
+# turns a missing credential into a provider-named refusal rather than a silent
+# fallback. The effective small_model and default model providers are secondary:
+# their key files are loaded when present, so opencode's background calls do not
+# die on an invalid key, and a missing one is dropped with a single warning line
+# because those optional calls must not refuse the whole launch. An unmapped
+# provider is loaded only when its own ~/.env.<provider> file exists, so a
+# provider authenticated by opencode's own store is left to that store.
 opencode_key_wrap_for_model() { # <model>
-  local model=$1 provider services wk
+  local model=$1 provider services wk field p s found existing
   provider=${model%%/*}
   [ "$provider" != "$model" ] || provider=''
-  services=$(opencode_provider_services "$provider")
-  [ -n "$services" ] || return 0
+  local -a want=()
+  for s in $(opencode_provider_services "$provider"); do
+    want+=("$s")
+  done
+  for field in small_model model; do
+    p=$(opencode_effective_config_field "$field")
+    case "$p" in */*) p=${p%%/*} ;; *) continue ;; esac
+    [ "$p" = "$provider" ] && continue
+    for s in $(opencode_provider_services "$p"); do
+      found=0
+      for existing in ${want[@]+"${want[@]}"}; do
+        [ "$existing" = "$s" ] && { found=1; break; }
+      done
+      [ "$found" = 1 ] && continue
+      if [ -f "${HOME:-}/.env.$s" ]; then
+        want+=("$s")
+      else
+        printf 'warning: opencode %s provider %s needs ~/.env.%s, which is missing; launching without that key\n' "$field" "$p" "$s" >&2
+      fi
+    done
+  done
+  [ ${#want[@]} -gt 0 ] || return 0
   wk=$(resolve_with_keys_binary) || return 0
+  services=
+  for s in "${want[@]}"; do
+    services=${services:+$services }$s
+  done
   printf '%s %s -- ' "$(shell_quote "$wk")" "$services"
 }
 

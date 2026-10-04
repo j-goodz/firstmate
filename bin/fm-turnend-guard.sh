@@ -11,8 +11,8 @@
 # This script is push-based: verified harness turn-end hooks invoke it every time
 # the primary is about to end a turn.
 # Claude and codex can block directly by preserving exit status 2 and stderr.
-# OpenCode and pi adapters use the same predicate and force one bounded
-# follow-up because their turn-end events are passive. Grok delegates native
+# OpenCode and pi adapters use the same predicate and force bounded follow-ups
+# because their turn-end events are passive. Grok delegates native
 # blocking when its running Stop payload advertises that capability, with one
 # bounded resume fallback for payloads from pre-native processes. Cursor calls
 # this guard back with --cursor from bin/fm-turnend-guard-cursor.sh and renders
