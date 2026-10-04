@@ -371,10 +371,10 @@ fm_node_typescript_available() {
 fm_require_node_typescript() {  # <what>
   fm_node_typescript_available && return 0
   if command -v node >/dev/null 2>&1; then
-    printf 'skip: node %s lacks TypeScript type-stripping support for %s (install node 24 or tsx)\n' \
+    printf 'skip: Pi extension typecheck prerequisite not found: node %s lacks TypeScript type-stripping support for %s (install node 24 or tsx)\n' \
       "$(node --version 2>/dev/null)" "$1"
   else
-    printf 'skip: node not found for %s\n' "$1"
+    printf 'skip: Pi extension typecheck prerequisite not found: node not found for %s\n' "$1"
   fi
   return 1
 }

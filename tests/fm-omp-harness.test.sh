@@ -47,10 +47,6 @@ HARNESS="$ROOT/bin/fm-harness.sh"
 TMP_ROOT=$(fm_test_tmproot fm-omp-harness)
 export NODE_NO_WARNINGS=1
 
-# The extension cases below load tracked .ts over node; skip the whole suite when
-# node cannot type-strip rather than reporting a host gap as a product failure.
-fm_require_node_typescript "the omp extension checks" || exit 0
-
 # A process whose kernel-recorded identity is the bare name `omp`: a SYMLINK to
 # the system shell, never a copy (a copied platform binary fails macOS code
 # signing). macOS reports the symlink name through `ps -o comm=`, which is the
@@ -309,6 +305,7 @@ EOF
 
 test_busy_extension_lifecycle() {
   local rec id=omp-busy-q5 out state ext
+  fm_require_node_typescript "the omp busy extension lifecycle" || return 0
   rec=$(make_spawn_case busy omp "$id")
   read_case_record "$rec"
   out=$(run_scout_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --harness omp)
@@ -459,6 +456,7 @@ install_omp_extension_fixture() {  # <repo>
 
 test_turnend_guard_extension_compels_one_continuation() {
   local repo home out status
+  fm_require_node_typescript "the omp turn-end guard extension" || return 0
   repo="$TMP_ROOT/guard/repo"; home="$TMP_ROOT/guard/home"
   install_omp_extension_fixture "$repo"
   mkdir -p "$home/state"
@@ -520,6 +518,7 @@ EOF
 
 test_watch_extension_arms_and_delivers() {
   local repo home out status
+  fm_require_node_typescript "the omp watch extension" || return 0
   repo="$TMP_ROOT/watch/repo"; home="$TMP_ROOT/watch/home"
   install_omp_extension_fixture "$repo"
   mkdir -p "$home/state"

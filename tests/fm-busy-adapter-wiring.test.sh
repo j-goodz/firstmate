@@ -184,7 +184,6 @@ oc_idle() {  # <sessionID>
 
 test_opencode_plugin_semantic_lifecycle() {
   local rec id=busy-oc-1 out state plugin
-  fm_require_node_typescript "the opencode busy plugin lifecycle case" || return 0
   rec=$(make_spawn_case oc-lifecycle opencode "$id")
   read_case_record "$rec"
   out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
