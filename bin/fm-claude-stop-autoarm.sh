@@ -48,9 +48,12 @@
 #     the harness delivers the collected stderr only on exit 2, so an owned
 #     terminal commit decides the exit. Markerless outcomes commit with the
 #     ledger write; the failure notice additionally requires its marker write.
-#     A refused generation exits 0 silently even after printing. A close that
-#     reports no actionable reason is benign when a live identity-matched
-#     watcher still has a fresh beacon.
+#     A superseded generation exits 0 silently even after printing. A close
+#     that reports no actionable reason is benign when a live identity-matched
+#     watcher still has a fresh beacon. An actionable close no open recovery
+#     episode can bind (a resurface the handling turn already acknowledged) is
+#     retried like a non-actionable one, so an owner never exits leaving its
+#     claim at "arming" with no watcher.
 #   - Failure handling: a typed failure is rechecked against the same live,
 #     fresh watcher predicate and retried a bounded number of times in this
 #     hook. Only an exhausted failure with no verified watcher emits one
@@ -182,24 +185,33 @@ fi
 MY_GEN=$FM_AUTOARM_MY_GEN
 [ -n "$MY_GEN" ] || exit 0
 
+# True when the watcher recovery marker names an open downtime episode that a
+# rewake can bind to, with its generation in REWAKE_RECOVERY.
+rewake_episode_open() {
+  REWAKE_RECOVERY=
+  fm_recovery_marker_snapshot "$STATE/.watcher-down" || return 1
+  case "$FM_RECOVERY_MARKER_TOKEN" in
+    pending:downtime:*|announced:downtime:*) REWAKE_RECOVERY=${FM_RECOVERY_MARKER_TOKEN##*:} ;;
+    *) return 1 ;;
+  esac
+}
+
 # Commit <outcome> (optionally with the once-per-episode notice marker) for
 # this generation. Success means this generation's translation WINS and the
 # caller exits 2 unconditionally. Markerless outcomes commit with the owned
 # ledger write; a notice wins only when its following marker write succeeds in
-# the same hold. Failure means refused or unverifiable: the caller goes silent
-# (cleanup, exit 0) - the harness discards the collected stderr on exit 0, so
-# even an already-printed banner is never delivered by a losing generation.
+# the same hold. Failure means refused or unverifiable: a superseded caller
+# goes silent (cleanup, exit 0) - the harness discards the collected stderr on
+# exit 0, so even an already-printed banner is never delivered by a losing
+# generation - while a still-owning rewake caller falls through to the failure
+# path rather than strand its claim at "arming".
 autoarm_commit() {  # <outcome> [marker-file]
-  local outcome=$1 marker=${2:-} session_pid recovery
+  local outcome=$1 marker=${2:-} session_pid
   if [ "$outcome" = rewake ]; then
     fm_session_lock_owned_by_self "$STATE" || return 2
     session_pid=$(sed -n '1p' "$STATE/.lock" 2>/dev/null || true)
-    fm_recovery_marker_snapshot "$STATE/.watcher-down" || return 2
-    case "$FM_RECOVERY_MARKER_TOKEN" in
-      pending:downtime:*|announced:downtime:*) recovery=${FM_RECOVERY_MARKER_TOKEN##*:} ;;
-      *) return 2 ;;
-    esac
-    fm_autoarm_write_owned "$STATE" "$MY_GEN" "$outcome" "$marker" "$session_pid" "$recovery"
+    rewake_episode_open || return 2
+    fm_autoarm_write_owned "$STATE" "$MY_GEN" "$outcome" "$marker" "$session_pid" "$REWAKE_RECOVERY"
   elif [ -n "$marker" ]; then
     fm_autoarm_write_owned "$STATE" "$MY_GEN" "$outcome" "$marker"
   else
@@ -288,7 +300,17 @@ while [ "$attempt" -lt "$AUTOARM_ATTEMPTS" ]; do
   if [ -n "$OUT" ]; then
     grep -Eq '^(signal:|stale:|check:|heartbeat($|:))' "$OUT" 2>/dev/null && ACTIONABLE=1
   fi
-  [ "$ACTIONABLE" -eq 1 ] && break
+  # A rearm-resurface close leaves the recovery marker as the watcher found it.
+  # When the handling turn already drained or acknowledged that episode, no
+  # rewake can bind to it, so keep arming like any other non-actionable close:
+  # the next watcher's own recovery check decides whether anything is left to
+  # present. Going silent here instead leaves this claim at "arming" with no
+  # watcher, and the Stop that ended the handling turn has already deferred to
+  # it (the 2026-10-03 unsupervised idle home).
+  if [ "$ACTIONABLE" -eq 1 ]; then
+    rewake_episode_open && break
+    ACTIONABLE=0
+  fi
 
   # A non-actionable close is benign when another verified watcher already owns
   # this home and is still beating within the shared grace window.
@@ -354,8 +376,16 @@ if [ "$ACTIONABLE" -eq 1 ]; then
     [ -z "$OUT" ] || rm -f "$OUT" 2>/dev/null || true
     exit 2
   fi
-  [ -z "$OUT" ] || rm -f "$OUT" 2>/dev/null || true
-  exit 0
+  # Only a superseded generation or a session that lost the home may go
+  # silent. A refusal this generation still owns (the episode moved since the
+  # check above, or the ledger write failed) falls through to the failure
+  # path, because a silent exit would strand the claim at "arming".
+  if ! fm_autoarm_still_owner "$STATE" "$MY_GEN" \
+    || ! fm_session_lock_owned_by_self "$STATE"; then
+    [ -z "$OUT" ] || rm -f "$OUT" 2>/dev/null || true
+    exit 0
+  fi
+  ACTIONABLE=0
 fi
 
 # Notify only once for this continuous failure episode; every later invocation
