@@ -164,10 +164,146 @@ test_local_secondmate_opencode_launch_uses_the_key_loader() {
   pass "a local opencode second mate launches through the key loader"
 }
 
+# Write <home>/user-home/.config/opencode/opencode.json (the config the launched
+# process resolves) and seed the named provider key files as empty placeholders.
+write_opencode_json() { # <home> <json>
+  mkdir -p "$1/user-home/.config/opencode"
+  printf '%s\n' "$2" > "$1/user-home/.config/opencode/opencode.json"
+}
+seed_key_file() { # <home> <service>
+  : > "$1/user-home/.env.$2"
+}
+
+test_small_model_provider_key_is_loaded_alongside_requested() {
+  local rec id out status launch
+  id=oc-secondary-small-z5
+  rec=$(make_case "$id")
+  read_case_record "$rec"
+  write_opencode_json "$HOME_DIR" '{"model":"freellm/auto","small_model":"freellm/auto"}'
+  seed_key_file "$HOME_DIR" opencode
+  seed_key_file "$HOME_DIR" freellmapi
+
+  out=$(FM_FAKE_OPENCODE_PROVIDER_OK=1 \
+    run_case "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --model deepseek/deepseek-flash --mode no-mistakes --yolo off 2>&1)
+  status=$?
+  expect_code 0 "$status" "an opencode spawn with a secondary small_model provider should succeed: $out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "with-keys' opencode freellmapi -- opencode --model 'deepseek/deepseek-flash'" \
+    "the launch must load the requested provider and the small_model provider in one with-keys call"
+  pass "an opencode spawn loads the small_model provider's key file too"
+}
+
+test_small_model_provider_equal_to_requested_is_not_duplicated() {
+  local rec id out status launch
+  id=oc-secondary-dup-z6
+  rec=$(make_case "$id")
+  read_case_record "$rec"
+  write_opencode_json "$HOME_DIR" '{"small_model":"deepseek/deepseek-chat"}'
+  seed_key_file "$HOME_DIR" opencode
+
+  out=$(FM_FAKE_OPENCODE_PROVIDER_OK=1 \
+    run_case "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --model deepseek/deepseek-flash --mode no-mistakes --yolo off 2>&1)
+  status=$?
+  expect_code 0 "$status" "an opencode spawn whose small_model shares the requested provider should succeed: $out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "with-keys' opencode -- opencode --model 'deepseek/deepseek-flash'" \
+    "a small_model on the requested provider must not add a duplicate service"
+  assert_not_contains "$launch" "with-keys' opencode opencode" \
+    "the requested provider's service must appear only once"
+  pass "an opencode spawn does not duplicate the requested provider's service"
+}
+
+test_missing_secondary_key_warns_and_still_launches() {
+  local rec id out status launch
+  id=oc-secondary-missing-z7
+  rec=$(make_case "$id")
+  read_case_record "$rec"
+  write_opencode_json "$HOME_DIR" '{"small_model":"freellm/auto"}'
+  seed_key_file "$HOME_DIR" opencode
+
+  out=$(FM_FAKE_OPENCODE_PROVIDER_OK=1 \
+    run_case "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --model deepseek/deepseek-flash --mode no-mistakes --yolo off 2>&1)
+  status=$?
+  expect_code 0 "$status" "a missing secondary key must not refuse the launch: $out"
+  assert_contains "$out" "warning:" "a missing secondary key must warn"
+  assert_contains "$out" "freellmapi" "the warning must name the missing service"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "with-keys' opencode -- opencode --model 'deepseek/deepseek-flash'" \
+    "the launch must still run with the requested provider's key"
+  assert_not_contains "$launch" "freellmapi" \
+    "a service whose key file is missing must be dropped from the wrap"
+  pass "a missing secondary key warns and launches without it"
+}
+
+test_missing_primary_key_still_refuses() {
+  local rec id out status
+  id=oc-primary-missing-z8
+  rec=$(make_case "$id")
+  read_case_record "$rec"
+  # A real with-keys refuses when any named ~/.env.<service> is absent; the shared
+  # fixture stub skips service names, so install the faithful one for this case.
+  cat > "$FAKEBIN_DIR/with-keys" <<'SH'
+#!/usr/bin/env bash
+set -u
+services=()
+while [ "${1:-}" != "--" ] && [ "$#" -gt 0 ]; do services+=("$1"); shift; done
+[ "${1:-}" = "--" ] || { echo "with-keys: missing -- before the command" >&2; exit 2; }
+shift
+for s in ${services[@]+"${services[@]}"}; do
+  [ -f "$HOME/.env.$s" ] || { echo "with-keys: no $HOME/.env.$s" >&2; exit 2; }
+done
+exec "$@"
+SH
+  chmod +x "$FAKEBIN_DIR/with-keys"
+  # deepseek's key file (~/.env.opencode) is absent, so the requested provider
+  # cannot be authenticated even though the probe stub would answer.
+  out=$(FM_FAKE_OPENCODE_PROVIDER_OK=1 \
+    run_case "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --model deepseek/deepseek-flash --mode no-mistakes --yolo off 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a missing primary key must still refuse the launch"
+  assert_contains "$out" "provider 'deepseek' is not available" \
+    "the refusal must name the requested provider"
+  assert_contains "$out" "with-keys: no " "the refusal must surface the missing key file"
+  [ -s "$LAUNCH_LOG" ] && fail "a refused spawn must not deliver a launch command"
+  pass "a missing primary key still refuses the launch"
+}
+
+test_opencode_config_content_small_model_wins_over_file() {
+  local rec id out status launch
+  id=oc-content-precedence-z9
+  rec=$(make_case "$id")
+  read_case_record "$rec"
+  # The file points small_model at the requested provider (no extra service); the
+  # inline config points it at the free chain, whose service must therefore load.
+  write_opencode_json "$HOME_DIR" '{"small_model":"deepseek/deepseek-chat"}'
+  seed_key_file "$HOME_DIR" opencode
+  seed_key_file "$HOME_DIR" freellmapi
+
+  out=$(OPENCODE_CONFIG_CONTENT='{"permission":{"*":"allow"},"small_model":"freellm/auto"}' \
+    FM_FAKE_OPENCODE_PROVIDER_OK=1 \
+    run_case "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
+    "$id" "$PROJ_DIR" --model deepseek/deepseek-flash --mode no-mistakes --yolo off 2>&1)
+  status=$?
+  expect_code 0 "$status" "an opencode spawn with inline config should succeed: $out"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "with-keys' opencode freellmapi -- opencode --model 'deepseek/deepseek-flash'" \
+    "OPENCODE_CONFIG_CONTENT's small_model must win over the file's"
+  pass "OPENCODE_CONFIG_CONTENT's small_model wins over the file"
+}
+
 test_unavailable_provider_refuses_before_launch
 test_available_provider_launches_under_the_key_loader
 test_providerless_opencode_launch_still_loads_a_base_service
 test_local_secondmate_opencode_launch_uses_the_key_loader
+test_small_model_provider_key_is_loaded_alongside_requested
+test_small_model_provider_equal_to_requested_is_not_duplicated
+test_missing_secondary_key_warns_and_still_launches
+test_missing_primary_key_still_refuses
+test_opencode_config_content_small_model_wins_over_file
 
 # --- remote second-mate path ------------------------------------------------
 
@@ -284,8 +420,13 @@ remote_env "$ROOT/bin/fm-spawn.sh" ios --secondmate >/dev/null 2>&1 \
   || fail "the remote opencode second-mate launch failed"
 
 LAUNCH=$(remote_launch_command) || fail "the remote pane received no launch command"
-assert_contains "$LAUNCH" "with-keys' opencode -- opencode --model 'deepseek/deepseek-flash'" \
-  "the remote second-mate launch must run under the key loader with the provider's service file"
+# The remote launch composes on the remote host and reads that account's own
+# opencode config, so its secondary service list is host-dependent; assert the
+# loader wraps the requested provider and keeps the requested model.
+assert_contains "$LAUNCH" "with-keys' opencode" \
+  "the remote second-mate launch must run under the key loader with the requested provider's service file"
+assert_contains "$LAUNCH" "-- opencode --model 'deepseek/deepseek-flash'" \
+  "the remote second-mate launch must keep the requested model"
 pass "a remote opencode second mate launches through the key loader on the remote host"
 
 echo "# all fm-spawn-opencode-provider tests passed"
