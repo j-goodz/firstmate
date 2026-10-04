@@ -239,6 +239,19 @@ publish_parent_hold() {  # <task-id> <occurrence> <verb> <note>
   esac
 }
 
+# Every successful mutation rebuilds the captain's open-calls page, when this
+# home has one, so an answered call leaves it whichever channel answered.
+# bin/fm-calls-page.sh owns the page. Best effort: the mutation is already
+# durable, so a failed rebuild is one stderr line, never a failed command.
+calls_page_rerender() {
+  local err
+  [ "${FM_CALLS_PAGE_RERENDER:-1}" != 0 ] || return 0
+  err=$("$SCRIPT_DIR/fm-calls-page.sh" render --if-present 2>&1 >/dev/null) && return 0
+  printf 'fm-captain-hold: the calls page was not rebuilt (the change itself is recorded): %s\n' \
+    "$(printf '%s' "$err" | tail -1)" >&2
+  return 0
+}
+
 CAPTAIN_META_LOCK=
 CAPTAIN_META_LOCK_HELD=0
 CAPTAIN_CONTROL_LOCK=
@@ -1330,7 +1343,7 @@ command_answers() {
       continue
     fi
     # shellcheck disable=SC2086  # release_flag is empty or a single literal flag.
-    if "$0" answer "$id" --decision-file "$tmp" $release_flag </dev/null >/dev/null 2>"$err"; then
+    if FM_CALLS_PAGE_RERENDER=0 "$0" answer "$id" --decision-file "$tmp" $release_flag </dev/null >/dev/null 2>"$err"; then
       # A parent-channel delivery problem is reported on stderr by the answer
       # path even when the close succeeded; keep it visible.
       [ ! -s "$err" ] || cat "$err" >&2
@@ -1344,6 +1357,7 @@ command_answers() {
   done
   rm -f -- "$tmp" "$err"
   printf 'answers: closed=%s skipped=%s\n' "$closed" "$skipped"
+  [ "$closed" -eq 0 ] || calls_page_rerender
   [ "$skipped" -eq 0 ]
 }
 
@@ -1924,8 +1938,8 @@ command_open() {  # <task-id> [--identity] [--distinguish-absent]
 }
 
 case "${1:-}" in
-  hold) shift; command_hold "$@" ;;
-  answer) shift; command_answer "$@" ;;
+  hold) shift; command_hold "$@"; calls_page_rerender ;;
+  answer) shift; command_answer "$@"; calls_page_rerender ;;
   answers) shift; command_answers "$@" ;;
   reconcile-requests) shift; command_reconcile_requests "$@" ;;
   bind) shift; command_bind "$@" ;;
@@ -1935,7 +1949,11 @@ case "${1:-}" in
   verify) shift; command_verify "$@" ;;
   open) shift; command_open "$@" ;;
   diverged) shift; command_diverged "$@" ;;
-  reconcile) shift; command_reconcile "$@" ;;
+  reconcile)
+    shift
+    command_reconcile "$@"
+    [ "${1:-}" = list ] || calls_page_rerender
+    ;;
   -h|--help) usage ;;
   *) usage >&2; exit 2 ;;
 esac

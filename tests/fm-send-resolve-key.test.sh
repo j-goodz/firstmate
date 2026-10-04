@@ -430,6 +430,43 @@ test_local_secondmate_answer_marked_and_closed() {
   pass "fm-send --resolve-key: a marked local-secondmate answer closes with the plain answer text"
 }
 
+# A second mate's captain call answered in chat leaves the open-calls page at
+# answer time: closing its captain-hold-<task>-<n> key rebuilds the page.
+test_secondmate_captain_call_answer_rebuilds_calls_page() {
+  local dir fb log home mate rc page
+  if ! command -v tasks-axi >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then
+    pass "fm-send --resolve-key: calls page rebuild (skipped: tasks-axi or python3 missing)"
+    return 0
+  fi
+  dir="$TMP_ROOT/calls-page"; mkdir -p "$dir"
+  fb=$(make_stubs "$dir"); log="$dir/send.log"
+  home=$(setup_home calls-page)
+  mate="$dir/mate-home"
+  mkdir -p "$home/data" "$mate/data" "$mate/state"
+  cp "$ROOT/.tasks.toml" "$mate/.tasks.toml"
+  cat > "$mate/data/backlog.md" <<'EOF2'
+## In flight
+## Queued
+- [ ] r9 - Pick the calendar layout (repo: buzz) (kind: captain) (since 2026-10-02) (hold: Which calendar layout) (hold-kind: captain)
+  Captain hold set: 2026-10-02T10:00:00Z
+## Done
+EOF2
+  printf -- '- domain - Domain work. (home: %s; scope: domain work; projects: buzz; added 2026-09-26)\n' "$mate" \
+    > "$home/data/secondmates.md"
+  fm_write_secondmate_meta "$home/state/domain.meta" "$mate" "sess:fm-domain"
+  printf 'needs-decision [key=captain-hold-r9-1]: captain hold r9: Which calendar layout\n' > "$home/state/domain.status"
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$home" "$ROOT/bin/fm-calls-page.sh" render >/dev/null 2>&1
+  page="$home/data/open-calls/calls.html"
+  grep -qF 'data-call="r9"' "$page" || fail "precondition: the second mate's open call should render"
+
+  run_send "$fb" "$home" "$log" fm-domain --resolve-key captain-hold-r9-1 "the week view"; rc=$?
+  expect_code 0 "$rc" "answering a second mate's captain call should succeed"
+  if grep -qF 'data-call="r9"' "$page"; then
+    fail "the answered second-mate call is still on the calls page"
+  fi
+  pass "fm-send --resolve-key: answering a second mate's captain call rebuilds the calls page without it"
+}
+
 # Remote secondmate: the answer crosses the (stubbed) ssh transport through the
 # real fm-on.sh + registry route, while the close is the SAME local ledger
 # append as every other target kind - the transport is the only difference.
@@ -860,6 +897,7 @@ test_failed_enqueue_does_not_close
 test_multiple_keys_close_together
 test_multiple_keys_close_after_fold_is_self_announced
 test_local_secondmate_answer_marked_and_closed
+test_secondmate_captain_call_answer_rebuilds_calls_page
 test_remote_secondmate_answer_closes_locally
 test_remote_reply_corr_tag_does_not_block_resolve_key
 test_remote_transport_failure_does_not_close
