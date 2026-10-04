@@ -1,0 +1,6 @@
+Live Claude Code E2E attempt for fm-claude-stop-autoarm resurface path
+command: FM_CLAUDE_LIVE_E2E style real claude -p run (isolated FM_HOME + fixture arm)
+result: BLOCKED - credential unavailable
+"error":"authentication_failed","session_id":"20fa83e7-1200-4efb-8278-d46299130d90","uuid":"3c06d089-8fec-4685-8b6a-22ee72dac99c"
+Failed to authenticate. API Error: 401 OAuth access token has expired. Re-authenticate to continue.
+claude --version: 2.1.285 (Claude Code)
