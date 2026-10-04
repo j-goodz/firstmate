@@ -5,24 +5,29 @@
 # Usage:
 #   fm-dispatch-resolve.sh <brief-file> [--project <name>]
 #
-# Opt-in gate: TYPESAFE_API_KEY non-empty in this process environment, else a
-#   TYPESAFE_API_KEY= line in $FM_HOME/.env read with fmx_env_get, the same
-#   accessor as FMX_PAIRING_TOKEN (bin/fm-env-lib.sh); that direct typesafe.ai
-#   path wins when present. Otherwise AI_GATEWAY_API_KEY, resolved from the
-#   environment, then $FM_HOME/.env, then ~/.env.vercel-ai-gateway (the
-#   host-rendered file; only that one key is read), routes the identical rule
-#   Choice question through Jev on Vercel's AI Gateway instead. The
-#   environment wins over .env for each key independently. Absent in both:
-#   one "dispatch-resolve: off" line on stderr, nothing on stdout, exit 0, no
-#   network call, so firstmate dispatches exactly as today. Whichever key is
+# Opt-in gate: the provider chain is the providers whose key resolves, in order
+#   typesafe, openrouter. TYPESAFE_API_KEY resolves from this process
+#   environment, else a TYPESAFE_API_KEY= line in $FM_HOME/.env read with
+#   fmx_env_get, the same accessor as FMX_PAIRING_TOKEN (bin/fm-env-lib.sh).
+#   OPENROUTER_API_KEY resolves from the environment, then $FM_HOME/.env, then
+#   ~/.env.openrouter through fmx_openrouter_key, with OPENROUTER_KEY as the
+#   fallback key name in the same order. AI_GATEWAY_API_KEY joins the chain
+#   only when neither of those resolves, from the environment, $FM_HOME/.env,
+#   then ~/.env.vercel-ai-gateway (the host-rendered file; only that one key is
+#   read). The environment wins over .env for each key independently. Absent in
+#   all: one "dispatch-resolve: off" line on stderr, nothing on stdout, exit 0,
+#   no network call, so firstmate dispatches exactly as today. Whichever key is
 #   used lives in one shell variable and reaches curl as a header read from a
 #   file descriptor, never on argv; nothing logs or writes it.
 #
-# What it does when on with at least one rule: one POST, either to
-#   https://api.typesafe.ai/v1/systemone (TYPESAFE_API_KEY) or to
-#   https://ai-gateway.vercel.sh/v4/ai/evaluation-model (AI_GATEWAY_API_KEY,
-#   model selected by the `ai-model-id: typesafe-ai/jev` header rather than a
-#   body field), with the project name and the whole brief as state and ONE
+# What it does when on with at least one rule: one POST per provider in chain
+#   order, stopping at the first valid answer. typesafe posts to
+#   https://api.typesafe.ai/v1/systemone with model jev-latest; openrouter
+#   posts the same body plus `"model": "typesafe/jev-1.13"` to
+#   https://openrouter.ai/api/v1/systemone; vercel posts to
+#   https://ai-gateway.vercel.sh/v4/ai/evaluation-model with the model selected
+#   by the `ai-model-id: typesafe-ai/jev` header rather than a body field. Each
+#   carries the project name and the whole brief as state and ONE
 #   Choice question whose options are every rule's `when` from
 #   config/crew-dispatch.json plus one fixed generic none option. Jev returns
 #   the matched rule, a probability per option, and a confidence (on the
@@ -58,18 +63,31 @@
 #   actionable, never selected around.
 #
 # Environment:
-#   TYPESAFE_API_KEY and AI_GATEWAY_API_KEY are the only resolver-specific
-#   environment settings; TYPESAFE_API_KEY wins when both are set.
+#   TYPESAFE_API_KEY, OPENROUTER_API_KEY (fallback OPENROUTER_KEY), and
+#   AI_GATEWAY_API_KEY are the resolver-specific settings; typesafe and
+#   openrouter form the chain in that order and vercel is the last resort only
+#   when neither resolves.
 #
 # Spend ledger: every POST, answered or failed, appends one JSON row to
 #   ~/.nexus/api-calls.jsonl, the fleet spend ledger nexus spend_local reads
 #   (fields ts, seq, machine, pid, process, provider, model, key_label,
 #   tokens_in, tokens_out, cost_usd, latency_ms, ok, error). provider is
-#   typesafe or vercel-ai-gateway; model is the served model the response
-#   names, else the requested one; key_label is the env name, never the key.
-#   cost_usd is the gateway-reported providerMetadata.gateway.cost when present,
-#   else input tokens at JEV_USD_PER_M_IN, and 0 for a failed call. A failed
-#   ledger write is one stderr line and never changes the outcome.
+#   typesafe, openrouter, or vercel-ai-gateway; model is the served model the
+#   response names, else the requested one; key_label is the env name, never
+#   the key. cost_usd is the openrouter usage.cost when present, else the
+#   gateway-reported providerMetadata.gateway.cost, else input tokens at
+#   JEV_USD_PER_M_IN, and 0 for a failed call. A failed ledger write is one
+#   stderr line and never changes the outcome.
+#
+# Outage alert: when every provider in the chain fails on one run the resolver
+#   still prints status error, appends one {ts, machine, event:"down",
+#   attempts:[...]} row to ~/.nexus/dispatch-resolve-alerts.jsonl, pipes one
+#   line to brain-reply when it is on PATH, and creates
+#   $FM_HOME/state/.dispatch-resolve-outage. While that marker exists a later
+#   all-fail run sends no alert; the first success after it removes the marker,
+#   appends {event:"recovered"}, and pipes one recovery line. An alert failure
+#   is one stderr line and never changes the resolver's stdout or exit code.
+#   There is no polling, timer, or recurring check of any kind.
 #
 # Authority: this tool never replaces firstmate's judgment, quota-array-dispatch,
 #   the captain-approval gate, or fm-spawn.sh validation; it publishes one
@@ -83,6 +101,14 @@ unset TYPESAFE_API_KEY
 AI_GATEWAY_API_KEY_PRIVATE=${AI_GATEWAY_API_KEY:-}
 export -n AI_GATEWAY_API_KEY_PRIVATE 2>/dev/null || true
 unset AI_GATEWAY_API_KEY
+
+OPENROUTER_API_KEY_PRIVATE=${OPENROUTER_API_KEY:-}
+export -n OPENROUTER_API_KEY_PRIVATE 2>/dev/null || true
+unset OPENROUTER_API_KEY
+
+OPENROUTER_KEY_PRIVATE=${OPENROUTER_KEY:-}
+export -n OPENROUTER_KEY_PRIVATE 2>/dev/null || true
+unset OPENROUTER_KEY
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
@@ -102,6 +128,9 @@ CONFIDENCE_FLOOR=0.6
 TS_MODEL=jev-latest
 TS_BASE=https://api.typesafe.ai
 TS_TIMEOUT=5
+OR_BASE=https://openrouter.ai/api
+OR_MODEL=typesafe/jev-1.13
+OR_TIMEOUT=5
 GW_BASE=https://ai-gateway.vercel.sh
 GW_MODEL_ID=typesafe-ai/jev
 GW_TIMEOUT=5
@@ -135,16 +164,33 @@ done
 if [ -z "$TYPESAFE_API_KEY_PRIVATE" ]; then
   TYPESAFE_API_KEY_PRIVATE=$(fmx_env_get TYPESAFE_API_KEY "$FM_HOME/.env")
 fi
+OPENROUTER_PRIVATE='' OPENROUTER_LABEL=''
+if [ -n "$OPENROUTER_API_KEY_PRIVATE" ]; then
+  OPENROUTER_PRIVATE=$OPENROUTER_API_KEY_PRIVATE OPENROUTER_LABEL=OPENROUTER_API_KEY
+elif [ -n "$OPENROUTER_KEY_PRIVATE" ]; then
+  OPENROUTER_PRIVATE=$OPENROUTER_KEY_PRIVATE OPENROUTER_LABEL=OPENROUTER_KEY
+elif [ -n "$(fmx_env_get OPENROUTER_API_KEY "$FM_HOME/.env")" ] \
+  || { [ -n "${HOME:-}" ] && [ -n "$(fmx_env_get OPENROUTER_API_KEY "$HOME/.env.openrouter")" ]; }; then
+  OPENROUTER_PRIVATE=$(fmx_openrouter_key "$FM_HOME/.env") OPENROUTER_LABEL=OPENROUTER_API_KEY
+elif [ -n "$(fmx_env_get OPENROUTER_KEY "$FM_HOME/.env")" ] \
+  || { [ -n "${HOME:-}" ] && [ -n "$(fmx_env_get OPENROUTER_KEY "$HOME/.env.openrouter")" ]; }; then
+  OPENROUTER_PRIVATE=$(fmx_openrouter_key "$FM_HOME/.env") OPENROUTER_LABEL=OPENROUTER_KEY
+fi
 if [ -z "$AI_GATEWAY_API_KEY_PRIVATE" ]; then
   AI_GATEWAY_API_KEY_PRIVATE=$(fmx_ai_gateway_key "$FM_HOME/.env")
 fi
-RESOLVER_PROVIDER=''
+PROVIDER_CHAIN=()
 if [ -n "$TYPESAFE_API_KEY_PRIVATE" ]; then
-  RESOLVER_PROVIDER=typesafe
-elif [ -n "$AI_GATEWAY_API_KEY_PRIVATE" ]; then
-  RESOLVER_PROVIDER=vercel
-else
-  echo "dispatch-resolve: off (TYPESAFE_API_KEY and AI_GATEWAY_API_KEY absent from the environment, $FM_HOME/.env, and ~/.env.vercel-ai-gateway)" >&2
+  PROVIDER_CHAIN+=(typesafe)
+fi
+if [ -n "$OPENROUTER_PRIVATE" ]; then
+  PROVIDER_CHAIN+=(openrouter)
+fi
+if [ ${#PROVIDER_CHAIN[@]} -eq 0 ] && [ -n "$AI_GATEWAY_API_KEY_PRIVATE" ]; then
+  PROVIDER_CHAIN+=(vercel)
+fi
+if [ ${#PROVIDER_CHAIN[@]} -eq 0 ]; then
+  echo "dispatch-resolve: off (TYPESAFE_API_KEY, OPENROUTER_API_KEY, and AI_GATEWAY_API_KEY absent from the environment, $FM_HOME/.env, ~/.env.openrouter, and ~/.env.vercel-ai-gateway)" >&2
   exit 0
 fi
 
@@ -246,15 +292,11 @@ done < <(jq -r '
 
 RULE_COUNT=$(jq -r '(.rules // []) | length' "$RULES")
 
-# spend_ledger_row <http-code> <latency-ms>: one spend-ledger row for the POST
-# just made, built from the raw response in $RESP_FILE (header: Spend ledger).
+# spend_ledger_row <http-code> <latency-ms> <provider> <default-model> <key-label>:
+# one spend-ledger row for the POST just made, built from the raw response in
+# $RESP_FILE (header: Spend ledger).
 spend_ledger_row() {
-  local http=$1 lat=$2 ledger="$HOME/.nexus/api-calls.jsonl" provider model key seq row
-  if [ "$RESOLVER_PROVIDER" = typesafe ]; then
-    provider=typesafe model=$TS_MODEL key=TYPESAFE_API_KEY
-  else
-    provider=vercel-ai-gateway model=$GW_MODEL_ID key=AI_GATEWAY_API_KEY
-  fi
+  local http=$1 lat=$2 provider=$3 model=$4 key=$5 ledger="$HOME/.nexus/api-calls.jsonl" seq row
   seq=$(jq -s 'map(.seq? | numbers) | max // 0' "$ledger" 2>/dev/null) || seq=0
   [ -n "$seq" ] || seq=0
   row=$( { jq -c . "$RESP_FILE" 2>/dev/null || printf '{}'; } | jq -c \
@@ -272,7 +314,11 @@ spend_ledger_row() {
      provider: $provider,
      model: (if $ok and ($r.model | type) == "string" then $r.model else $model end),
      key_label: $key, tokens_in: $in, tokens_out: $out,
-     cost_usd: (if $ok then ((($r.providerMetadata.gateway.cost // null) | tonumber?) // ($in * $rate / 1000000)) else 0 end),
+     cost_usd: (if $ok then
+       ((if $provider == "openrouter" then ($r.usage.cost // null) else null end) | tonumber?)
+       // (($r.providerMetadata.gateway.cost // null) | tonumber?)
+       // ($in * $rate / 1000000)
+     else 0 end),
      latency_ms: $lat, ok: $ok, error: (if $ok then "" else "http " + $http end)}' 2>/dev/null) || row=''
   if [ -z "$row" ] || ! { mkdir -p "${ledger%/*}" && printf '%s\n' "$row" >> "$ledger"; } 2>/dev/null; then
     echo "dispatch-resolve: spend ledger row not written to $ledger" >&2
@@ -285,6 +331,77 @@ emit_error() {
   echo "dispatch-resolve: error ($reason)" >&2
   printf 'dispatch-resolve:\n  status: error\n  reason: %s\n' "$reason"
   exit 0
+}
+
+# response_valid <file>: the existing rule-Choice validation, factored out so
+# the chain can try the next provider on an HTTP 200 that fails it.
+response_valid() {
+  jq -e --slurpfile rules "$RULES" '
+    (($rules[0].rules | to_entries | map("rule_" + ((.key + 1) | tostring))) + ["default"] | sort) as $choices |
+    (.answers.rule.choice | type) == "string" and
+    (.answers.rule.confidence | type) == "number" and
+    .answers.rule.confidence >= 0 and .answers.rule.confidence <= 1 and
+    (.answers.rule.probabilities | type) == "object" and
+    ((.answers.rule.probabilities | keys | sort) == $choices) and
+    all(.answers.rule.probabilities[]; type == "number" and . >= 0 and . <= 1) and
+    ((.answers.rule.probabilities | [.[]] | add) as $total | $total >= 0.99 and $total <= 1.01) and
+    ((has("usage") | not) or
+      ((.usage | type) == "object" and
+       (.usage.input_tokens | type) == "number" and
+       (.usage.output_tokens | type) == "number"))' \
+    "$1" >/dev/null 2>&1
+}
+
+# ---- outage alert (header: Outage alert) ---------------------------------------
+OUTAGE_ALERTS="$HOME/.nexus/dispatch-resolve-alerts.jsonl"
+OUTAGE_MARKER="$FM_HOME/state/.dispatch-resolve-outage"
+
+alert_reply_line() {
+  command -v brain-reply >/dev/null 2>&1 || {
+    echo "dispatch-resolve: brain-reply not on PATH; alert not delivered" >&2
+    return 0
+  }
+  if ! printf '%s\n' "$1" | brain-reply >/dev/null 2>&1; then
+    echo "dispatch-resolve: brain-reply failed; alert not delivered" >&2
+  fi
+  return 0
+}
+
+append_alert_row() {
+  if ! { mkdir -p "${OUTAGE_ALERTS%/*}" && printf '%s\n' "$1" >> "$OUTAGE_ALERTS"; } 2>/dev/null; then
+    echo "dispatch-resolve: alert row not written to $OUTAGE_ALERTS" >&2
+  fi
+  return 0
+}
+
+record_outage() {
+  local attempts=$1 ts row line
+  [ -e "$OUTAGE_MARKER" ] && return 0
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  row=$(jq -nc --arg ts "$ts" --arg machine "${HOSTNAME:-}" --argjson attempts "$attempts" \
+    '{ts: $ts, machine: $machine, event: "down", attempts: $attempts}')
+  append_alert_row "$row"
+  line=$(jq -r --arg machine "${HOSTNAME:-}" '$machine as $m |
+    "Jev task routing is down on " + $m + ": "
+    + ([.[] | .provider + " http " + .http] | join(", "))
+    + ". Tasks still get assigned by the normal rules. Fix: top up or replace the provider key."' <<<"$attempts")
+  alert_reply_line "$line"
+  mkdir -p "$FM_HOME/state" 2>/dev/null || true
+  : > "$OUTAGE_MARKER" 2>/dev/null || echo "dispatch-resolve: outage marker not written to $OUTAGE_MARKER" >&2
+  return 0
+}
+
+recover_outage() {
+  local provider=$1 ts row line
+  [ -e "$OUTAGE_MARKER" ] || return 0
+  rm -f "$OUTAGE_MARKER" 2>/dev/null || true
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  row=$(jq -nc --arg ts "$ts" --arg machine "${HOSTNAME:-}" --arg provider "$provider" \
+    '{ts: $ts, machine: $machine, event: "recovered", provider: $provider}')
+  append_alert_row "$row"
+  line="Jev task routing recovered on ${HOSTNAME:-} via $provider."
+  alert_reply_line "$line"
+  return 0
 }
 
 if [ "$RULE_COUNT" -eq 0 ]; then
@@ -311,59 +428,88 @@ command -v curl >/dev/null 2>&1 || emit_error "curl not installed"
         }
       }
     }')
-  if [ "$RESOLVER_PROVIDER" = typesafe ]; then
-    REQUEST=$(jq --arg model "$TS_MODEL" '. + {model: $model}' <<<"$REQUEST")
+
+  # One attempt per provider, in chain order, stopping at the first valid answer.
+  ATTEMPTS='[]'
+  CLEAR_PROVIDER=''
+  LAST_ERROR=''
+  for provider in "${PROVIDER_CHAIN[@]}"; do
+    case "$provider" in
+      typesafe)
+        REQ_JSON=$(jq --arg model "$TS_MODEL" '. + {model: $model}' <<<"$REQUEST")
+        ENDPOINT="$TS_BASE/v1/systemone"; KEYVAL=$TYPESAFE_API_KEY_PRIVATE; KEYLABEL=TYPESAFE_API_KEY
+        LEDGER_PROVIDER=typesafe; LEDGER_MODEL=$TS_MODEL; PROVIDER_TIMEOUT=$TS_TIMEOUT ;;
+      openrouter)
+        REQ_JSON=$(jq --arg model "$OR_MODEL" '. + {model: $model}' <<<"$REQUEST")
+        ENDPOINT="$OR_BASE/v1/systemone"; KEYVAL=$OPENROUTER_PRIVATE; KEYLABEL=$OPENROUTER_LABEL
+        LEDGER_PROVIDER=openrouter; LEDGER_MODEL=$OR_MODEL; PROVIDER_TIMEOUT=$OR_TIMEOUT ;;
+      vercel)
+        REQ_JSON=$REQUEST
+        ENDPOINT="$GW_BASE/v4/ai/evaluation-model"; KEYVAL=$AI_GATEWAY_API_KEY_PRIVATE; KEYLABEL=AI_GATEWAY_API_KEY
+        LEDGER_PROVIDER=vercel-ai-gateway; LEDGER_MODEL=$GW_MODEL_ID; PROVIDER_TIMEOUT=$GW_TIMEOUT ;;
+    esac
+    T0=$(fm_timing_now_ms)
+    if [ "$provider" = vercel ]; then
+      HTTP=$(printf '%s' "$REQ_JSON" | curl -sS --max-time "$PROVIDER_TIMEOUT" -o "$RESP_FILE" -w '%{http_code}' \
+        -X POST "$ENDPOINT" \
+        -H 'Content-Type: application/json' \
+        -H 'ai-gateway-protocol-version: 0.0.1' \
+        -H 'ai-gateway-auth-method: api-key' \
+        -H 'ai-evaluation-model-specification-version: 4' \
+        -H "ai-model-id: $GW_MODEL_ID" \
+        -H @/dev/fd/3 3< <(printf 'Authorization: Bearer %s\n' "$KEYVAL") \
+        --data-binary @- 2>/dev/null) || HTTP=000
+    else
+      HTTP=$(printf '%s' "$REQ_JSON" | curl -sS --max-time "$PROVIDER_TIMEOUT" -o "$RESP_FILE" -w '%{http_code}' \
+        -X POST "$ENDPOINT" -H 'Content-Type: application/json' \
+        -H @/dev/fd/3 3< <(printf 'Authorization: Bearer %s\n' "$KEYVAL") \
+        --data-binary @- 2>/dev/null) || HTTP=000
+    fi
+    T1=$(fm_timing_now_ms)
+    LAT_MS=$(( T1 - T0 ))
+    spend_ledger_row "$HTTP" "$LAT_MS" "$LEDGER_PROVIDER" "$LEDGER_MODEL" "$KEYLABEL"
+    attempt_error=''
+    if [ "$HTTP" = 200 ]; then
+      if [ "$provider" = vercel ]; then
+        NORM_FILE=$(mktemp) || emit_error "mktemp failed"
+        if jq --arg model "$GW_MODEL_ID" '
+          {
+            model: $model,
+            answers: {
+              rule: ((.answers.rule // {}) + {confidence: (.providerMetadata.typesafe.confidence.rule // null)})
+            }
+          } + (if (.usage | type) == "object" then
+                 {usage: {input_tokens: (.usage.inputTokens // null), output_tokens: (.usage.outputTokens // null)}}
+               else {} end)
+        ' "$RESP_FILE" > "$NORM_FILE" 2>/dev/null; then
+          mv "$NORM_FILE" "$RESP_FILE"
+          NORM_FILE=''
+        else
+          rm -f "$NORM_FILE"
+          NORM_FILE=''
+          attempt_error='malformed gateway response'
+        fi
+      fi
+      if [ -z "$attempt_error" ]; then
+        if response_valid "$RESP_FILE"; then
+          CLEAR_PROVIDER=$provider
+          break
+        fi
+        attempt_error='response is not a rule Choice answer'
+      fi
+    else
+      attempt_error="http $HTTP after ${LAT_MS} ms: $(head -c 200 "$RESP_FILE" 2>/dev/null | tr '\n' ' ')"
+    fi
+    LAST_ERROR=$attempt_error
+    ATTEMPTS=$(jq -c --arg p "$provider" --arg h "$HTTP" \
+      --arg e "$(head -c 200 "$RESP_FILE" 2>/dev/null | tr '\n' ' ')" \
+      '. + [{provider: $p, http: $h, error_head: $e}]' <<<"$ATTEMPTS")
+  done
+  if [ -z "$CLEAR_PROVIDER" ]; then
+    record_outage "$ATTEMPTS"
+    emit_error "$LAST_ERROR"
   fi
-  T0=$(fm_timing_now_ms)
-  if [ "$RESOLVER_PROVIDER" = typesafe ]; then
-    HTTP=$(printf '%s' "$REQUEST" | curl -sS --max-time "$TS_TIMEOUT" -o "$RESP_FILE" -w '%{http_code}' \
-      -X POST "$TS_BASE/v1/systemone" -H 'Content-Type: application/json' \
-      -H @/dev/fd/3 3< <(printf 'Authorization: Bearer %s\n' "$TYPESAFE_API_KEY_PRIVATE") \
-      --data-binary @- 2>/dev/null) || HTTP=000
-  else
-    HTTP=$(printf '%s' "$REQUEST" | curl -sS --max-time "$GW_TIMEOUT" -o "$RESP_FILE" -w '%{http_code}' \
-      -X POST "$GW_BASE/v4/ai/evaluation-model" \
-      -H 'Content-Type: application/json' \
-      -H 'ai-gateway-protocol-version: 0.0.1' \
-      -H 'ai-gateway-auth-method: api-key' \
-      -H 'ai-evaluation-model-specification-version: 4' \
-      -H "ai-model-id: $GW_MODEL_ID" \
-      -H @/dev/fd/3 3< <(printf 'Authorization: Bearer %s\n' "$AI_GATEWAY_API_KEY_PRIVATE") \
-      --data-binary @- 2>/dev/null) || HTTP=000
-  fi
-  T1=$(fm_timing_now_ms)
-  LAT_MS=$(( T1 - T0 ))
-  spend_ledger_row "$HTTP" "$LAT_MS"
-  [ "$HTTP" = 200 ] || emit_error "http $HTTP after ${LAT_MS} ms: $(head -c 200 "$RESP_FILE" 2>/dev/null | tr '\n' ' ')"
-  if [ "$RESOLVER_PROVIDER" = vercel ]; then
-    NORM_FILE=$(mktemp) || emit_error "mktemp failed"
-    jq --arg model "$GW_MODEL_ID" '
-      {
-        model: $model,
-        answers: {
-          rule: ((.answers.rule // {}) + {confidence: (.providerMetadata.typesafe.confidence.rule // null)})
-        }
-      } + (if (.usage | type) == "object" then
-             {usage: {input_tokens: (.usage.inputTokens // null), output_tokens: (.usage.outputTokens // null)}}
-           else {} end)
-    ' "$RESP_FILE" > "$NORM_FILE" 2>/dev/null || emit_error "malformed gateway response"
-    mv "$NORM_FILE" "$RESP_FILE"
-    NORM_FILE=''
-  fi
-jq -e --slurpfile rules "$RULES" '
-    (($rules[0].rules | to_entries | map("rule_" + ((.key + 1) | tostring))) + ["default"] | sort) as $choices |
-    (.answers.rule.choice | type) == "string" and
-    (.answers.rule.confidence | type) == "number" and
-    .answers.rule.confidence >= 0 and .answers.rule.confidence <= 1 and
-    (.answers.rule.probabilities | type) == "object" and
-    ((.answers.rule.probabilities | keys | sort) == $choices) and
-    all(.answers.rule.probabilities[]; type == "number" and . >= 0 and . <= 1) and
-    ((.answers.rule.probabilities | [.[]] | add) as $total | $total >= 0.99 and $total <= 1.01) and
-    ((has("usage") | not) or
-      ((.usage | type) == "object" and
-       (.usage.input_tokens | type) == "number" and
-       (.usage.output_tokens | type) == "number"))' \
-  "$RESP_FILE" >/dev/null 2>&1 || emit_error "response is not a rule Choice answer"
+  recover_outage "$CLEAR_PROVIDER"
 
 # ---- quota evidence: one quota-axi --json snapshot -----------------------------
 command -v quota-axi >/dev/null 2>&1 || emit_error "quota-axi not installed"

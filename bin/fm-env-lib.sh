@@ -3,9 +3,10 @@
 # Usage: . bin/fm-env-lib.sh
 #
 # This file is the single owner of the one-key .env read: the Relay pairing
-# token (bin/fm-x-lib.sh and its callers) and the optional typesafe.ai and
-# AI Gateway dispatch keys (bin/fm-dispatch-resolve.sh) all resolve their value through
-# fmx_env_get, so those opt-in secrets in $FM_HOME/.env are parsed by one rule.
+# token (bin/fm-x-lib.sh and its callers) and the optional typesafe.ai,
+# OpenRouter, and AI Gateway dispatch keys (bin/fm-dispatch-resolve.sh) all
+# resolve their value through fmx_env_get, so those opt-in secrets in
+# $FM_HOME/.env are parsed by one rule.
 # (bin/fm-mail.sh loads its whole .env block itself under the same env-wins
 # contract.) The value is printed to the caller's command substitution only;
 # nothing is logged.
@@ -39,6 +40,27 @@ fmx_ai_gateway_key() {
   val=$(fmx_env_get AI_GATEWAY_API_KEY "$1")
   if [ -z "$val" ] && [ -n "${HOME:-}" ]; then
     val=$(fmx_env_get AI_GATEWAY_API_KEY "$HOME/.env.vercel-ai-gateway")
+  fi
+  printf '%s' "$val"
+}
+
+# fmx_openrouter_key <env-file>
+# Resolve the OpenRouter key for the Jev System One endpoint. Reads
+# OPENROUTER_API_KEY from <env-file> ($FM_HOME/.env), then from
+# ~/.env.openrouter; when both are empty it reads OPENROUTER_KEY from the same
+# two files. Callers check their own process environment first. Only those two
+# named keys are read. Prints nothing when absent.
+fmx_openrouter_key() {
+  local val
+  val=$(fmx_env_get OPENROUTER_API_KEY "$1")
+  if [ -z "$val" ] && [ -n "${HOME:-}" ]; then
+    val=$(fmx_env_get OPENROUTER_API_KEY "$HOME/.env.openrouter")
+  fi
+  if [ -z "$val" ]; then
+    val=$(fmx_env_get OPENROUTER_KEY "$1")
+    if [ -z "$val" ] && [ -n "${HOME:-}" ]; then
+      val=$(fmx_env_get OPENROUTER_KEY "$HOME/.env.openrouter")
+    fi
   fi
   printf '%s' "$val"
 }

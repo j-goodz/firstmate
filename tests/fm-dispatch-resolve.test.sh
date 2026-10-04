@@ -24,6 +24,10 @@ BASE_RULES="$TMP_ROOT/rules.json"
 RULES="$HOME_DIR/config/crew-dispatch.json"
 QUOTA="$TMP_ROOT/quota.json"
 BASE_PATH=$PATH
+# The resolver reads OPENROUTER_API_KEY/OPENROUTER_KEY from its process
+# environment; clear any ambient copy so the absent-key case is deterministic
+# and every case controls the key it exercises.
+unset OPENROUTER_API_KEY OPENROUTER_KEY
 mkdir -p "$HOME_DIR/config" "$LOG" "$NO_CURL_BIN" "$USER_HOME"
 for command_name in bash chmod cp dirname jq mktemp rm; do
   ln -s "$(command -v "$command_name")" "$NO_CURL_BIN/$command_name"
@@ -109,19 +113,27 @@ JSON
 cat > "$FAKEBIN/curl" <<'SH'
 #!/usr/bin/env bash
 # Fake curl: records argv (minus the -o target), the stdin body, and the header
-# read from fd 3, then answers with FAKE_CURL_RESPONSE and FAKE_CURL_HTTP.
+# read from fd 3, then answers with FAKE_CURL_RESPONSE and FAKE_CURL_HTTP, or a
+# per-endpoint FAKE_CURL_RESPONSE_<PROVIDER> / FAKE_CURL_HTTP_<PROVIDER> when the
+# request targets typesafe, openrouter, or vercel, so one run can fail over.
 set -u
 if [ -n "${TYPESAFE_API_KEY+x}" ] || [ -n "${TYPESAFE_API_KEY_PRIVATE+x}" ] \
-  || [ -n "${AI_GATEWAY_API_KEY+x}" ] || [ -n "${AI_GATEWAY_API_KEY_PRIVATE+x}" ]; then
+  || [ -n "${AI_GATEWAY_API_KEY+x}" ] || [ -n "${AI_GATEWAY_API_KEY_PRIVATE+x}" ] \
+  || [ -n "${OPENROUTER_API_KEY+x}" ] || [ -n "${OPENROUTER_KEY+x}" ] \
+  || [ -n "${OPENROUTER_PRIVATE+x}" ]; then
   printf 'curl:secret-present\n' >> "${CHILD_ENV_LOG:?}"
 else
   printf 'curl:clean\n' >> "${CHILD_ENV_LOG:?}"
 fi
-out=''
+out='' url=''
 while [ $# -gt 0 ]; do
   case "$1" in
     -o) out=$2; shift 2 ;;
-    *) printf '%s\n' "$1" >> "${FAKE_CURL_LOG:?}/argv"; shift ;;
+    *)
+      printf '%s\n' "$1" >> "${FAKE_CURL_LOG:?}/argv"
+      case "$1" in http*) url=$1 ;; esac
+      shift
+      ;;
   esac
 done
 cat > "$FAKE_CURL_LOG/body"
@@ -132,8 +144,21 @@ fi
 if [ "${FAKE_CURL_FAIL:-0}" = 1 ]; then
   exit 7
 fi
-cp "${FAKE_CURL_RESPONSE:?}" "$out"
-printf '%s' "${FAKE_CURL_HTTP:-200}"
+resp=${FAKE_CURL_RESPONSE:?}
+http=${FAKE_CURL_HTTP:-200}
+case "$url" in
+  *api.typesafe.ai*)
+    [ -z "${FAKE_CURL_RESPONSE_TYPESAFE+x}" ] || resp=$FAKE_CURL_RESPONSE_TYPESAFE
+    [ -z "${FAKE_CURL_HTTP_TYPESAFE+x}" ] || http=$FAKE_CURL_HTTP_TYPESAFE ;;
+  *openrouter.ai*)
+    [ -z "${FAKE_CURL_RESPONSE_OPENROUTER+x}" ] || resp=$FAKE_CURL_RESPONSE_OPENROUTER
+    [ -z "${FAKE_CURL_HTTP_OPENROUTER+x}" ] || http=$FAKE_CURL_HTTP_OPENROUTER ;;
+  *ai-gateway.vercel.sh*)
+    [ -z "${FAKE_CURL_RESPONSE_VERCEL+x}" ] || resp=$FAKE_CURL_RESPONSE_VERCEL
+    [ -z "${FAKE_CURL_HTTP_VERCEL+x}" ] || http=$FAKE_CURL_HTTP_VERCEL ;;
+esac
+cp "$resp" "$out"
+printf '%s' "$http"
 SH
 chmod +x "$FAKEBIN/curl"
 
@@ -141,7 +166,9 @@ cat > "$FAKEBIN/quota-axi" <<'SH'
 #!/usr/bin/env bash
 set -u
 if [ -n "${TYPESAFE_API_KEY+x}" ] || [ -n "${TYPESAFE_API_KEY_PRIVATE+x}" ] \
-  || [ -n "${AI_GATEWAY_API_KEY+x}" ] || [ -n "${AI_GATEWAY_API_KEY_PRIVATE+x}" ]; then
+  || [ -n "${AI_GATEWAY_API_KEY+x}" ] || [ -n "${AI_GATEWAY_API_KEY_PRIVATE+x}" ] \
+  || [ -n "${OPENROUTER_API_KEY+x}" ] || [ -n "${OPENROUTER_KEY+x}" ] \
+  || [ -n "${OPENROUTER_PRIVATE+x}" ]; then
   printf 'quota-axi:secret-present\n' >> "${CHILD_ENV_LOG:?}"
 else
   printf 'quota-axi:clean\n' >> "${CHILD_ENV_LOG:?}"
@@ -153,8 +180,25 @@ cat "${QUOTA_AXI_FIXTURE:?}"
 SH
 chmod +x "$FAKEBIN/quota-axi"
 
+cat > "$FAKEBIN/brain-reply" <<'SH'
+#!/usr/bin/env bash
+# Fake brain-reply: records its stdin so a case can assert the exact one-line
+# outage or recovery notice, and never prints to stdout.
+set -u
+if [ -n "${TYPESAFE_API_KEY+x}" ] || [ -n "${TYPESAFE_API_KEY_PRIVATE+x}" ] \
+  || [ -n "${AI_GATEWAY_API_KEY+x}" ] || [ -n "${AI_GATEWAY_API_KEY_PRIVATE+x}" ] \
+  || [ -n "${OPENROUTER_API_KEY+x}" ] || [ -n "${OPENROUTER_KEY+x}" ] \
+  || [ -n "${OPENROUTER_PRIVATE+x}" ]; then
+  printf 'brain-reply:secret-present\n' >> "${CHILD_ENV_LOG:?}"
+else
+  printf 'brain-reply:clean\n' >> "${CHILD_ENV_LOG:?}"
+fi
+cat >> "${BRAIN_REPLY_LOG:?}"
+SH
+chmod +x "$FAKEBIN/brain-reply"
+
 RESPONSE="$TMP_ROOT/response.json"
-export FAKE_CURL_LOG="$LOG" FAKE_CURL_RESPONSE="$RESPONSE" QUOTA_AXI_CALLS="$LOG/quota-axi.calls" QUOTA_AXI_FIXTURE="$QUOTA" CHILD_ENV_LOG="$LOG/child-env"
+export FAKE_CURL_LOG="$LOG" FAKE_CURL_RESPONSE="$RESPONSE" QUOTA_AXI_CALLS="$LOG/quota-axi.calls" QUOTA_AXI_FIXTURE="$QUOTA" CHILD_ENV_LOG="$LOG/child-env" BRAIN_REPLY_LOG="$LOG/brain-reply"
 
 reset_log() {
   rm -rf "$LOG"
@@ -192,7 +236,7 @@ write_response "$RESPONSE" rule_4 0.9
 run code out err "$BRIEF" --project pager
 expect_code 0 "$code" "absent keys exits 0"
 assert_equals '' "$out" "absent keys prints nothing on stdout"
-assert_contains "$err" 'dispatch-resolve: off (TYPESAFE_API_KEY and AI_GATEWAY_API_KEY absent from the environment, ' "absent keys explains itself on stderr"
+assert_contains "$err" 'dispatch-resolve: off (TYPESAFE_API_KEY, OPENROUTER_API_KEY, and AI_GATEWAY_API_KEY absent from the environment, ' "absent keys explains itself on stderr"
 assert_absent "$LOG/argv" "absent keys never calls curl"
 assert_absent "$LOG/quota-axi.calls" "absent keys never reads quota-axi"
 pass "absent keys is off: one stderr line, exit 0, no network call"
@@ -828,6 +872,158 @@ reset_log
 TYPESAFE_API_KEY=$KEY FAKE_CURL_HTTP=500 run code out err "$BRIEF"
 assert_contains "$out" '  status: error' "http 500 is a TOON error outcome"
 pass "API, transport, and response failures are error outcomes with exit 0"
+
+# --- OpenRouter provider and provider-chain failover ----------------------------
+# The chain is the providers whose key resolves, in order typesafe, openrouter;
+# vercel joins only when neither of those resolves. Each run makes one attempt
+# per provider and stops at the first valid HTTP 200.
+OR_KEY='or-fake-key-A1'
+OR_MODEL_ID='typesafe/jev-1.13'
+OR_RESPONSE="$TMP_ROOT/or-response.json"
+OR_403="$TMP_ROOT/or-403.json"
+cat > "$OR_RESPONSE" <<'JSON'
+{ "model": "typesafe/jev-1.13-20260917",
+  "answers": { "rule": { "type": "choice", "choice": "rule_4", "confidence": 0.9,
+    "probabilities": { "rule_1": 0.01, "rule_2": 0.01, "rule_3": 0.01, "rule_4": 0.96, "default": 0.01 } } },
+  "usage": { "input_tokens": 339, "output_tokens": 35, "cost": 0.000014238 } }
+JSON
+printf '%s\n' '{"error":{"message":"forbidden","code":403}}' > "$OR_403"
+OR_ALERTS="$USER_HOME/.nexus/dispatch-resolve-alerts.jsonl"
+OR_MARKER="$HOME_DIR/state/.dispatch-resolve-outage"
+OR_RESET() {
+  rm -f "$HOME_DIR/.env" "$USER_HOME/.env.openrouter" "$USER_HOME/.env.vercel-ai-gateway"
+  rm -f "$OR_MARKER" "$OR_ALERTS"
+  reset_log
+}
+cp "$BASE_RULES" "$RULES"
+
+# T1: only OPENROUTER_API_KEY set -> openrouter request, clear, one ledger row.
+OR_RESET
+rm -f "$LEDGER"
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY='' OPENROUTER_API_KEY="$OR_KEY" FAKE_CURL_RESPONSE="$OR_RESPONSE" run code out err "$BRIEF" --project pager
+expect_code 0 "$code" "openrouter-only exits 0"
+assert_contains "$out" '  status: clear' "openrouter-only resolves clear"
+argv=$(cat "$LOG/argv")
+assert_contains "$argv" 'https://openrouter.ai/api/v1/systemone' "openrouter uses its System One endpoint"
+assert_not_contains "$argv" 'api.typesafe.ai' "openrouter-only never calls typesafe"
+assert_not_contains "$argv" 'ai-gateway.vercel.sh' "openrouter-only never calls vercel"
+assert_equals "Authorization: Bearer $OR_KEY" "$(cat "$LOG/header")" "openrouter key reaches curl on the fd header"
+assert_equals "$OR_MODEL_ID" "$(jq -r .model "$LOG/body")" "openrouter body carries the drop-in model id"
+assert_equals 'openrouter|typesafe/jev-1.13-20260917|true|OPENROUTER_API_KEY|14238' \
+  "$(ledger_row '[.provider, .model, .ok, .key_label, (.cost_usd * 1e9 | round)] | join("|")')" \
+  "one openrouter ledger row names the served model and the reported cost"
+assert_equals $'curl:clean\nquota-axi:clean' "$(cat "$LOG/child-env")" "the openrouter key is absent from every child environment"
+
+# T2: only OPENROUTER_KEY set -> same call, key_label=OPENROUTER_KEY.
+OR_RESET
+rm -f "$LEDGER"
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY='' OPENROUTER_KEY="$OR_KEY" FAKE_CURL_RESPONSE="$OR_RESPONSE" run code out err "$BRIEF" --project pager
+expect_code 0 "$code" "OPENROUTER_KEY exits 0"
+assert_contains "$out" '  status: clear' "OPENROUTER_KEY resolves clear"
+assert_equals 'openrouter|OPENROUTER_KEY' "$(ledger_row '[.provider, .key_label] | join("|")')" "the ledger names the OPENROUTER_KEY variable"
+assert_equals "Authorization: Bearer $OR_KEY" "$(cat "$LOG/header")" "OPENROUTER_KEY reaches curl on the fd header"
+
+# T3: typesafe then openrouter, typesafe 403 -> openrouter tried next, two rows.
+OR_RESET
+rm -f "$LEDGER"
+TYPESAFE_API_KEY=$KEY OPENROUTER_API_KEY="$OR_KEY" \
+  FAKE_CURL_RESPONSE="$OR_RESPONSE" FAKE_CURL_RESPONSE_TYPESAFE="$OR_403" \
+  FAKE_CURL_HTTP_TYPESAFE=403 FAKE_CURL_HTTP_OPENROUTER=200 run code out err "$BRIEF" --project pager
+expect_code 0 "$code" "failover exits 0"
+assert_contains "$out" '  status: clear' "failover resolves clear via the next provider"
+assert_contains "$(cat "$LOG/argv")" 'https://api.typesafe.ai/v1/systemone' "failover attempts the first provider"
+assert_contains "$(cat "$LOG/argv")" 'https://openrouter.ai/api/v1/systemone' "failover attempts the next provider"
+assert_equals 2 "$(wc -l < "$LEDGER" | tr -d ' ')" "failover writes one ledger row per attempt"
+assert_equals 'typesafe|false' "$(sed -n '1p' "$LEDGER" | jq -r '[.provider, .ok] | join("|")')" "the first row records the failed provider"
+assert_equals 'openrouter|true' "$(tail -n 1 "$LEDGER" | jq -r '[.provider, .ok] | join("|")')" "the second row records the successful provider"
+
+# T4: openrouter and vercel keys, openrouter 200 -> vercel is never called.
+OR_RESET
+TYPESAFE_API_KEY='' OPENROUTER_API_KEY="$OR_KEY" AI_GATEWAY_API_KEY=$GW_KEY \
+  FAKE_CURL_RESPONSE="$OR_RESPONSE" FAKE_CURL_RESPONSE_VERCEL="$GW_RESPONSE" run code out err "$BRIEF" --project pager
+expect_code 0 "$code" "openrouter with a vercel key exits 0"
+assert_contains "$out" '  status: clear' "openrouter wins over vercel"
+assert_contains "$(cat "$LOG/argv")" 'https://openrouter.ai/api/v1/systemone' "openrouter is called"
+assert_not_contains "$(cat "$LOG/argv")" 'ai-gateway.vercel.sh' "vercel is never called when openrouter resolves"
+
+# T5: only the vercel key set -> vercel is still used as today.
+OR_RESET
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY=$GW_KEY FAKE_CURL_RESPONSE="$GW_RESPONSE" run code out err "$BRIEF" --project pager
+expect_code 0 "$code" "vercel-only exits 0"
+assert_contains "$out" '  status: clear' "vercel-only resolves clear"
+assert_contains "$(cat "$LOG/argv")" 'https://ai-gateway.vercel.sh/v4/ai/evaluation-model' "vercel is used when it is the only key"
+assert_not_contains "$(cat "$LOG/argv")" 'openrouter.ai' "vercel-only never calls openrouter"
+pass "openrouter provider and provider-chain failover select and fail over in order"
+
+# --- outage alert: once per outage, recovery once -------------------------------
+# T6: every provider fails -> one alert row and one brain-reply line, then a
+# marker suppresses repeats until the next success recovers.
+OR_RESET
+rm -f "$LEDGER"
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY='' OPENROUTER_API_KEY="$OR_KEY" \
+  FAKE_CURL_RESPONSE="$OR_RESPONSE" FAKE_CURL_HTTP=403 run code out err "$BRIEF" --project pager
+expect_code 0 "$code" "all-providers-fail exits 0"
+assert_contains "$out" '  status: error' "all-providers-fail is a structured error"
+assert_present "$OR_ALERTS" "the outage writes an alert row"
+assert_equals 1 "$(wc -l < "$OR_ALERTS" | tr -d ' ')" "the outage writes exactly one alert row"
+assert_equals 'down|openrouter|403' "$(tail -n 1 "$OR_ALERTS" | jq -r '[.event, .attempts[0].provider, .attempts[0].http] | join("|")')" "the alert row names the down event and attempt"
+assert_equals 1 "$(wc -l < "$BRAIN_REPLY_LOG" | tr -d ' ')" "the outage sends exactly one brain-reply line"
+assert_contains "$(cat "$BRAIN_REPLY_LOG")" 'Jev task routing is down on ' "the outage notice leads with the down line"
+assert_contains "$(cat "$BRAIN_REPLY_LOG")" 'openrouter http 403' "the outage notice names the provider and code"
+assert_contains "$(cat "$BRAIN_REPLY_LOG")" 'Tasks still get assigned by the normal rules.' "the outage notice says routing continues"
+assert_present "$OR_MARKER" "the outage marker is created"
+
+# A second all-fail run while the marker exists adds no alert.
+reset_log
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY='' OPENROUTER_API_KEY="$OR_KEY" \
+  FAKE_CURL_RESPONSE="$OR_RESPONSE" FAKE_CURL_HTTP=403 run code out err "$BRIEF" --project pager
+assert_contains "$out" '  status: error' "the repeated failure is still an error"
+assert_equals 1 "$(wc -l < "$OR_ALERTS" | tr -d ' ')" "a second all-fail run adds no alert row"
+assert_absent "$BRAIN_REPLY_LOG" "a second all-fail run sends no brain-reply line"
+
+# The first success after that recovers: marker gone, one recovery row and line.
+reset_log
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY='' OPENROUTER_API_KEY="$OR_KEY" FAKE_CURL_RESPONSE="$OR_RESPONSE" run code out err "$BRIEF" --project pager
+expect_code 0 "$code" "the recovering run exits 0"
+assert_contains "$out" '  status: clear' "the recovering run resolves clear"
+assert_absent "$OR_MARKER" "the first success removes the outage marker"
+assert_equals 2 "$(wc -l < "$OR_ALERTS" | tr -d ' ')" "recovery appends one alert row"
+assert_equals 'recovered|openrouter' "$(tail -n 1 "$OR_ALERTS" | jq -r '[.event, .provider] | join("|")')" "the recovery row names the event and provider"
+assert_equals 1 "$(wc -l < "$BRAIN_REPLY_LOG" | tr -d ' ')" "recovery sends exactly one brain-reply line"
+assert_equals 'Jev task routing recovered on '"${HOSTNAME:-}"' via openrouter.' "$(cat "$BRAIN_REPLY_LOG")" "the recovery notice is exact"
+assert_equals $'curl:clean\nbrain-reply:clean\nquota-axi:clean' "$(cat "$LOG/child-env")" "the recovering key is absent from every child environment"
+
+# T7: the key appears nowhere in stdout, stderr, the ledger, the alert, or brain-reply.
+reset_log
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY='' OPENROUTER_API_KEY="$OR_KEY" \
+  FAKE_CURL_RESPONSE="$OR_RESPONSE" FAKE_CURL_HTTP=403 run code out err "$BRIEF" --project pager
+assert_not_contains "$out" "$OR_KEY" "the key never reaches stdout"
+assert_not_contains "$err" "$OR_KEY" "the key never reaches stderr"
+assert_not_contains "$(cat "$LEDGER" 2>/dev/null)" "$OR_KEY" "the key never reaches the ledger"
+assert_not_contains "$(cat "$OR_ALERTS")" "$OR_KEY" "the key never reaches the alert file"
+assert_not_contains "$(cat "$BRAIN_REPLY_LOG")" "$OR_KEY" "the key never reaches brain-reply input"
+assert_not_contains "$(cat "$LOG/argv")" "$OR_KEY" "the key never appears on curl argv"
+rm -f "$OR_MARKER"
+pass "outage alerts fire once per outage, recover once, and never leak the key"
+
+# --- .env and rendered-file sources for OPENROUTER ------------------------------
+OR_RESET
+printf '%s\n' '# local secrets' "export OPENROUTER_KEY=\"$OR_KEY\"" > "$HOME_DIR/.env"
+rm -f "$LEDGER"
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY='' FAKE_CURL_RESPONSE="$OR_RESPONSE" run code out err "$BRIEF" --project pager
+expect_code 0 "$code" ".env OPENROUTER_KEY resolves"
+assert_contains "$out" '  status: clear' ".env OPENROUTER_KEY resolves clear"
+assert_equals 'OPENROUTER_KEY' "$(ledger_row .key_label)" ".env OPENROUTER_KEY is labelled"
+assert_equals "Authorization: Bearer $OR_KEY" "$(cat "$LOG/header")" ".env OPENROUTER_KEY reaches the fd header"
+printf '%s\n' "OPENROUTER_API_KEY=$OR_KEY" > "$USER_HOME/.env.openrouter"
+printf '%s\n' '# local secrets' 'OTHER=unrelated' > "$HOME_DIR/.env"
+reset_log
+TYPESAFE_API_KEY='' AI_GATEWAY_API_KEY='' FAKE_CURL_RESPONSE="$OR_RESPONSE" run code out err "$BRIEF" --project pager
+assert_contains "$out" '  status: clear' "the rendered env.openrouter file resolves when the home .env lacks the key"
+assert_equals 'OPENROUTER_API_KEY' "$(ledger_row .key_label)" "the rendered env.openrouter file is labelled OPENROUTER_API_KEY"
+assert_equals "Authorization: Bearer $OR_KEY" "$(cat "$LOG/header")" "the rendered env.openrouter file reaches the fd header"
+rm -f "$USER_HOME/.env.openrouter" "$HOME_DIR/.env" "$OR_MARKER" "$OR_ALERTS"
+pass "OPENROUTER_API_KEY and OPENROUTER_KEY resolve from .env and ~/.env.openrouter"
 
 # --- configuration errors exit 2 and select nothing ----------------------------------
 reset_log

@@ -547,11 +547,13 @@ Missing `jq` is reported through the normal `MISSING: jq` install-consent flow.
 While the file remains present, no crewmate or scout spawn may proceed without an explicit resolved harness; malformed configuration must be reported and corrected rather than selected around.
 Secondmate homes inherit this file from the primary, so a secondmate's own crewmates apply the same dispatch profile behavior.
 
-## Typed dispatch resolution (.env TYPESAFE_API_KEY or AI_GATEWAY_API_KEY)
+## Typed dispatch resolution (.env TYPESAFE_API_KEY, OPENROUTER_API_KEY, or AI_GATEWAY_API_KEY)
 
 `bin/fm-dispatch-resolve.sh` resolves one concrete crewmate or scout profile from a written brief with typesafe.ai's System One model (Jev), so the rule match that firstmate otherwise reasons out in its own context becomes one short tool turn.
-It is off unless `TYPESAFE_API_KEY` or `AI_GATEWAY_API_KEY` is non-empty in the calling environment or the home's gitignored `.env` holds a matching `KEY=` line; the environment wins over `.env` for each key independently, matching the Relay and mail-plane contracts, and the Relay accessor in `bin/fm-env-lib.sh` reads the line.
-`TYPESAFE_API_KEY` selects the direct typesafe.ai path and wins when both keys are set; `AI_GATEWAY_API_KEY` routes the identical rule Choice question through the same Jev model on Vercel's AI Gateway instead, for a home with no typesafe.ai key of its own.
+It is off unless `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY` (fallback `OPENROUTER_KEY`), or `AI_GATEWAY_API_KEY` is non-empty in the calling environment or a matching `KEY=` line is present in the home's gitignored `.env` or the relevant host-rendered key file; the environment wins over `.env` for each key independently, matching the Relay and mail-plane contracts, and the accessor in `bin/fm-env-lib.sh` reads the line.
+The provider chain is the providers whose key resolves, in order `TYPESAFE_API_KEY` (the direct typesafe.ai endpoint), then `OPENROUTER_API_KEY`/`OPENROUTER_KEY` (the drop-in OpenRouter System One endpoint), and `AI_GATEWAY_API_KEY` on Vercel's AI Gateway joins only when neither of those resolves.
+Each run makes one attempt per provider in that order and stops at the first valid answer, so a provider that refuses is failed over to the next one rather than retried; a home with only a Vercel key keeps the gateway path exactly as before.
+`OPENROUTER_API_KEY` resolves from the environment, the home `.env`, then the host-rendered `~/.env.openrouter`, with `OPENROUTER_KEY` the fallback name checked in the same order.
 `AI_GATEWAY_API_KEY` has a third source after the environment and the home `.env`: the host-rendered `~/.env.vercel-ai-gateway`, which the secret renderer keeps current on rotation, so a host with that file has the gateway path on with no manual step; only that one key is read from it, and bootstrap resolves the key through the same order.
 Off means one `dispatch-resolve: off` line on stderr, nothing on stdout, exit 0, and no network call, so firstmate dispatches exactly as it does without the tool.
 This section is the single owner of the tool's operator contract; the script header owns its exact flags and output lines, and "Crew dispatch profiles" above owns the declared rule and profile fields it applies.
@@ -579,12 +581,15 @@ The tool never replaces firstmate's judgment, `quota-array-dispatch`, the captai
 By accepted design, a `clear` result does not enforce catalog/authentication, reasoning-class, or completion-runway gates.
 Firstmate passes its profile line unless it states a reason to override, such as the brief's reasoning class or an eligible-unranked-candidate note; every non-clear result returns to the full existing intake.
 
-The resolver and bootstrap copy an environment-provided key into a non-exported private variable and unset `TYPESAFE_API_KEY` and `AI_GATEWAY_API_KEY` before launching child processes, so the secret is absent from child environments.
+The resolver copies an environment-provided key into a non-exported private variable and unsets `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_KEY`, and `AI_GATEWAY_API_KEY` before launching child processes, so the secret is absent from child environments; bootstrap unsets `TYPESAFE_API_KEY` and `AI_GATEWAY_API_KEY` the same way for the diagnostics it runs.
 The resolver sends whichever key is active to `curl` only as a header read from a file descriptor, never on argv, and nothing prints, logs, or writes it.
 Every request, answered or failed, appends one row with its provider, model, tokens, and cost to `~/.nexus/api-calls.jsonl`, the fleet spend ledger, and a failed write never changes the outcome; the script header owns the row fields and pricing.
+When every provider in the chain fails on one run, the resolver still returns its `error` outcome and appends one `{ts, machine, event:"down", attempts:[...]}` row to `~/.nexus/dispatch-resolve-alerts.jsonl`, pipes one plain-language line to `brain-reply` when it is on `PATH`, and creates `$FM_HOME/state/.dispatch-resolve-outage`; while that marker exists a later all-fail run stays silent, and the first success removes the marker, appends `{event:"recovered"}`, and pipes one recovery line.
+An alert failure, such as `brain-reply` being absent or the alert file unwritable, is one stderr line and never changes the tool's stdout or exit code; nothing polls or rechecks on a timer.
 The direct path fixes the endpoint at `https://api.typesafe.ai`, model at `jev-latest`, confidence floor at 0.6, and request timeout at 5 seconds.
+The OpenRouter path fixes the endpoint at `https://openrouter.ai/api/v1/systemone`, sends the same body plus a `"model": "typesafe/jev-1.13"` field, and uses the same confidence floor and timeout; its response is the typesafe.ai-native shape, so no normalization runs.
 The gateway path fixes the endpoint at `https://ai-gateway.vercel.sh/v4/ai/evaluation-model`, selects the model with an `ai-model-id: typesafe-ai/jev` header instead of a body field, and uses the same confidence floor and timeout; its response carries confidence at `providerMetadata.typesafe.confidence.rule` and camelCase token counts, which the resolver normalizes into the same shape the direct path already produces before resolution runs.
-`TYPESAFE_API_KEY` and `AI_GATEWAY_API_KEY` are its only resolver-specific environment settings.
+`TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`/`OPENROUTER_KEY`, and `AI_GATEWAY_API_KEY` are its resolver-specific environment settings.
 The live rule-match evidence is recorded in [`verification/dispatch-resolve.md`](verification/dispatch-resolve.md).
 
 ## Toolchain
@@ -1196,8 +1201,9 @@ FMX_RELAY_URL=https://myfirstmate.io   # optional Relay endpoint override, mainl
 FMX_ENV_FILE=           # optional alternate .env file for direct Relay client invocations; bootstrap still checks $FM_HOME/.env
 FMX_DRY_RUN=            # truthy previews Relay replies and dismissals to state/x-outbox/ without posting or requiring a token
 FMX_X_REPLY_MAX_CHARS=280   # X reply per-message split budget; values below 50 clamp to 50
-TYPESAFE_API_KEY=       # typed dispatch resolution opt-in, direct typesafe.ai path, from the environment or .env; wins over AI_GATEWAY_API_KEY when both are set (docs/configuration.md "Typed dispatch resolution")
-AI_GATEWAY_API_KEY=     # typed dispatch resolution opt-in, Vercel AI Gateway path to the same Jev model, from the environment or .env; used only when TYPESAFE_API_KEY is absent; absent in both means bin/fm-dispatch-resolve.sh is off (docs/configuration.md "Typed dispatch resolution")
+TYPESAFE_API_KEY=       # typed dispatch resolution opt-in, direct typesafe.ai path, from the environment or .env; first provider in the chain (docs/configuration.md "Typed dispatch resolution")
+OPENROUTER_API_KEY=     # typed dispatch resolution opt-in, OpenRouter System One path to the same Jev model, from the environment, .env, or ~/.env.openrouter; OPENROUTER_KEY is the fallback name; second provider in the chain (docs/configuration.md "Typed dispatch resolution")
+AI_GATEWAY_API_KEY=     # typed dispatch resolution opt-in, Vercel AI Gateway path to the same Jev model, from the environment, .env, or ~/.env.vercel-ai-gateway; used only when neither TYPESAFE_API_KEY nor an OpenRouter key resolves; absent in all means bin/fm-dispatch-resolve.sh is off (docs/configuration.md "Typed dispatch resolution")
 FMX_DISCORD_REPLY_MAX_CHARS=1900   # Discord reply per-message split budget; values below 50 clamp to 50, values above 2000 reset to 1900
 FMX_X_THREAD_MAX=25     # maximum messages in one auto-split reply thread
 FMX_FOLLOWUP_MAX_AGE_SECS=604800   # local window for posting Relay completion follow-ups (7 days)
