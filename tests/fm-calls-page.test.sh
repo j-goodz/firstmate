@@ -360,6 +360,59 @@ assert_equals "1" "$e1_count" "Let's talk records nothing on the call"
 assert_contains "$out" "rendered:" "apply re-renders the page"
 pass "apply maps option, text, Later, and Not needed answers onto the owning home's captain-hold record"
 
+# --- apply: not-needed on a held work item never releases ------------------------
+#
+# "Not needed, close it" is offered on every card, including a work item held for
+# the captain. Choosing it records a done close that abandons the gated work; it
+# must never lift the hold (local --release, or the remote release mode), unlike
+# an option or text answer on the same held work item.
+
+NE=$(make_home notneeded)
+cat > "$NE/data/backlog.md" <<'EOF'
+# Backlog
+
+## In flight
+- [ ] wl1 - Local held work (repo: nexus) (kind: ship) (since 2026-10-01) (hold: Approve the build) (hold-kind: captain)
+  Captain hold set: 2026-10-01T10:00:00Z
+## Queued
+## Done
+EOF
+cat > "$NE/data/secondmates.md" <<'EOF'
+# Second mates
+
+- swiftmate - Heavy work on swift. (host: swift; root: /srv/firstmate; home: /srv/swiftmate-home; scope: heavy build work; projects: nexus, buzz; added 2026-09-26)
+EOF
+mkdir -p "$NE/remote-swiftmate"
+cat > "$NE/remote-swiftmate/backlog.md" <<'EOF'
+# Backlog
+
+## In flight
+## Queued
+- [ ] rw1 - Remote held work (repo: buzz) (kind: ship) (since 2026-10-02) (hold: Approve the layout) (hold-kind: captain)
+  Captain hold set: 2026-10-02T10:00:00Z
+## Done
+EOF
+write_fm_on_stub "$NE"
+write_captain_stub "$NE"
+run_calls "$NE" render >/dev/null 2>&1
+cat > "$NE/result.txt" <<'EOF'
+session:
+  file: /tmp/calls.html
+  status: feedback
+prompts[2]{uid,prompt,selector,tag,text}:
+  "1","Call wl1: not needed\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"wl1\",\n  \"home\": \"local\",\n  \"kind\": \"not-needed\",\n  \"answer\": \"Not needed, close it\",\n  \"note\": \"\"\n}","form",call-answer,"Local held work"
+  "2","Call rw1: not needed\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"rw1\",\n  \"home\": \"swiftmate\",\n  \"kind\": \"not-needed\",\n  \"answer\": \"Not needed, close it\",\n  \"note\": \"\"\n}","form",call-answer,"Remote held work"
+EOF
+out=$(FM_CALLS_PAGE_CAPTAIN_HOLD="$NE/captain-stub.sh" FM_TEST_REAL_CAPTAIN="$ROOT/bin/fm-captain-hold.sh" run_calls "$NE" apply "$NE/result.txt" 2>"$NE/err"); rc=$?
+LOG=$(cat "$NE/calls.log" 2>/dev/null)
+expect_code 0 "$rc" "not-needed on held work items applies cleanly"
+assert_contains "$LOG" "HOLD [answer] [wl1] [--decision-file]" "not-needed on a local held work item records through answer"
+assert_not_contains "$(grep -F 'HOLD [answer] [wl1]' <<<"$LOG")" "--release" "not-needed on a local held work item closes without releasing the hold"
+assert_contains "$LOG" "$(printf 'STDIN rw1\tNot needed\t\tdone')" "not-needed on a remote held work item closes in done mode, never release"
+assert_contains "$out" "applied: local/wl1 not-needed" "the local not-needed close is reported applied"
+assert_contains "$out" "applied: swiftmate/rw1 not-needed" "the remote not-needed close is reported applied"
+pass "not-needed on a held work item closes without release, local and remote"
+
 # --- re-render hook in fm-captain-hold.sh ---------------------------------------
 
 K=$(make_home hook)
