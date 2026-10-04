@@ -109,12 +109,13 @@ SH
 }
 
 # Stub captain-hold standing in for bin/fm-captain-hold.sh during apply: it
-# answers the read-only divergence question with nothing and logs mutations.
+# passes the read-only divergence question to the real script and logs
+# mutations instead of performing them.
 write_captain_stub() {  # <home>
   local home=$1
   cat > "$home/captain-stub.sh" <<'SH'
 #!/usr/bin/env bash
-[ "${1:-}" = diverged ] && exit 0
+[ "${1:-}" = diverged ] && exec "$FM_TEST_REAL_CAPTAIN" diverged
 {
   printf 'HOLD'
   printf ' [%s]' "$@"
@@ -193,6 +194,8 @@ assert_grep 'value="Switch to Solaar"' "$PAGE" "every call-options line becomes 
 assert_grep 'Which mouse software should run on legion' "$PAGE" "the hold reason is the card context"
 later=$(grep -c 'value="__later__"' "$PAGE")
 notneeded=$(grep -c 'value="__not_needed__"' "$PAGE")
+talk=$(grep -c 'value="__talk__"' "$PAGE")
+assert_equals "4" "$talk" "every card offers Let's talk"
 assert_equals "4" "$later" "every card offers Later, park one week"
 assert_equals "4" "$notneeded" "every card offers Not needed, close it"
 assert_grep 'Save this answer' "$PAGE" "each card has its own save button"
@@ -237,6 +240,21 @@ if [ -n "$f" ] && [ "$a" -gt "$f" ] && [ "$w" -gt "$f" ]; then
 else
   fail "curated calls render under their feature group (feature=$f a1=$a w1=$w)"
 fi
+# The curated file may also be an object with a groups array, naming homes by
+# machine; an id open in exactly one home still finds its card.
+cat > "$H/data/open-calls/calls.json" <<'EOF'
+{"schema": "calls-regroup.v1", "groups": [
+  {"project": "Buzz", "feature": "Calendar", "context": "One calendar for every agent.",
+   "calls": [{"id": "r1", "home": "swift", "question": "Which calendar should Buzz show?",
+              "options": [{"value": "google", "label": "Google calendar", "detail": "Shared"}],
+              "recommendation": null, "his_prior_words": "2026-09-28: we can use google calendar"}]}
+]}
+EOF
+run_calls "$H" render >/dev/null 2>&1
+assert_grep 'Which calendar should Buzz show?' "$PAGE" "a groups-object curated file is read"
+assert_grep 'data-call="r1" data-home="swiftmate"' "$PAGE" "a curated call named by machine keeps its owning home"
+assert_grep '2026-09-28: we can use google calendar' "$PAGE" "the captain's earlier words show above the question"
+pass "a curated groups object with machine-named homes renders"
 rm -f "$H/data/open-calls/calls.json"
 
 # --- render: unreachable second mate -----------------------------------------
@@ -287,7 +305,7 @@ cat > "$A/result.txt" <<'EOF'
 session:
   file: /tmp/calls.html
   status: feedback
-prompts[7]{uid,prompt,selector,tag,text}:
+prompts[8]{uid,prompt,selector,tag,text}:
   "1","Call a1: Switch to Solaar\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"a1\",\n  \"home\": \"local\",\n  \"kind\": \"option\",\n  \"value\": \"solaar\",\n  \"answer\": \"Switch to Solaar\",\n  \"note\": \"and remove Logi\"\n}","form",call-answer,"Pick the mouse path"
   "2","Call w1: text\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"w1\",\n  \"home\": \"local\",\n  \"kind\": \"text\",\n  \"answer\": \"\",\n  \"note\": \"Build it narrower\"\n}","form",call-answer,"Ship the widget"
   "3","Call e1: later\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"e1\",\n  \"home\": \"local\",\n  \"kind\": \"later\",\n  \"answer\": \"Later, park one week\",\n  \"note\": \"\"\n}","form",call-answer,"Expired park call"
@@ -295,8 +313,9 @@ prompts[7]{uid,prompt,selector,tag,text}:
   "5","Call v1: text\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"v1\",\n  \"home\": \"local\",\n  \"kind\": \"text\",\n  \"answer\": \"\",\n  \"note\": \"answered twice\"\n}","form",call-answer,"Chat answered call"
   "6","Call a1: reconcile\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"a1\",\n  \"home\": \"local\",\n  \"kind\": \"text\",\n  \"answer\": \"\",\n  \"note\": \"reconcile\"\n}","form",call-answer,"Pick the mouse path"
   "7","Freeform words only","body",note,"Your open calls"
+  "8","Call e1: talk\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"e1\",\n  \"home\": \"local\",\n  \"kind\": \"talk\",\n  \"answer\": \"Let us talk\",\n  \"note\": \"call me\"\n}","form",call-answer,"Expired park call"
 EOF
-out=$(FM_CALLS_PAGE_CAPTAIN_HOLD="$A/captain-stub.sh" run_calls "$A" apply "$A/result.txt" 2>"$A/err"); rc=$?
+out=$(FM_CALLS_PAGE_CAPTAIN_HOLD="$A/captain-stub.sh" FM_TEST_REAL_CAPTAIN="$ROOT/bin/fm-captain-hold.sh" run_calls "$A" apply "$A/result.txt" 2>"$A/err"); rc=$?
 LOG=$(cat "$A/calls.log" 2>/dev/null)
 expect_code 0 "$rc" "apply succeeds when every item is handled or reported"
 # An option answer on a call-only task closes it with the captain's words.
@@ -321,6 +340,9 @@ assert_contains "$out" "skipped: local/v1" "the skip is reported"
 a1_count=$(grep -c -F 'HOLD [answer] [a1]' <<<"$LOG")
 assert_equals "1" "$a1_count" "the reserved value reconcile is never applied"
 assert_contains "$out" "refused: local/a1" "the reconcile item is reported as refused"
+assert_contains "$out" "talk: local/e1" "Let's talk is reported for firstmate to raise in chat"
+e1_count=$(grep -c -F '[e1]' <<<"$LOG")
+assert_equals "1" "$e1_count" "Let's talk records nothing on the call"
 assert_contains "$out" "rendered:" "apply re-renders the page"
 pass "apply maps option, text, Later, and Not needed answers onto the owning home's captain-hold record"
 

@@ -725,6 +725,14 @@ fm_send_close_resolved_keys() { # <answer-text>
     esac
     i=$((i + 1))
   done
+  # A second mate's captain call answered here leaves the open-calls page now;
+  # bin/fm-calls-page.sh owns the page and this rebuild is best effort.
+  case " $RESOLVE_STATUS_KEYS" in
+  *" captain-hold-"*)
+    "$SCRIPT_DIR/fm-calls-page.sh" render --if-present >/dev/null 2>&1 ||
+      echo "warning: the answer is recorded, but the calls page was not rebuilt; run fm-calls-page.sh render" >&2
+    ;;
+  esac
 }
 
 # Feed the answered captain-held tasks to the ONE keyed-answer intake, as keyed
