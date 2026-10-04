@@ -483,6 +483,29 @@ The exclusion is the cache-mode control rather than a cycler-side worker rule, s
 
 Every claude launch's inline `--settings` JSON also carries `"attribution":{"commit":"","pr":"","sessionUrl":false}`, so a spawned worker never writes a Co-Authored-By trailer, Claude-Session link, or generated-with line into a commit or PR body regardless of which settings scopes end up loaded.
 
+## Thermal gate (config/thermal-gate)
+
+The optional local, gitignored `config/thermal-gate` file caps how much concurrent build and test load a home starts when its host is hot.
+An absent file means no gate and no behaviour change, and the file is not inherited by secondmate homes: each home sets its own thresholds for its own machine.
+The gate applies to fresh ship and scout spawns only, before any endpoint, worktree, or record is created; a secondmate spawn and a worker relaunch are never refused.
+It reads the host CPU temperature through [`bin/fm-host-temp.sh`](../bin/fm-host-temp.sh), which prefers the `x86_pkg_temp` zone and otherwise reports the hottest readable `/sys/class/thermal/thermal_zone*` sensor, and it counts this home's live task records whose kind is not secondmate.
+
+Four integer `key=value` lines, each optional and interpreted on its own:
+
+| Key | Meaning |
+| --- | --- |
+| `max_workers` | concurrent workers allowed while cool; no cool cap when absent |
+| `hot_c` | at or above this Celsius, at most one worker may start |
+| `hold_c` | at or above this Celsius, no worker may start |
+| `jobs` | per-worker build and test parallelism exported as `CARGO_BUILD_JOBS`, `MAKEFLAGS=-j<jobs>`, and `PYTEST_XDIST_AUTO_NUM_WORKERS` |
+
+A spawn is refused with one line naming the temperature, the limit, and the live count once the live count has reached the temperature's limit.
+A refusal in a secondmate home also publishes exactly one `paused` line to its parent channel, so the parent sees the work held and why.
+An unreadable sensor is not a refusal: the gate warns once and applies `max_workers`.
+The temperature is read fresh on every spawn, so a change takes effect on the next spawn without a restart.
+The gate only decides whether and how much this home starts; changing the machine itself stays out of scope.
+[`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns the delivery mechanics, with regression coverage in [`tests/fm-host-temp.test.sh`](../tests/fm-host-temp.test.sh) and [`tests/fm-spawn-thermal-gate.test.sh`](../tests/fm-spawn-thermal-gate.test.sh).
+
 ## Crew dispatch profiles (config/crew-dispatch.json)
 
 `config/crew-dispatch.json` is an optional local, gitignored file containing natural-language rules that firstmate reads before dispatching a crewmate or scout.

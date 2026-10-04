@@ -291,6 +291,18 @@
 #   This is an exec environment boundary, not a sandbox for the pane's startup
 #   shell, credential files, same-user processes, or later shell initialization.
 #   See docs/configuration.md for provider/Git setup and supported limits.
+# Thermal gate (config/thermal-gate):
+#   Optional per-home integer key=value thresholds on fresh ship and scout
+#   spawns. max_workers caps concurrent workers while cool, hot_c caps the home
+#   at one worker, hold_c starts none, and jobs sets the per-worker build and
+#   test parallelism exported as CARGO_BUILD_JOBS, MAKEFLAGS, and
+#   PYTEST_XDIST_AUTO_NUM_WORKERS. The temperature comes from bin/fm-host-temp.sh;
+#   an unreadable sensor warns once and applies max_workers rather than
+#   refusing. A refusal names the temperature, limit, and live count, and a
+#   secondmate home also reports the pause to its parent channel. LOCAL,
+#   gitignored, and not inherited; absent file means no gate and no behaviour
+#   change. A relaunch and a secondmate are never refused. See
+#   docs/configuration.md "Thermal gate".
 # Claude permission mode (config/claude-permission-mode):
 #   One token selecting the permission flag every claude launch (ship, scout,
 #   secondmate, and relaunch) carries. Absent or `bypass` keeps today's
@@ -562,6 +574,8 @@ fi
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-classify-lib.sh
 . "$SCRIPT_DIR/fm-classify-lib.sh"
+# shellcheck source=bin/fm-parent-channel-lib.sh
+. "$SCRIPT_DIR/fm-parent-channel-lib.sh"
 fm_backlog_directory_present "$STATE" "state directory" || {
   echo "error: spawn refused: $FM_BACKLOG_TRANSITION_ERROR" >&2
   exit 1
@@ -1492,6 +1506,94 @@ spawn_refuse_if_away_spend_cap() {
     exit 1
   fi
 }
+# Thermal gate (config/thermal-gate): an optional per-home CPU-temperature
+# guard on fresh ship and scout spawns. The file is LOCAL, gitignored, and not
+# inherited, so a secondmate home sets its own thresholds; absent means no gate
+# and no behaviour change. Its integer `jobs` value is delivered into every
+# ship/scout launch, fresh or relaunch, through the same launch-command export
+# site as NEXUS_CACHE_MODE below. The refusal tiers, the parent-channel pause
+# in a secondmate home, and the unreadable-sensor fallback are owned by
+# docs/configuration.md "Thermal gate". A relaunch is exempt from the refusal
+# because it replaces an existing worker rather than adding one, and a
+# secondmate is a persistent home rather than a fan-out worker.
+spawn_thermal_gate_value() {  # <file> <key> -> trimmed value, empty when absent
+  local file=$1 key=$2 line
+  [ -f "$file" ] || return 0
+  line=$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$file" 2>/dev/null | tail -n1) || return 0
+  [ -n "$line" ] || return 0
+  line=${line#*=}
+  printf '%s' "$line" | tr -d '[:space:]'
+}
+spawn_thermal_gate_int() {  # <file> <key> -> non-negative integer, else empty
+  local value
+  value=$(spawn_thermal_gate_value "$1" "$2")
+  case "$value" in
+    '' | *[!0-9]*) return 0 ;;
+  esac
+  printf '%s' "$value"
+}
+spawn_thermal_gate_live_count() {  # -> this home's non-secondmate task records
+  local live=0 meta kind
+  for meta in "$STATE"/*.meta; do
+    [ -f "$meta" ] || continue
+    kind=$(grep '^kind=' "$meta" 2>/dev/null | tail -1 | cut -d= -f2-)
+    [ "$kind" != secondmate ] || continue
+    live=$((live + 1))
+  done
+  printf '%s' "$live"
+}
+spawn_apply_thermal_gate() {
+  local gate_file temp temp_rc limit live max_workers hot_c hold_c tier jobs line temp_desc
+  THERMAL_GATE_JOBS=
+  [ "$KIND" = ship ] || [ "$KIND" = scout ] || return 0
+  gate_file="$CONFIG/thermal-gate"
+  [ -f "$gate_file" ] || return 0
+  max_workers=$(spawn_thermal_gate_int "$gate_file" max_workers)
+  hot_c=$(spawn_thermal_gate_int "$gate_file" hot_c)
+  hold_c=$(spawn_thermal_gate_int "$gate_file" hold_c)
+  jobs=$(spawn_thermal_gate_int "$gate_file" jobs)
+  case "$jobs" in
+    '' | 0) ;;
+    *) THERMAL_GATE_JOBS=$jobs ;;
+  esac
+  [ "$RELAUNCH" -ne 1 ] || return 0
+  temp_rc=0
+  temp=$("$SCRIPT_DIR/fm-host-temp.sh" 2>/dev/null) || temp_rc=$?
+  [ "$temp_rc" -eq 0 ] && [ -n "$temp" ] || temp=
+  if [ -n "$temp" ]; then
+    if [ -n "$hold_c" ] && [ "$temp" -ge "$hold_c" ]; then
+      limit=0
+      tier=hold
+    elif [ -n "$hot_c" ] && [ "$temp" -ge "$hot_c" ]; then
+      limit=1
+      tier=hot
+    elif [ -n "$max_workers" ]; then
+      limit=$max_workers
+      tier=cool
+    else
+      return 0
+    fi
+    temp_desc="${temp}C"
+  else
+    if [ -z "$max_workers" ]; then
+      return 0
+    fi
+    limit=$max_workers
+    tier=fallback
+    temp_desc=unreadable
+    printf 'warning: thermal gate: host temperature is unreadable; applying max_workers=%s (config/thermal-gate)\n' "$limit" >&2
+  fi
+  live=$(spawn_thermal_gate_live_count)
+  if [ "$tier" != hold ] && [ "$live" -lt "$limit" ]; then
+    return 0
+  fi
+  echo "error: spawn refused by the thermal gate - temperature ${temp_desc}, limit ${limit}, live ${live} (config/thermal-gate)" >&2
+  if [ -e "$FM_HOME/.fm-secondmate-home" ]; then
+    line="paused [key=thermal-gate-${ID}]: thermal gate held spawn $ID - temperature ${temp_desc}, limit ${limit}, live ${live}"
+    fm_parent_channel_report "$FM_HOME" "$STATE" "$line" || true
+  fi
+  exit 1
+}
 # Spend cap (bin/fm-afk-contract.sh's spend_max_concurrent_workers): while the
 # away-posture record exists, a fresh ordinary spawn refuses for BOTH actors
 # once this home already holds that many ordinary task records, counted the
@@ -1502,6 +1604,11 @@ spawn_refuse_if_away_spend_cap() {
 # costs nothing to unwind; rechecked after the task-set lock so two fresh
 # spawns cannot both publish from a stale count.
 spawn_refuse_if_away_spend_cap
+# The thermal gate reads its config and the current temperature once, here,
+# before any endpoint, worktree, or record exists, and records the jobs value
+# for the launch below. A secondmate home that holds work also reports the pause
+# to its parent channel from inside the gate.
+spawn_apply_thermal_gate
 spawn_require_relocated_queued_work() {
   local actor
   [ "$RELAUNCH" -ne 1 ] || return 0
@@ -5069,6 +5176,13 @@ fi
 # changes nothing about how the worker receives it.
 if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
   LAUNCH="export NEXUS_CACHE_MODE=off; $LAUNCH"
+  # The thermal gate's `jobs` cap (config/thermal-gate) rides the same export
+  # site, so it reaches a fresh spawn and a relaunch under either allowlist
+  # posture. The value is a validated non-negative integer; the launch command's
+  # own exports are what survive the filtered environment.
+  if [ -n "${THERMAL_GATE_JOBS:-}" ]; then
+    LAUNCH="export CARGO_BUILD_JOBS=$THERMAL_GATE_JOBS; export MAKEFLAGS=-j$THERMAL_GATE_JOBS; export PYTEST_XDIST_AUTO_NUM_WORKERS=$THERMAL_GATE_JOBS; $LAUNCH"
+  fi
 fi
 LAUNCH="export COMPACT_ADVISER_DISABLE=1; $LAUNCH"
 if [ -z "$SPAWN_TRACEPARENT" ] && [ "$RELAUNCH" -eq 1 ]; then
