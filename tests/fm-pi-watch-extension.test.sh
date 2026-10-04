@@ -4738,6 +4738,167 @@ EOF
   pass "OpenCode guard publishes exactly one failure line to the parent channel"
 }
 
+# Defect: the session-start nudge was the one firstmate injector that passed no
+# model, so opencode ran it on the agent's configured default - which failed the
+# swift second-mate launch and poisoned every later guard follow-up's model. The
+# nudge must carry the session's current model exactly as the guard and watcher
+# plugins do.
+test_opencode_nudge_carries_session_model() {
+  local plugin repo home out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-sessionstart-nudge.js"
+  repo="$TMP_ROOT/opencode-nudge-model-root"
+  home="$TMP_ROOT/opencode-nudge-model-home"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  cat > "$repo/bin/fm-sessionstart-nudge.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'nudge\n'
+SH
+  chmod +x "$repo/bin/fm-sessionstart-nudge.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$repo" node --input-type=module 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+let body = null;
+const client = {
+  session: {
+    messages: async () => ({
+      data: [{ info: { role: "user", model: { providerID: "deepseek", modelID: "deepseek-flash" } }, parts: [] }],
+    }),
+    get: async () => ({ data: { model: { id: "auto", providerID: "freellm" } } }),
+    promptAsync: async (request) => {
+      body = request.body;
+    },
+  },
+};
+const hooks = await mod.FmPrimarySessionstartNudge({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+await hooks.event({ event: { type: "session.created", properties: { info: { id: "session-nudge-model" } } } });
+if (!body) {
+  console.error("nudge did not inject a session-start prompt");
+  process.exit(1);
+}
+const expected = JSON.stringify({ providerID: "deepseek", modelID: "deepseek-flash" });
+if (JSON.stringify(body.model) !== expected) {
+  console.error(`nudge used the wrong model: ${JSON.stringify(body.model)}`);
+  process.exit(1);
+}
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode session-start nudge must carry the session's current model"
+  [ -z "$out" ] || fail "OpenCode nudge-model test printed output: $out"
+  pass "OpenCode session-start nudge carries the session's most recent user-message model"
+}
+
+# A session can be injected before any user message carries a model: the swift
+# second-mate launch sent its brief and then the nudge 79ms later. With no
+# user-message model the resolver must fall back to the model the opencode
+# process was launched with, ahead of the session's stored model, and never the
+# agent's configured default.
+test_opencode_session_model_resolver_uses_launch_argument() {
+  local lib out status
+  lib="$ROOT/.opencode/plugins/lib/fm-session-model.js"
+  out=$(LIB="$lib" node --input-type=module 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.LIB).href);
+process.argv.splice(1, process.argv.length, "opencode", "--model", "deepseek/deepseek-flash");
+const client = {
+  session: {
+    messages: async () => ({ data: [] }),
+    get: async () => ({ data: { model: { id: "auto", providerID: "freellm" } } }),
+  },
+};
+const model = await mod.resolveSessionModel(client, "session-test");
+const expected = JSON.stringify({ providerID: "deepseek", modelID: "deepseek-flash" });
+if (JSON.stringify(model) !== expected) {
+  console.error(`launch-argument fallback returned the wrong model: ${JSON.stringify(model)}`);
+  process.exit(1);
+}
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode session-model resolver must fall back to the launch argument model"
+  [ -z "$out" ] || fail "OpenCode resolver launch-argument test printed output: $out"
+  pass "OpenCode session-model resolver uses the launch argument before the stored session model"
+}
+
+# A user message that carries a model is the session's live model and must beat
+# the process launch argument, exactly as it beats the stored session model.
+test_opencode_session_model_resolver_prefers_user_message() {
+  local lib out status
+  lib="$ROOT/.opencode/plugins/lib/fm-session-model.js"
+  out=$(LIB="$lib" node --input-type=module 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.LIB).href);
+process.argv.splice(1, process.argv.length, "opencode", "--model", "freellm/auto");
+const client = {
+  session: {
+    messages: async () => ({
+      data: [{ info: { role: "user", model: { providerID: "deepseek", modelID: "deepseek-flash" } }, parts: [] }],
+    }),
+    get: async () => ({ data: { model: { id: "auto", providerID: "freellm" } } }),
+  },
+};
+const model = await mod.resolveSessionModel(client, "session-test");
+const expected = JSON.stringify({ providerID: "deepseek", modelID: "deepseek-flash" });
+if (JSON.stringify(model) !== expected) {
+  console.error(`user-message model did not win: ${JSON.stringify(model)}`);
+  process.exit(1);
+}
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode session-model resolver must prefer the user-message model over the launch argument"
+  [ -z "$out" ] || fail "OpenCode resolver user-message-precedence test printed output: $out"
+  pass "OpenCode session-model resolver prefers the user-message model over the launch argument"
+}
+
+test_opencode_session_model_resolver_parses_launch_argument_forms() {
+  local lib out status
+  lib="$ROOT/.opencode/plugins/lib/fm-session-model.js"
+  out=$(LIB="$lib" node --input-type=module 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.LIB).href);
+const client = {
+  session: {
+    messages: async () => ({ data: [] }),
+    get: async () => ({ data: {} }),
+  },
+};
+const cases = [
+  ["--model", "deepseek/deepseek-flash"],
+  ["--model=deepseek/deepseek-flash"],
+  ["-m", "deepseek/deepseek-flash"],
+];
+for (const args of cases) {
+  process.argv.splice(1, process.argv.length, "opencode", ...args);
+  const model = await mod.resolveSessionModel(client, "session-test");
+  const expected = JSON.stringify({ providerID: "deepseek", modelID: "deepseek-flash" });
+  if (JSON.stringify(model) !== expected) {
+    console.error(`argv form ${JSON.stringify(args)} parsed to ${JSON.stringify(model)}`);
+    process.exit(1);
+  }
+}
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode session-model resolver must parse every accepted launch-argument form"
+  [ -z "$out" ] || fail "OpenCode resolver argv-forms test printed output: $out"
+  pass "OpenCode session-model resolver parses --model <p/m>, --model=<p/m>, and -m <p/m>"
+}
+
 test_pi_extension_reports_external_healthy_watcher
 test_pi_tool_returns_agent_tool_result
 test_pi_redundant_tool_call_is_owned_noop
@@ -4795,3 +4956,7 @@ test_opencode_watcher_wake_carries_session_model
 test_opencode_guard_bounds_failing_followups
 test_opencode_guard_normal_turn_resets_bound
 test_opencode_guard_failure_reaches_parent_channel
+test_opencode_nudge_carries_session_model
+test_opencode_session_model_resolver_uses_launch_argument
+test_opencode_session_model_resolver_prefers_user_message
+test_opencode_session_model_resolver_parses_launch_argument_forms

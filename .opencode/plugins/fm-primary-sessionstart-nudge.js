@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
+import { resolveSessionModel } from "./lib/fm-session-model.js";
 
 const handledSessions = new Set();
 
@@ -47,10 +48,12 @@ export const FmPrimarySessionstartNudge = async ({ client, directory, worktree }
       if (!nudge) return;
 
       try {
+        const model = await resolveSessionModel(client, sessionID);
         await client.session.promptAsync({
           path: { id: sessionID },
           body: {
             parts: [{ type: "text", text: nudge }],
+            ...(model ? { model } : {}),
           },
         });
       } catch {
