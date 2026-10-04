@@ -322,9 +322,24 @@
 #   exists, and so does a pick that could only land on a reserved account; an
 #   absent file keeps the inherited CLAUDE_CONFIG_DIR and writes no account= meta
 #   line. The chosen label is recorded as account= in task meta.
+# opencode context compaction (config/opencode-compaction):
+#   Optional local, gitignored opt-in that makes every opencode crew/ scout/
+#   secondmate/ relaunch carry an inline compaction block in the
+#   OPENCODE_CONFIG_CONTENT the spawn already builds. The file holds one JSON
+#   object; accepted keys are opencode's documented compaction options auto and
+#   prune (booleans), tail_turns, preserve_recent_tokens and reserved (positive
+#   integers), and it must name at least one. The recommended trial value is
+#   {"auto":true,"prune":true,"tail_turns":15,"preserve_recent_tokens":60000,"reserved":20000}:
+#   prune elides old tool output (the dominant re-read), preserve_recent_tokens
+#   keeps roughly 60k tokens of recent turns verbatim after any compaction, and
+#   tail_turns bounds the verbatim tail. Absent = today's launch, byte-identical.
+#   A malformed file refuses the spawn before any endpoint, worktree, or record
+#   exists and names the accepted shape. Not inherited into secondmate homes.
+#   When active, the opencode lane's meta carries opencode_compaction=on.
 #   Launch templates live in launch_template() below; placeholders replaced before launch:
 #     __BRIEF__    absolute path to data/<task-id>/brief.md
 #     __CLAUDEPERMFLAG__ the claude permission flag selected by config/claude-permission-mode
+#     __OPENCODECONFIG__ the quoted OPENCODE_CONFIG_CONTENT JSON for an opencode launch
 #     __PIBIN__    quoted concrete Pi-family executable path resolved from PATH
 #     __PITUIMODE__ optional --tui-mode regular when that executable advertises it
 #     __TURNEND__  absolute path to state/<task-id>.turn-ended (for harnesses whose
@@ -476,6 +491,51 @@ resolve_directory_input() {
   printf '%s\n' "$resolved"
 }
 
+# opencode_compaction_resolve <config-file>
+# Validate the optional config/opencode-compaction file and print its canonical
+# JSON object on stdout. Prints nothing when the file is absent, so an
+# unconfigured home keeps today's opencode launch. Refuses with a clear stderr
+# diagnostic when the file is present but malformed, so a spawn never launches on
+# a compaction posture the captain did not choose (header above).
+opencode_compaction_resolve() {
+  local file=$1 present raw unknown
+  present=$(fm_config_source_present "$file") || return 1
+  [ "$present" = 1 ] || return 0
+  if [ ! -f "$file" ] || [ ! -r "$file" ]; then
+    echo "error: config/opencode-compaction must be a readable regular file holding a JSON object of opencode compaction options" >&2
+    return 1
+  fi
+  raw=$(cat -- "$file") || {
+    echo "error: config/opencode-compaction cannot be read" >&2
+    return 1
+  }
+  if ! printf '%s' "$raw" | jq . >/dev/null 2>&1; then
+    echo "error: config/opencode-compaction is not valid JSON" >&2
+    return 1
+  fi
+  if ! printf '%s' "$raw" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    echo "error: config/opencode-compaction must be a JSON object of opencode compaction options, not another JSON type" >&2
+    return 1
+  fi
+  unknown=$(printf '%s' "$raw" | jq -r 'keys_unsorted - ["auto", "prune", "tail_turns", "preserve_recent_tokens", "reserved"] | join(", ")')
+  if [ -n "$unknown" ]; then
+    echo "error: config/opencode-compaction has unknown key(s): $unknown; accepted keys are auto, prune, tail_turns, preserve_recent_tokens, reserved" >&2
+    return 1
+  fi
+  if ! printf '%s' "$raw" | jq -e '
+    (if has("auto") then (.auto | type == "boolean") else true end)
+    and (if has("prune") then (.prune | type == "boolean") else true end)
+    and (if has("tail_turns") then (.tail_turns | (type == "number") and (. == floor) and (. >= 1)) else true end)
+    and (if has("preserve_recent_tokens") then (.preserve_recent_tokens | (type == "number") and (. == floor) and (. >= 1)) else true end)
+    and (if has("reserved") then (.reserved | (type == "number") and (. == floor) and (. >= 1)) else true end)
+    and (length > 0)
+  ' >/dev/null 2>&1; then
+    echo "error: config/opencode-compaction values are invalid; auto and prune must be booleans, tail_turns, preserve_recent_tokens and reserved must be positive integers, and at least one option is required" >&2
+    return 1
+  fi
+  printf '%s' "$raw" | jq -c .
+}
+
 FM_HOME=$(resolve_directory_input FM_HOME "$FM_HOME") || exit 1
 if [ -n "${FM_STATE_OVERRIDE:-}" ]; then
   FM_STATE_OVERRIDE=$(resolve_directory_input FM_STATE_OVERRIDE "$FM_STATE_OVERRIDE") || exit 1
@@ -542,6 +602,12 @@ if ! "$FM_ROOT/bin/fm-account-pick.sh" --check --config "$CONFIG/claude-accounts
   exit 1
 fi
 ACCOUNT_PICK=
+# config/opencode-compaction (header above): validated once per spawn or
+# relaunch, before any mutation, so a malformed file refuses instead of
+# launching opencode on a compaction posture the captain did not choose. The
+# parsed object is merged into OPENCODE_CONFIG_CONTENT for opencode launches;
+# an absent file leaves today's launch byte-identical.
+OPENCODE_COMPACTION_JSON=$(opencode_compaction_resolve "$CONFIG/opencode-compaction") || exit 1
 # config/lavish-axi-host is the primary-owned per-machine address for the
 # shared Lavish server. Read it once per launch and refuse malformed values so
 # every worker reaches the same server instead of starting a second one.
@@ -2065,7 +2131,7 @@ launch_template() {
       printf '%s' 'codex __MODELFLAG____EFFORTFLAG__--dangerously-bypass-approvals-and-sandbox --disable hooks -c "notify=[\"bash\",\"-c\",\"touch __TURNEND__\"]" "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     fi
     ;;
-  opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT='\''{"permission":{"*":"allow"}}'\'' __OPENCODEKEYWRAP__opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  opencode) printf '%s' 'OPENCODE_CONFIG_CONTENT=__OPENCODECONFIG__ __OPENCODEKEYWRAP__opencode __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   pi | pi-signed)
     printf '%s' '__PIBIN____PITUIMODE__'
     if [ "$kind" = secondmate ]; then
@@ -2283,6 +2349,14 @@ case "$ARG3" in
   }
   ;;
 esac
+
+# Whether this launch carries the opt-in opencode compaction block. Recorded in
+# task meta so cost per lane can be compared later; absent means off (today's
+# behavior), matching the config file's own absent-is-off contract.
+OPENCODE_COMPACTION_ENABLED=
+if [ "$HARNESS" = opencode ] && [ -n "$OPENCODE_COMPACTION_JSON" ]; then
+  OPENCODE_COMPACTION_ENABLED=1
+fi
 
 # muse, gemini, and agy are verified as CREWMATE/SCOUT adapters only. A secondmate is
 # a firstmate instance, so it needs a primary supervision protocol.
@@ -4924,7 +4998,7 @@ SPAWN_META_PATH=$SPAWN_META_TMP
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort model_override account busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
+      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort model_override account opencode_compaction busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -4944,6 +5018,10 @@ preserve_relaunch_meta() {
   echo "effort=${EFFORT:-default}"
   [ -z "$CAPTAIN_OVERRIDE_MODEL" ] || echo "model_override=$(printf '%s' "$CAPTAIN_OVERRIDE_MODEL" | tr '\n' ' ')"
   [ -z "$ACCOUNT_PICK" ] || echo "account=$ACCOUNT_PICK"
+  # Default-off writes no opencode_compaction= line, so an opencode lane launched
+  # without the opt-in stays byte-identical and a later cost comparison reads
+  # absence as off.
+  [ -z "$OPENCODE_COMPACTION_ENABLED" ] || echo "opencode_compaction=on"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
   # Default-off writes no traceparent= line.
@@ -5079,10 +5157,23 @@ sq_ompext=$(shell_quote "$STATE/$ID.omp-ext.ts")
 sq_ompcfg=$(shell_quote "${OMP_WORKER_CFG:-$FM_ROOT/.omp/fm-worker-overlay.yml}")
 sq_opinput=$(shell_quote "$FM_ROOT/bin/fm-operational-input.sh")
 sq_worktree=$(shell_quote "$WT")
+# The opencode launch always carries permission allow; the opt-in compaction
+# block from config/opencode-compaction is merged in beside it. Only opencode
+# needs the JSON, so no other harness pays for or depends on the merge.
+OPENCODE_LAUNCH_CONFIG='{"permission":{"*":"allow"}}'
+if [ "$HARNESS" = opencode ] && [ -n "$OPENCODE_COMPACTION_JSON" ]; then
+  OPENCODE_LAUNCH_CONFIG=$(jq -cn --argjson compaction "$OPENCODE_COMPACTION_JSON" \
+    '{permission:{"*":"allow"}, compaction:$compaction}') || {
+    echo "error: could not merge config/opencode-compaction into the opencode launch config" >&2
+    exit 1
+  }
+fi
+sq_occonfig=$(shell_quote "$OPENCODE_LAUNCH_CONFIG")
 MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL")
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT" "$MODEL") || exit 1
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
 LAUNCH=${LAUNCH//__EFFORTFLAG__/$EFFORTFLAG}
+LAUNCH=${LAUNCH//__OPENCODECONFIG__/$sq_occonfig}
 LAUNCH=${LAUNCH//__OPENCODEKEYWRAP__/$OPENCODE_KEY_WRAP}
 LAUNCH=${LAUNCH//__CLAUDEPERMFLAG__/$CLAUDE_PERM_FLAG}
 if [ "$HARNESS" = rovo ]; then

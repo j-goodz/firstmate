@@ -370,6 +370,25 @@ Its `remove` action excises only the marker-delimited Firstmate region and remov
 For Pi and pi-signed secondmate launches, `fm-spawn.sh` starts the selected executable with `-e` pointed at the secondmate home's own tracked `.pi/extensions/fm-primary-pi-watch.ts` and `.pi/extensions/fm-primary-turnend-guard.ts`, both already present from the secondmate home's git worktree.
 For omp secondmate launches, `fm-spawn.sh` passes no `-e` at all: omp auto-discovers the home's tracked `.omp/extensions/` with no trust gate, and naming a discovered file with `-e` as well loads it twice; every omp launch instead carries the tracked `.omp/fm-worker-overlay.yml` posture overlay through `--config`, which [`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns.
 
+## opencode context compaction (config/opencode-compaction)
+
+The optional local, gitignored `config/opencode-compaction` opts an opencode home into opencode's own context pruning and compaction for every opencode crewmate, scout, secondmate, and control-plane relaunch.
+It carries one JSON object whose keys are opencode's documented `compaction` options: `auto` and `prune` are booleans and `tail_turns`, `preserve_recent_tokens`, and `reserved` are positive integers, and it must name at least one.
+`bin/fm-spawn.sh` merges that object into the inline `OPENCODE_CONFIG_CONTENT` the opencode launch already builds, beside its `permission` block, and records `opencode_compaction=on` in the lane's task meta so cost per lane can be compared later.
+The recommended trial value is:
+
+```json
+{"auto":true,"prune":true,"tail_turns":15,"preserve_recent_tokens":60000,"reserved":20000}
+```
+
+`prune` is the main lever - it elides old tool output, which dominates the re-read cost of a long lane.
+`preserve_recent_tokens` keeps roughly 60k tokens of recent turns verbatim after any compaction, `tail_turns` bounds how many recent user turns stay verbatim, and `reserved` leaves overflow headroom during compaction.
+A planned 5-lane trial compares dollars per lane and completion rate against lanes launched without the setting.
+
+An absent file leaves the opencode launch byte-identical to before, and no `opencode_compaction=` line is written to meta.
+A file that is not a JSON object, uses an unrecognized key, carries a wrong-typed or non-positive value, or is empty refuses every spawn from that home, whichever harness it would launch, before any endpoint, worktree, or task record exists, naming the accepted shape.
+The file is read on every spawn and relaunch, so a change takes effect at the next launch without a restart, and it is not inherited into secondmate homes.
+
 ## Claude permission mode (config/claude-permission-mode)
 
 The optional local, gitignored `config/claude-permission-mode` holds one token selecting the permission flag every Claude worker launch carries: crewmates, scouts, Claude secondmates, and control-plane relaunches alike.
