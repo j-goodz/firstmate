@@ -288,6 +288,7 @@ Placement is proven only at launch, so `bin/fm-spawn.sh` also exports the task i
 
 Firstmate's own no-mistakes gate runs agents inside a checkout that also contains the fleet-captain identity in `AGENTS.md`, so gate execution needs an authority boundary separate from ordinary crewmate worktree isolation.
 The tracked `.no-mistakes.yaml` sets `disable_project_settings: true`; no-mistakes honors that setting only from the trusted default-branch copy, so a pushed branch cannot enable its own project instructions during validation.
+The fleet's no-mistakes binary is the private `j-goodz/no-mistakes` fork (upstream v1.84.0 plus a gate-neutralization patch), which admits the `opencode` gate agent by launching `opencode serve` with `OPENCODE_DISABLE_PROJECT_CONFIG=1` under that opt-out, so opencode neutralizes the target checkout's project instructions exactly like codex, claude, and pi.
 Independently, `fm-spawn.sh`, `fm-send.sh`, `fm-control.sh`, and `fm-teardown.sh` source `bin/fm-gate-refuse-lib.sh` and exit with status 3 before fleet mutation when the gate environment marker is present or the current checkout matches the default no-mistakes gate-repository topology.
 A normal primary checkout or crewmate worktree has neither signal and remains unaffected.
 The helper's header owns the exact signal detection, relocated-home limitation, test-harness bypass, and relationship to no-mistakes' HEAD-continuity guard.
