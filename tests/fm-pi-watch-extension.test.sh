@@ -3351,6 +3351,7 @@ test_opencode_plugin_package_boundary_is_explicit_esm() {
   cp "$ROOT/.opencode/plugins/package.json" "$fixture/plugins/package.json"
   cp "$ROOT/.opencode/plugins/fm-primary-watch-arm.js" "$plugin"
   cp "$ROOT/.opencode/plugins/lib/fm-operational-input.js" "$fixture/plugins/lib/fm-operational-input.js"
+  cp "$ROOT/.opencode/plugins/lib/fm-session-model.js" "$fixture/plugins/lib/fm-session-model.js"
   out=$(PLUGIN="$plugin" node --input-type=module 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
 await import(pathToFileURL(process.env.PLUGIN).href);
@@ -4315,6 +4316,362 @@ EOF
   pass "OpenCode healthy arm output does not suppress the turn-end guard"
 }
 
+# Defect 1: a marked second-mate home runs its own primary firstmate session and
+# must arm a watcher exactly as the turn-end guard guards it. The plugin delegates
+# primary scoping to bin/fm-primary-scope-lib.sh so the two cannot drift.
+test_opencode_watch_plugin_arms_in_marked_secondmate_home() {
+  local plugin home log out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  home="$TMP_ROOT/opencode-secondmate-arm-home"
+  log="$TMP_ROOT/opencode-secondmate-arm.log"
+  mkdir -p "$home/bin" "$home/state" "$home/config"
+  git init -q "$home"
+  : > "$home/AGENTS.md"
+  printf 'swift\n' > "$home/.fm-secondmate-home"
+  : > "$home/state/task.meta"
+  cat > "$home/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'arm\n' >> "${FM_ARM_LOG:?}"
+printf 'watcher: healthy pid=1 (beacon 0s)\n'
+SH
+  chmod +x "$home/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$home" FM_HOME="$home" FM_ARM_LOG="$log" node 2>&1 <<'EOF'
+import { existsSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+const client = { session: { promptAsync: async () => {} } };
+const hooks = await mod.FmPrimaryWatchArm({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
+for (let i = 0; i < 250 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+if (!existsSync(process.env.FM_ARM_LOG)) {
+  console.error("marked second-mate home did not arm a watcher");
+  process.exit(1);
+}
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode watch plugin must arm in a marked second-mate home"
+  [ -z "$out" ] || fail "OpenCode second-mate arm test printed output: $out"
+  pass "OpenCode watcher plugin arms in a marked second-mate home"
+}
+
+# Defect 1: a crewmate/scout task worktree (a genuine linked git worktree with no
+# second-mate marker) stays exempt, exactly as the shared predicate requires.
+test_opencode_watch_plugin_skips_crewmate_worktree() {
+  local plugin base repo home log out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  base="$TMP_ROOT/opencode-crewmate-skip-base"
+  repo="$TMP_ROOT/opencode-crewmate-skip-wt"
+  home="$TMP_ROOT/opencode-crewmate-skip-home"
+  log="$TMP_ROOT/opencode-crewmate-skip.log"
+  fm_git_worktree "$base" "$repo" fm/opencode-crewmate-skip
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  : > "$repo/AGENTS.md"
+  : > "$home/state/task.meta"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'arm\n' >> "${FM_ARM_LOG:?}"
+printf 'watcher: healthy pid=1 (beacon 0s)\n'
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" node 2>&1 <<'EOF'
+import { existsSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+const client = { session: { promptAsync: async () => {} } };
+await mod.FmPrimaryWatchArm({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+const status = await globalThis.__firstmateOpenCodeWatchArm.ensureArmed("session-test", client);
+await new Promise((resolve) => setTimeout(resolve, 120));
+if (status !== "not-primary") {
+  console.error(`expected not-primary for a crewmate worktree, got ${status}`);
+  process.exit(1);
+}
+if (existsSync(process.env.FM_ARM_LOG)) {
+  console.error("watcher armed inside a crewmate worktree");
+  process.exit(1);
+}
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode watch plugin must not arm in a crewmate task worktree"
+  [ -z "$out" ] || fail "OpenCode crewmate-skip test printed output: $out"
+  pass "OpenCode watcher plugin does not arm in a crewmate task worktree"
+}
+
+# Defect 2: an injected guard follow-up runs on the session's current model,
+# never the agent's configured default.
+test_opencode_guard_followup_carries_session_model() {
+  local plugin repo home log out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-turnend-guard.js"
+  repo="$TMP_ROOT/opencode-guard-model-root"
+  home="$TMP_ROOT/opencode-guard-model-home"
+  log="$TMP_ROOT/opencode-guard-model.log"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  cat > "$repo/bin/fm-turnend-guard.sh" <<'SH'
+#!/usr/bin/env bash
+cat >/dev/null
+printf 'guard\n' >> "${FM_GUARD_LOG:?}"
+printf 'watcher cycle is missing, failed, or unhealthy\n' >&2
+exit 2
+SH
+  chmod +x "$repo/bin/fm-turnend-guard.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$repo" FM_HOME="$home" FM_GUARD_LOG="$log" node 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+let body = null;
+const client = {
+  session: {
+    messages: async () => ({
+      data: [{ info: { role: "user", model: { providerID: "deepseek", modelID: "deepseek-flash" } }, parts: [] }],
+    }),
+    get: async () => ({ data: { model: { id: "auto", providerID: "freellm" } } }),
+    promptAsync: async (request) => {
+      body = request.body;
+    },
+  },
+};
+const hooks = await mod.FmPrimaryTurnendGuard({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
+if (!body) {
+  console.error("guard did not inject a follow-up");
+  process.exit(1);
+}
+const expected = JSON.stringify({ providerID: "deepseek", modelID: "deepseek-flash" });
+if (JSON.stringify(body.model) !== expected) {
+  console.error(`guard follow-up used the wrong model: ${JSON.stringify(body.model)}`);
+  process.exit(1);
+}
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode guard follow-up must carry the session's current model"
+  [ -z "$out" ] || fail "OpenCode guard-model test printed output: $out"
+  pass "OpenCode guard follow-up carries the session's most recent user-message model"
+}
+
+# Defect 2: a watcher-delivered wake also runs on the session's current model.
+test_opencode_watcher_wake_carries_session_model() {
+  local plugin repo home log stop out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  repo="$TMP_ROOT/opencode-wake-model-root"
+  home="$TMP_ROOT/opencode-wake-model-home"
+  log="$TMP_ROOT/opencode-wake-model.log"
+  stop="$TMP_ROOT/opencode-wake-model.stop"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  : > "$home/state/task.meta"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --handling-delivered ]; then exit 0; fi
+printf 'arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+count=$(grep -c '^arm=' "$FM_ARM_LOG")
+if [ "$count" -eq 1 ]; then
+  printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+  printf 'signal: synthetic wake\n'
+  exit 0
+fi
+printf 'watcher: started pid=%s (beacon fresh) recovery-generation=fixture-generation\n' "$$"
+trap 'exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" node 2>&1 <<'EOF'
+import { writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+let body = null;
+const client = {
+  session: {
+    messages: async () => ({
+      data: [{ info: { role: "user", model: { providerID: "deepseek", modelID: "deepseek-flash" } }, parts: [] }],
+    }),
+    get: async () => ({ data: { model: { id: "auto", providerID: "freellm" } } }),
+    promptAsync: async (request) => {
+      body = request.body;
+    },
+  },
+};
+const hooks = await mod.FmPrimaryWatchArm({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
+for (let i = 0; i < 500 && !body; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 10));
+}
+if (!body) {
+  console.error("watcher wake was not delivered");
+  process.exit(1);
+}
+const expected = JSON.stringify({ providerID: "deepseek", modelID: "deepseek-flash" });
+if (JSON.stringify(body.model) !== expected) {
+  console.error(`watcher wake used the wrong model: ${JSON.stringify(body.model)}`);
+  process.exit(1);
+}
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode watcher wake must carry the session's current model"
+  [ -z "$out" ] || fail "OpenCode watcher-model test printed output: $out"
+  pass "OpenCode watcher wake carries the session's most recent user-message model"
+}
+
+# Defect 3: an injected guard follow-up that never produces a tool call must not
+# re-inject forever. Four consecutive failing follow-ups inject three times and
+# record exactly one failure line.
+test_opencode_guard_bounds_failing_followups() {
+  local plugin repo home out status record
+  plugin="$ROOT/.opencode/plugins/fm-primary-turnend-guard.js"
+  repo="$TMP_ROOT/opencode-guard-bound-root"
+  home="$TMP_ROOT/opencode-guard-bound-home"
+  record="$home/state/.opencode-turnend-guard.status"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  cat > "$repo/bin/fm-turnend-guard.sh" <<'SH'
+#!/usr/bin/env bash
+cat >/dev/null
+printf 'watcher cycle is missing, failed, or unhealthy\n' >&2
+exit 2
+SH
+  chmod +x "$repo/bin/fm-turnend-guard.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$repo" FM_HOME="$home" node 2>&1 <<'EOF'
+import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+let prompts = 0;
+const client = {
+  session: {
+    messages: async () => ({
+      data: [{ info: { role: "user", model: { providerID: "deepseek", modelID: "deepseek-flash" } }, parts: [] }],
+    }),
+    get: async () => ({ data: { model: { id: "auto", providerID: "freellm" } } }),
+    promptAsync: async () => {
+      prompts += 1;
+    },
+  },
+};
+const hooks = await mod.FmPrimaryTurnendGuard({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+const idle = { event: { type: "session.idle", properties: { sessionID: "session-test" } } };
+for (let i = 0; i < 4; i += 1) await hooks.event(idle);
+if (prompts !== 3) {
+  console.error(`bounded guard injected ${prompts} follow-ups, expected 3`);
+  process.exit(1);
+}
+const lines = readFileSync(`${process.env.FM_HOME}/state/.opencode-turnend-guard.status`, "utf8")
+  .trim()
+  .split("\n")
+  .filter((line) => line.startsWith("failed "));
+if (lines.length !== 1) {
+  console.error(`guard recorded ${lines.length} failure lines, expected 1`);
+  process.exit(1);
+}
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode guard must bound failing follow-ups and record one failure"
+  [ -z "$out" ] || fail "OpenCode guard-bound test printed output: $out"
+  grep -q '^failed ' "$record" || fail "OpenCode guard did not append the failure line"
+  pass "OpenCode guard stops after three failing follow-ups and records one failure"
+}
+
+# Defect 3: a normal turn (one that produces a tool call) resets the consecutive
+# failure count, so a later failing streak can inject again.
+test_opencode_guard_normal_turn_resets_bound() {
+  local plugin repo home out status
+  plugin="$ROOT/.opencode/plugins/fm-primary-turnend-guard.js"
+  repo="$TMP_ROOT/opencode-guard-reset-root"
+  home="$TMP_ROOT/opencode-guard-reset-home"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  cat > "$repo/bin/fm-turnend-guard.sh" <<'SH'
+#!/usr/bin/env bash
+cat >/dev/null
+printf 'watcher cycle is missing, failed, or unhealthy\n' >&2
+exit 2
+SH
+  chmod +x "$repo/bin/fm-turnend-guard.sh"
+  out=$(PLUGIN="$plugin" WORKTREE="$repo" FM_HOME="$home" node 2>&1 <<'EOF'
+import { existsSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+let prompts = 0;
+const client = {
+  session: {
+    messages: async () => ({
+      data: [{ info: { role: "user", model: { providerID: "deepseek", modelID: "deepseek-flash" } }, parts: [] }],
+    }),
+    get: async () => ({ data: { model: { id: "auto", providerID: "freellm" } } }),
+    promptAsync: async () => {
+      prompts += 1;
+    },
+  },
+};
+const hooks = await mod.FmPrimaryTurnendGuard({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+const idle = { event: { type: "session.idle", properties: { sessionID: "session-test" } } };
+await hooks.event(idle);
+await hooks.event(idle);
+await hooks["tool.execute.before"]({ tool: "bash", sessionID: "session-test" }, { args: {} });
+await hooks.event(idle);
+await hooks.event(idle);
+if (prompts !== 4) {
+  console.error(`normal turn did not reset the guard bound: ${prompts} follow-ups, expected 4`);
+  process.exit(1);
+}
+if (existsSync(`${process.env.FM_HOME}/state/.opencode-turnend-guard.status`)) {
+  console.error("a reset guard still recorded a failure line");
+  process.exit(1);
+}
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode guard must reset its bound after a normal turn"
+  [ -z "$out" ] || fail "OpenCode guard-reset test printed output: $out"
+  pass "OpenCode guard resets its consecutive-failure bound after a normal turn"
+}
+
 test_pi_extension_reports_external_healthy_watcher
 test_pi_tool_returns_agent_tool_result
 test_pi_redundant_tool_call_is_owned_noop
@@ -4365,3 +4722,9 @@ test_opencode_established_empty_close_honors_retry_limit
 test_opencode_actionable_close_rechecks_session_lock
 test_opencode_watch_arm_coordinates_with_turnend_guard
 test_opencode_healthy_arm_output_does_not_suppress_guard
+test_opencode_watch_plugin_arms_in_marked_secondmate_home
+test_opencode_watch_plugin_skips_crewmate_worktree
+test_opencode_guard_followup_carries_session_model
+test_opencode_watcher_wake_carries_session_model
+test_opencode_guard_bounds_failing_followups
+test_opencode_guard_normal_turn_resets_bound

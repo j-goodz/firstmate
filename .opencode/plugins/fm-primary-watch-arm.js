@@ -1,7 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { encodeFirstmateOperationalInput } from "./lib/fm-operational-input.js";
+import { resolveSessionModel } from "./lib/fm-session-model.js";
+
+const ADAPTER_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 const COORDINATOR_KEY = "__firstmateOpenCodeWatchArm";
 // 35s on Windows so the budget stays above arm's MSYS confirm default (30s in
@@ -90,15 +94,24 @@ function effectivePaths(root) {
   return { root: fmRoot, home: fmHome, state, config };
 }
 
-async function isPrimaryRoot(root, home) {
-  if (!root) return false;
-  if (!existsSync(`${root}/AGENTS.md`) || !existsSync(`${root}/bin`)) return false;
-  if (existsSync(`${root}/.fm-secondmate-home`)) return false;
-  if (home && home !== root && existsSync(`${home}/.fm-secondmate-home`)) return false;
-  const gitDir = await runProcess("git", ["-C", root, "rev-parse", "--git-dir"]);
-  const commonDir = await runProcess("git", ["-C", root, "rev-parse", "--git-common-dir"]);
-  if (gitDir.code !== 0 || commonDir.code !== 0) return false;
-  return gitDir.stdout.trim() === commonDir.stdout.trim();
+// Primary scoping is owned by bin/fm-primary-scope-lib.sh, the exact predicate
+// bin/fm-turnend-guard.sh sources. Delegating to it (instead of reimplementing
+// its marker-or-plain-checkout rules here) is what keeps the watch arm and the
+// turn-end guard from drifting: a marked second-mate home is guarded by both,
+// and a crewmate/scout task worktree stays exempt from both.
+async function primaryScopeMatches(paths) {
+  if (!paths.root) return false;
+  const scopeLib = `${ADAPTER_ROOT}/bin/fm-primary-scope-lib.sh`;
+  if (!existsSync(scopeLib)) return false;
+  const result = await runProcess("bash", [
+    "-c",
+    '. "$1" || exit 1; fm_primary_scope_matches "$2" "$3"',
+    "bash",
+    scopeLib,
+    paths.root,
+    paths.state,
+  ]);
+  return result.code === 0;
 }
 
 function shouldArm(paths) {
@@ -186,10 +199,12 @@ function observeArmOutput(stdout, stderr, settleReadiness) {
 
 async function sendPrompt(paths, client, sessionID, text) {
   const encoded = await encodeFirstmateOperationalInput(paths.root, "watcher", text);
+  const model = await resolveSessionModel(client, sessionID);
   await client.session.promptAsync({
     path: { id: sessionID },
     body: {
       parts: [{ type: "text", text: encoded }],
+      ...(model ? { model } : {}),
     },
   });
 }
@@ -445,7 +460,7 @@ function spawnArm(paths, sessionID, client, predecessorArmPid = "") {
 
 async function beginArm(paths, sessionID, client, predecessorArmPid) {
   if (!sessionID) return { status: "skipped", armChild: null };
-  if (!(await isPrimaryRoot(paths.root, paths.home))) return { status: "not-primary", armChild: null };
+  if (!(await primaryScopeMatches(paths))) return { status: "not-primary", armChild: null };
   if (!(await sessionOwnsLock(paths))) return { status: "read-only", armChild: null };
   if (child) return { status: "existing", armChild: child };
   if (retryTimer) return { status: "retrying", armChild: null };
