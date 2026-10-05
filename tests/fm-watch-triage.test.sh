@@ -2501,7 +2501,7 @@ parked_watch_round() {  # <state> <fakebin> <out> <capture> <window> <exit|absor
   local state=$1 fakebin=$2 out=$3 capture=$4 window=$5 mode=$6 pid cycles=0
   PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture" \
     FM_FAKE_TMUX_CURRENT_COMMAND=grok \
-    FM_FAKE_CREW_STATE='state: paused · source: status-log · parked' \
+    FM_FAKE_CREW_STATE="${PARKED_CREW_STATE:-state: paused · source: status-log · parked}" \
     FM_WATCH_HANDLING_SUCCESSOR=1 \
     FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
     FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
@@ -2617,6 +2617,57 @@ test_live_declared_wait_churn_honors_the_resurface_throttle() {
     [ "$bare" -eq 1 ] || fail "[$name] elapsed re-surface changed the wake identity: $(cat "$state/.wake-queue")"
   done
   pass "a parked live worker surfaces once, absorbs pane churn for the whole re-surface window, then re-surfaces when it elapses"
+}
+
+# The 2026-10-03 scout alarm loop: a scout parked on `paused: waiting on the
+# captain's answers` was surfaced as a bare `stale:` wake every ~6 minutes although
+# its status log never changed. Its authoritative state flickered between an
+# inconclusive read (no wake owed past the first) and `working` (its hook record
+# said a turn was in flight), and every `working` read cleared the declaration's
+# re-surface throttle, so the next inconclusive read counted as a first sight. A
+# working read says nothing about whether the SAME declared wait still stands, so
+# it must not forget that the wait was already surfaced inside the window.
+test_working_flicker_does_not_reset_the_declared_wait_throttle() {
+  local dir state fakebin out capture_file statusf window key sig round wakes throttle inconclusive working
+  inconclusive='state: unknown · source: pane · harness state unavailable (unknown)'
+  working='state: working · source: pane · harness busy (claude-hook)'
+  dir=$(make_case working-flicker-throttle); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/scout.status"
+  window="test:fm-scout"
+  printf 'window=%s\nkind=scout\nharness=claude\nbackend=tmux\n' "$window" > "$state/scout.meta"
+  printf '%s\n' \
+    'needs-decision [at=1] [key=board-review]: pick the calls' \
+    'paused [at=2]: waiting on the captain' \
+    'resolved [at=3] [key=board-review]: answered' \
+    "paused [at=4]: waiting on the captain's calls page answers" > "$statusf"
+  sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-scout_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  throttle="$state/.paused-resurfaced-$key"
+
+  printf 'parked, elapsed 1s' > "$capture_file"
+  printf '%s' "$(hash_text 'parked, elapsed 1s')" > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+  PARKED_CREW_STATE=$inconclusive parked_watch_round "$state" "$fakebin" "$out" "$capture_file" "$window" exit \
+    || fail "first sight of a parked scout did not surface"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the first surface"
+  [ -e "$throttle" ] || fail "the first surface recorded no re-surface throttle"
+
+  round=2
+  while [ "$round" -le 7 ]; do
+    printf 'parked, elapsed %ss' "$round" > "$capture_file"
+    case $((round % 2)) in
+      0) PARKED_CREW_STATE=$working ;;
+      *) PARKED_CREW_STATE=$inconclusive ;;
+    esac
+    PARKED_CREW_STATE=$PARKED_CREW_STATE parked_watch_round "$state" "$fakebin" "$out" "$capture_file" "$window" absorb \
+      || fail "watcher exited in flicker round $round instead of supervising through it"
+    wakes=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w { n++ } END { print n + 0 }' \
+      "$state/.wake-queue" 2>/dev/null || echo 0)
+    [ "$wakes" -eq 0 ] || fail "flicker round $round re-alarmed a scout whose declared wait was already surfaced"
+    [ -e "$throttle" ] || fail "flicker round $round cleared the declared wait's re-surface throttle"
+    round=$((round + 1))
+  done
+  pass "a working read between inconclusive reads does not reset a declared wait's re-surface throttle"
 }
 
 test_live_paused_until_controls_recheck_time() {
@@ -3905,6 +3956,42 @@ test_secondmate_paused_resurfaces_in_normal_mode() {
   grep -F "possible wedge" "$out" >/dev/null && fail "paused secondmate was mislabeled a wedge"
   unset FM_FAKE_CREW_STATE
   pass "a declared paused secondmate re-surfaces on the bounded normal-mode cadence"
+}
+
+# The scout fix (test_working_flicker_does_not_reset_the_declared_wait_throttle)
+# bounds the alarm loop for ordinary crews, but a secondmate parked on a declared
+# wait reaches its own branch. Its authoritative crew state can read `working` -
+# a harness turn in flight on the mate's endpoint - while the status log still
+# declares the same wait, and a `working` read says nothing about whether that
+# declaration still stands, so it must not clear the declaration's re-surface
+# throttle. Clearing it let the next inconclusive read count as a first sight and
+# re-open the same loop for mates.
+test_secondmate_working_read_keeps_declared_wait_throttle() {
+  local dir state fakebin out capture_file statusf window key pane_hash sig throttle recheck back
+  dir=$(make_case secondmate-working-throttle); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/secondmate-waiting.status"
+  window="test:fm-secondmate-waiting"
+  printf 'idle awaiting external\n' > "$capture_file"
+  printf 'window=%s\nkind=secondmate\n' "$window" > "$state/secondmate-waiting.meta"
+  printf 'paused: awaiting the upstream release\n' > "$statusf"
+  sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-secondmate-waiting_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  pane_hash=$(hash_text 'idle awaiting external')
+  printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+  : > "$state/.paused-$key"
+  throttle="$state/.paused-resurfaced-$key"
+  recheck="$state/.paused-rechecked-$key"
+  printf 'declared:stale\n' > "$throttle"
+  date +%s > "$recheck"
+  back=$(( $(date +%s) - 5000 ))
+  set_mtime "$back" "$recheck"
+
+  PARKED_CREW_STATE='state: working · source: pane · harness busy' \
+    parked_watch_round "$state" "$fakebin" "$out" "$capture_file" "$window" absorb \
+    || fail "watcher exited while a secondmate on a declared wait only read as working"
+  [ -e "$throttle" ] || fail "a secondmate's working read cleared its declared wait's re-surface throttle"
+  pass "a secondmate's working read keeps the declared wait's re-surface throttle"
 }
 
 # A captain hold is the other declared wait, but unlike paused: it has no
@@ -6217,6 +6304,7 @@ test_nonterminal_stale_paused_absorbed_then_resurfaced
 test_exited_declared_pause_is_bounded_but_live_gate_surfaces
 test_absorbed_replacement_wait_does_not_inherit_the_old_throttle
 test_live_declared_wait_churn_honors_the_resurface_throttle
+test_working_flicker_does_not_reset_the_declared_wait_throttle
 test_live_paused_until_controls_recheck_time
 test_wedge_threshold_defers_to_a_declared_wait_under_a_working_verdict
 test_wedge_threshold_recheck_names_the_captain_for_a_held_lane
@@ -6229,6 +6317,7 @@ test_stale_churn_without_a_captain_call_still_alarms
 test_failed_wake_append_does_not_arm_the_captain_hold_throttle
 test_reheld_captain_call_starts_its_own_resurface_window
 test_secondmate_paused_resurfaces_in_normal_mode
+test_secondmate_working_read_keeps_declared_wait_throttle
 test_secondmate_captain_held_resurfaces_in_normal_mode
 test_secondmate_nonpaused_stale_remains_suppressed
 test_secondmate_unpause_clears_pause_tracking
