@@ -1,0 +1,11 @@
+== fixture k10temp 81.25C
+81
+exit=0
+== slot status, real hwmon, no thermal zone
+capacity=2 base=2 temp=84 tier=cool held=0 free=2 avail_mb=5627
+slot=0 free
+== slot status, no sensors
+capacity=2 base=2 temp=unknown tier=unknown held=0 free=2 avail_mb=5627
+slot=0 free
+== thresholds hot=70 hold=90, real k10temp
+capacity=1 base=2 temp=83 tier=hot held=0 free=1 avail_mb=5207

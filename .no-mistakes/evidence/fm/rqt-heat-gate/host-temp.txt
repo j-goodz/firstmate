@@ -1,0 +1,8 @@
+== real hwmon, empty thermal dir
+84
+exit=0
+== both empty
+exit=3
+== fixture k10temp
+
+exit=3

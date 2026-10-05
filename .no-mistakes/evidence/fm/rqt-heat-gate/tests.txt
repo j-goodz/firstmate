@@ -1,0 +1,12 @@
+ok - k10temp falls back to hottest without Tctl or Tdie
+ok - k10temp prefers Tctl over Tdie regardless of file order
+ok - --help documents the sensor overrides
+ok - placement log format
+ok - ranking tie-breaking
+ok - PLACE none when nothing qualifies
+ok - an unreadable sensor warns and falls back to max_workers
+ok - a refusal in a secondmate home publishes exactly one stamped paused parent line
+ok - a configured jobs value reaches the worker launch environment
+ok - status shows a live holder and ignores a stale info file
+ok - help prints usage and malformed calls exit 2
+ok - run appends JSON acquire, release and refuse events
