@@ -124,6 +124,10 @@ fm_idle_reap_close_pane() { printf '%s %s\n' "$1" "$2" >> "$CLOSE_LOG"; }
 run_reap() {  # [args...] - one run at FM_IDLE_REAP_NOW
   ( fm_idle_reap_main "$@" ) > "$TMP_ROOT/run.out" 2>&1
 }
+run_reap_no_homes() {  # [args...] - discovery sees no Firstmate home
+  ( export HOME="$EMPTY_HOME"; unset FM_IDLE_REAP_HOMES; fm_idle_reap_main "$@" ) \
+    > "$TMP_ROOT/run.out" 2>&1
+}
 last_decision() {  # <pane> -> "<action> <reason>" from that pane's newest log line
   jq -r --arg p "$1" 'select(.event=="pane" and .pane==$p) | "\(.action) \(.reason)"' "$FM_IDLE_REAP_LOG" | tail -n 1
 }
@@ -365,6 +369,8 @@ assert_contains "$service" "ExecStart=$ROOT/bin/fm-idle-session-reap.sh --apply"
 assert_contains "$service" "Type=oneshot" "one attempt per run"
 assert_not_contains "$service" "Restart=" "no retry loop"
 assert_contains "$(cat "$TMP_ROOT/systemctl.log")" "enable --now fm-idle-session-reap.timer" "the timer is enabled"
+recorded_homes=$(printf '%s\n' "$service" | sed -n 's/^Environment="FM_IDLE_REAP_HOMES=\(.*\)"$/\1/p')
+assert_equals "$H1:$H2" "$recorded_homes" "the unit records the discovered homes so the hourly run does not rely on HOME discovery"
 pass "install-timer writes and enables an hourly one-shot timer"
 
 # --- 14b. a spinner frame is not activity -----------------------------------
@@ -382,3 +388,16 @@ pass "a spinner frame is not counted as screen activity"
 bash "$ROOT/bin/fm-idle-session-reap.sh" --help > "$TMP_ROOT/help.out" 2>&1 || fail "--help failed"
 assert_contains "$(cat "$TMP_ROOT/help.out")" "Usage: fm-idle-session-reap.sh" "--help prints usage"
 pass "--help prints usage"
+
+# --- 16. discovery finding no home fails closed, never an ownerless close -----
+# With no Firstmate home discovered, ownership cannot be judged: an fm-<task>
+# pane must not be treated as ownerless and closed directly.
+reset_run
+EMPTY_HOME="$TMP_ROOT/empty-home"
+mkdir -p "$EMPTY_HOME"
+row "w1:p2|fm-gone-task|└ gone-task · p:x|opencode|idle|0|$TMP_ROOT/wt-clean"
+FM_IDLE_REAP_NOW=$((NOW - 3600)) run_reap_no_homes --apply || fail "no-home run failed: $(cat "$TMP_ROOT/run.out")"
+FM_IDLE_REAP_NOW=$NOW run_reap_no_homes --apply || fail "no-home run failed: $(cat "$TMP_ROOT/run.out")"
+assert_equals "skipped no-owner-home" "$(last_decision w1:p2)" "with no Firstmate home discovered no pane owner can be judged"
+[ ! -s "$CLOSE_LOG" ] || fail "a pane was closed with no home discovered: $(cat "$CLOSE_LOG")"
+pass "discovery finding no home fails closed and closes nothing"

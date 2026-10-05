@@ -12,6 +12,9 @@
 #   --idle-minutes N idle window (default 30).
 #   install-timer    write and enable an hourly systemd user timer that runs
 #                    this exact script with --apply (Linux with systemd only).
+#                    The unit records the homes discovered now in
+#                    FM_IDLE_REAP_HOMES so the hourly run does not rely on
+#                    rediscovery under its own $HOME.
 #   uninstall-timer  disable and remove that timer.
 #
 # Why this exists. Firstmate closes a lane's terminal only at cleanup, and a
@@ -59,6 +62,8 @@
 #                            fm-control.sh, and a note: line naming this pass
 #                            is appended to the task's status log.
 #   Ownerless (no record claims the pane):
+#     no-owner-home          no Firstmate home was discovered at all, so the
+#                            pane's owner cannot be judged: never closed.
 #     first-sight-idle, activity-seen
 #                            observed: the screen fingerprint is new or
 #                            changed, so the idle clock (re)starts now. The
@@ -173,8 +178,10 @@ fm_idle_reap_index() {  # <claims-file> <secondmates-file>
   local claims=$1 mates=$2 home meta id kind session pane window marker
   : > "$claims"
   : > "$mates"
+  HOMES_FOUND=0
   while IFS= read -r home; do
     [ -d "$home/state" ] || continue
+    HOMES_FOUND=$((HOMES_FOUND + 1))
     marker="$home/$FM_BACKEND_HERDR_SECONDMATE_MARKER"
     if [ -f "$marker" ]; then
       id=$(tr -d '[:space:]' < "$marker" 2>/dev/null)
@@ -351,6 +358,10 @@ fm_idle_reap_owned() {  # <home> <task>
 
 fm_idle_reap_ownerless() {
   local key fp prev first prev_fp idle top why verdict
+  if [ "${HOMES_FOUND:-0}" -eq 0 ]; then
+    fm_idle_reap_log_pane skipped no-owner-home
+    return 0
+  fi
   key="$P_SESSION|$P_PANE"
   if ! fp=$(fm_idle_reap_fingerprint "$P_SESSION" "$P_PANE") || [ -z "$fp" ]; then
     fm_idle_reap_log_pane skipped screen-unreadable
@@ -520,10 +531,16 @@ fm_idle_reap_main() {
 
 fm_idle_reap_install_timer() {
   local dir=${FM_IDLE_REAP_SYSTEMD_DIR:-$HOME/.config/systemd/user}
+  local home homes='' env_homes=''
   command -v systemctl >/dev/null 2>&1 || {
     echo "error: install-timer needs systemd (systemctl not found); schedule '$SCRIPT_PATH --apply' hourly another way" >&2
     return 1
   }
+  while IFS= read -r home; do
+    [ -n "$home" ] || continue
+    homes=${homes:+$homes:}$home
+  done < <(fm_idle_reap_homes)
+  [ -z "$homes" ] || env_homes="Environment=\"FM_IDLE_REAP_HOMES=$homes\""
   mkdir -p "$dir" || return 1
   cat > "$dir/$FM_IDLE_REAP_UNIT.service" <<EOF
 [Unit]
@@ -532,6 +549,7 @@ Description=Firstmate idle session reaper: stop idle finished agent sessions (on
 [Service]
 Type=oneshot
 Environment="PATH=$PATH"
+$env_homes
 ExecStart=$SCRIPT_PATH --apply
 Nice=10
 TimeoutStartSec=20min
