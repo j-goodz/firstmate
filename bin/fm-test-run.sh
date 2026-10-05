@@ -371,6 +371,8 @@ family_for_basename() {
     fm-herdr-session-cleanup.test.sh|fm-send-resolve-key.test.sh|fm-send-strict.test.sh|\
     fm-send-inbox.test.sh|fm-spawn-batch.test.sh|\
     fm-spawn-dispatch-profile.test.sh|fm-claude-trust.test.sh|\
+    fm-claude-imports-approved.test.sh|fm-claude-trust-inherited.test.sh|\
+    fm-remote-home-import-approval.test.sh|\
     fm-trace-context-spawn.test.sh|fm-spawn-worktree-settle.test.sh|\
     fm-spawn-cache-mode-excl.test.sh|\
     fm-spawn-thermal-gate.test.sh|\
@@ -704,6 +706,8 @@ tests/fm-classify-corr-token.test.sh 49294
 tests/fm-classify-decision-key.test.sh 3336
 tests/fm-claude-stop-autoarm-live-e2e.test.sh 45
 tests/fm-claude-stop-autoarm.test.sh 60797
+tests/fm-claude-imports-approved.test.sh 8000
+tests/fm-claude-trust-inherited.test.sh 10000
 tests/fm-claude-trust.test.sh 10410
 tests/fm-cmux-claude-composer-live-e2e.test.sh 47
 tests/fm-codex-continuity-live-e2e.test.sh 71
@@ -781,6 +785,7 @@ tests/fm-remote-job-orphan-reap.test.sh 2905
 tests/fm-remote-job.test.sh 59354
 tests/fm-remote-reply.test.sh 118669
 tests/fm-remote-secondmate-lifecycle-e2e.test.sh 241208
+tests/fm-remote-home-import-approval.test.sh 30000
 tests/fm-remote-secondmate-parent-binding.test.sh 32176
 tests/fm-remote-secondmate-trace-context.test.sh 59689
 tests/fm-remote-transport-lanes.test.sh 62635

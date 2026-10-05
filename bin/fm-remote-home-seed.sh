@@ -18,6 +18,10 @@
 # bin/fm-project-origin-lib.sh owns which URLs are accepted, and this home's
 # data/projects.md still owns the project's registered delivery mode, so an
 # unregistered or local-only project is refused rather than provisioned.
+# For each project whose origin the parent holds an explicit Claude external-imports approval
+# (bin/fm-claude-imports-approved.sh, never a decline), the manifest also carries an
+# import_approved line so the remote host can record that its clone inherits the approval.
+# The parent's own Claude config is only read, and nothing is sent when it holds no approval.
 # Seeding writes nothing under projects/ and needs no fleet sync first.
 #
 # Known provisioning failure rolls the registry back. SSH status 255 preserves
@@ -167,6 +171,7 @@ done < "$BRIEF" > "$TMP/charter.remote"
 
 PROJECTS_CSV=
 : > "$TMP/project.records"
+: > "$TMP/import.records"
 PROJECT_INDEX=0
 for project in "${PROJECT_NAMES[@]+"${PROJECT_NAMES[@]}"}"; do
   ORIGIN=${PROJECT_ORIGINS[$PROJECT_INDEX]}
@@ -197,6 +202,10 @@ EOF
   PROJECT_REG_B64=$(printf '%s' "$REGISTRY_LINE" | encode)
   MODE_B64=$(printf '%s' "$MODE" | encode)
   printf 'project=%s|%s|%s|%s\n' "$NAME_B64" "$ORIGIN_B64" "$PROJECT_REG_B64" "$MODE_B64" >> "$TMP/project.records"
+  if FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-claude-imports-approved.sh" "$ORIGIN" >/dev/null 2>&1; then
+    printf 'import_approved=%s\n' "$NAME_B64" >> "$TMP/import.records"
+    printf 'note: parent holds an explicit Claude external-imports approval for %s; the remote clone inherits it\n' "$project" >&2
+  fi
   PROJECTS_CSV="${PROJECTS_CSV}${PROJECTS_CSV:+, }$project"
 done
 
@@ -213,6 +222,7 @@ done
   printf 'parent_host_b64=%s\n' "$(printf '%s' "$HOST" | encode)"
   printf 'project_count=%s\n' "${#PROJECT_NAMES[@]}"
   cat "$TMP/project.records"
+  cat "$TMP/import.records"
 } > "$TMP/manifest"
 MANIFEST_BYTES=$(LC_ALL=C wc -c < "$TMP/manifest" | tr -d ' ')
 [ "$MANIFEST_BYTES" -le "$MAX_MANIFEST_BYTES" ] \
