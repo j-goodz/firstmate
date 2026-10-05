@@ -96,6 +96,8 @@ init_changed_fixture_repo() {
   chmod +x "$repo/bin/fm-test-run.sh"
   for script in \
     fm-brief.test.sh \
+    fm-brief-test-method.test.sh \
+    fm-test-run-suite-slot.test.sh \
     fm-ask-user-authority.test.sh \
     fm-documentation-audiences.test.sh \
     fm-test-isolation-proof.test.sh \
@@ -127,6 +129,7 @@ init_changed_fixture_repo() {
   : >"$repo/tests/lib.sh"
   : >"$repo/tests/fm-backend-herdr-eventwait.test.py"
   : >"$repo/bin/fm-supervisor-target-lib.sh"
+  : >"$repo/bin/fm-brief.sh"
   : >"$repo/bin/fm-control-lib.sh"
   : >"$repo/bin/fm-timeout-lib.sh"
   : >"$repo/bin/fm-procevent-quota.sh"
@@ -272,8 +275,25 @@ test_changed_runner_surfaces_select_their_family() {
     *tests/fm-test-fixtures.test.sh*) ;;
     *) fail "runner change did not select its fixture-isolation regression: $listed" ;;
   esac
+  case "$listed" in
+    *tests/fm-test-run-suite-slot.test.sh*) ;;
+    *) fail "runner change did not select its suite-slot gate regression: $listed" ;;
+  esac
   git -C "$repo" add bin/fm-test-run.sh
   git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm runner-change
+
+  printf '\n' >>"$repo/bin/fm-brief.sh"
+  listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD | LC_ALL=C sort)
+  case "$listed" in
+    *tests/fm-brief.test.sh*) ;;
+    *) fail "brief change did not select its curated family: $listed" ;;
+  esac
+  case "$listed" in
+    *tests/fm-brief-test-method.test.sh*) ;;
+    *) fail "brief change did not select its test-method regression: $listed" ;;
+  esac
+  git -C "$repo" add bin/fm-brief.sh
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm brief-change
 
   # The same holds for the surfaces that document that contract.
   printf '\n' >>"$repo/docs/fm-test-isolation-proof.md"
