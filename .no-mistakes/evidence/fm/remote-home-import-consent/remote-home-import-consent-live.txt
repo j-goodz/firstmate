@@ -1,0 +1,111 @@
+### LAB SETUP
+worktree=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HJWQ64TGNHDPA9VS5K99M
+lab=/home/justin/.cache/tmp/opencode/imports-lab
+branch=HEAD
+commit=120807884a80ef46b4e541bf3b935729405e00dc
+[33m  pre-push: no run-tests.sh in remote-root — test gate inactive[0m
+[33m  pre-push: no run-tests.sh in alpha — test gate inactive[0m
+[33m  pre-push: no run-tests.sh in other — test gate inactive[0m
+
+==============================================================
+SCENARIO S1: fresh remote home inherits the parent's explicit
+approval -> worker trust grants imports (no dialog)
+==============================================================
+$ fm-claude-imports-approved.sh <alpha origin>   (parent-side decision)
+approved
+  exit=0
+
+$ fm-remote-home-seed.sh s1 remote-mac <remote-root> <remote-home> alpha
+note: parent holds an explicit Claude external-imports approval for alpha; the remote clone inherits it
+provisioned: /home/justin/.cache/tmp/opencode/imports-lab/s1/remote-home projects=1
+home=remote-mac:/home/justin/.cache/tmp/opencode/imports-lab/s1/remote-home
+  exit=0
+
+-- remote home config/claude-import-approvals (provisioned state) --
+/home/justin/.cache/tmp/opencode/imports-lab/s1/remote-home/projects/alpha
+-- remote home is a real seeded firstmate checkout --
+AGENTS.md CLAUDE.md CONTRIBUTING.md GROK_BOT.md LICENSE README.md VISION.md assets bin config data docs projects skills state tests 
+  AGENTS.md present
+
+$ FM_CLAUDE_IMPORT_APPROVALS=<remote-home>/config/claude-import-approvals fm-claude-trust.sh /home/justin/.cache/tmp/opencode/imports-lab/s1/remote-home/wt-S1 /home/justin/.cache/tmp/opencode/imports-lab/s1/remote-home/projects/alpha
+trusted: /home/justin/.cache/tmp/opencode/imports-lab/s1/remote-home/wt-S1
+trusted (project root): /home/justin/.cache/tmp/opencode/imports-lab/s1/remote-home/projects/alpha
+  exit=0
+-- resulting remote Claude store entries --
+  entry=/home/justin/.cache/tmp/opencode/imports-lab/s1/remote-home/projects/alpha
+    hasTrustDialogAccepted=true
+    hasClaudeMdExternalIncludesApproved=true
+    hasClaudeMdExternalIncludesWarningShown=true
+  entry=/home/justin/.cache/tmp/opencode/imports-lab/s1/remote-home/wt-S1
+    hasTrustDialogAccepted=true
+    hasClaudeMdExternalIncludesApproved=true
+    hasClaudeMdExternalIncludesWarningShown=true
+
+==============================================================
+SCENARIO S2: parent holds NO approval -> remote gets empty
+record -> trust writes trust only, never invents consent
+==============================================================
+$ fm-claude-imports-approved.sh <alpha origin>   (parent-side decision)
+none
+  exit=1
+
+$ fm-remote-home-seed.sh s2 remote-mac <remote-root> <remote-home> alpha
+provisioned: /home/justin/.cache/tmp/opencode/imports-lab/s2/remote-home projects=1
+home=remote-mac:/home/justin/.cache/tmp/opencode/imports-lab/s2/remote-home
+  exit=0
+-- remote home config/claude-import-approvals (bytes: 0) --
+
+trusted: /home/justin/.cache/tmp/opencode/imports-lab/s2/remote-home/wt-S2
+trusted (project root): /home/justin/.cache/tmp/opencode/imports-lab/s2/remote-home/projects/alpha
+  exit=0
+-- resulting remote Claude store entries (imports approval must be absent) --
+  entry=/home/justin/.cache/tmp/opencode/imports-lab/s2/remote-home/projects/alpha
+    hasTrustDialogAccepted=true
+    hasClaudeMdExternalIncludesApproved=undefined
+    hasClaudeMdExternalIncludesWarningShown=undefined
+  entry=/home/justin/.cache/tmp/opencode/imports-lab/s2/remote-home/wt-S2
+    hasTrustDialogAccepted=true
+    hasClaudeMdExternalIncludesApproved=undefined
+    hasClaudeMdExternalIncludesWarningShown=undefined
+
+==============================================================
+SCENARIO S3 (adversarial): remote project entry already holds
+an explicit decline -> inherited approval must NOT override it
+==============================================================
+note: parent holds an explicit Claude external-imports approval for alpha; the remote clone inherits it
+-- remote approvals record present:
+/home/justin/.cache/tmp/opencode/imports-lab/s3/remote-home/projects/alpha
+
+$ (remote store already declined) fm-claude-trust.sh ...
+error: project entry for /home/justin/.cache/tmp/opencode/imports-lab/s3/remote-home/projects/alpha in /home/justin/.cache/tmp/opencode/imports-lab/s3/remote-claude/.claude.json already declined external CLAUDE.md imports; refusing to override that consent
+error: refusing to pre-register Claude trust: could not record trust for '/home/justin/.cache/tmp/opencode/imports-lab/s3/remote-home/wt-S3' and project '/home/justin/.cache/tmp/opencode/imports-lab/s3/remote-home/projects/alpha' in '/home/justin/.cache/tmp/opencode/imports-lab/s3/remote-claude/.claude.json'
+  exit=1
+  store unchanged: yes
+  entry=/home/justin/.cache/tmp/opencode/imports-lab/s3/remote-home/projects/alpha
+    hasTrustDialogAccepted=true
+    hasClaudeMdExternalIncludesApproved=false
+    hasClaudeMdExternalIncludesWarningShown=true
+
+==============================================================
+SCENARIO S4: approval exists for a DIFFERENT origin -> not
+inherited for this project
+==============================================================
+$ fm-claude-imports-approved.sh <alpha origin> (only 'other' approved)
+none
+  exit=1
+-- remote approvals record (bytes: 0) --
+
+==============================================================
+SCENARIO S5: same repository across equivalent URL forms
+==============================================================
+  parent clone origin: https://github.com/acme/widget.git (approved)
+  query https://github.com/acme/widget.git       -> approved
+  (exit=0)
+  query https://GitHub.com/acme/widget/          -> approved
+  (exit=0)
+  query git@github.com:acme/widget               -> approved
+  (exit=0)
+  query https://github.com/acme/other.git        -> none
+  (exit=1)
+
+DONE

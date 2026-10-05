@@ -1,0 +1,34 @@
+### fm-spawn live drive
+worktree=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HJWQ64TGNHDPA9VS5K99M commit=120807884a80ef46b4e541bf3b935729405e00dc
+tmp_root=/home/justin/.cache/tmp/fm-spawn-inherit-drive.zyEOF2
+
+== spawn case: inherit-approved (approvals file: approved) ==
+   /home/justin/.cache/tmp/fm-spawn-inherit-drive.zyEOF2/inherit-approved/home/config/claude-import-approvals ->
+     /home/justin/.cache/tmp/fm-spawn-inherit-drive.zyEOF2/inherit-approved/project
+   fm-spawn exit=0
+   worker launch recorded
+   store entries:
+     /home/justin/.cache/tmp/fm-spawn-inherit-drive.zyEOF2/inherit-approved/project
+       hasTrustDialogAccepted=true
+       hasClaudeMdExternalIncludesApproved=true
+       hasClaudeMdExternalIncludesWarningShown=true
+     /home/justin/.cache/tmp/fm-spawn-inherit-drive.zyEOF2/inherit-approved/wt
+       hasTrustDialogAccepted=true
+       hasClaudeMdExternalIncludesApproved=true
+       hasClaudeMdExternalIncludesWarningShown=true
+
+== spawn case: inherit-none (approvals file: empty) ==
+   /home/justin/.cache/tmp/fm-spawn-inherit-drive.zyEOF2/inherit-none/home/config/claude-import-approvals ->
+   fm-spawn exit=0
+   worker launch recorded
+   store entries:
+     /home/justin/.cache/tmp/fm-spawn-inherit-drive.zyEOF2/inherit-none/project
+       hasTrustDialogAccepted=true
+       hasClaudeMdExternalIncludesApproved=undefined
+       hasClaudeMdExternalIncludesWarningShown=undefined
+     /home/justin/.cache/tmp/fm-spawn-inherit-drive.zyEOF2/inherit-none/wt
+       hasTrustDialogAccepted=true
+       hasClaudeMdExternalIncludesApproved=undefined
+       hasClaudeMdExternalIncludesWarningShown=undefined
+
+DONE
