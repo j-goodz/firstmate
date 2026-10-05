@@ -9,7 +9,7 @@
 # Prints the host CPU temperature as an integer Celsius: the x86_pkg_temp zone
 # when present and readable, otherwise the hottest readable
 # /sys/class/thermal/thermal_zone*/temp. It prints nothing and exits 3 when no
-# zone is readable, so a caller can tell "no sensor on this host" apart from
+# sensor is readable, so a caller can tell "no sensor on this host" apart from
 # "0 C". A zone is readable only when its temp is a plain optional-signed
 # integer, so a disabled or otherwise non-numeric sensor is skipped. When no
 # thermal zone is readable, it falls back to /sys/class/hwmon to find CPU
@@ -29,8 +29,8 @@ Usage: fm-host-temp.sh [--help]
 
 Print the host CPU temperature as an integer Celsius: the x86_pkg_temp zone
 when present and readable, otherwise the hottest readable
-/sys/class/thermal/thermal_zone*/temp. Prints nothing and exits 3 when no
-thermal zone is readable.
+/sys/class/thermal/thermal_zone*/temp, otherwise the CPU chip in
+/sys/class/hwmon. Prints nothing and exits 3 when no sensor is readable.
 
 FM_THERMAL_SYSFS overrides the sysfs thermal class directory (default
 /sys/class/thermal); it exists for tests against fixture trees.
