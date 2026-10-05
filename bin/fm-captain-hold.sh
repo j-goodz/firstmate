@@ -822,10 +822,11 @@ body_hold_set_timestamp() {  # <decoded-task-body>
 # longer reports hold_kind: the hold-set stamp heading its body, or a
 # captain-hold key published for it to any status log in this home.
 closed_task_has_captain_hold_history() {  # <task-id> <shown-body>
-  local id=$1 decoded
+  local id=$1 decoded escaped
   decoded=$(decode_shown_value "$2" 2>/dev/null) || decoded=''
   [ -z "$(body_hold_set_timestamp "$decoded")" ] || return 0
-  grep -qs -F "[key=captain-hold-$id-" "$STATE"/*.status
+  escaped=$(printf '%s' "$id" | sed 's/[][\.*^$+?(){}|\/-]/\\&/g')
+  grep -qs -E "\[key=captain-hold-$escaped-[0-9]+\]" "$STATE"/*.status
 }
 
 write_hold_set_stamp() {  # <task-id> <shown-body> <timestamp> <preserve-existing-0-or-1>

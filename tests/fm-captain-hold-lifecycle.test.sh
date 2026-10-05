@@ -1289,6 +1289,11 @@ test_closed_call_without_hold_marker_is_answerable_from_history() {
   if run_captain "$home" answer sample-log-only --decision-file "$home/log.txt" >/dev/null 2>&1; then
     fail "a never-held task accepted a captain answer"
   fi
+  printf 'needs-decision [key=captain-hold-sample-log-only-extra-1]: captain hold sample-log-only-extra: pending\n' \
+    > "$home/state/sample-log-parent.status"
+  if run_captain "$home" answer sample-log-only --decision-file "$home/log.txt" >/dev/null 2>&1; then
+    fail "a sibling task's captain-hold key proved a never-held task"
+  fi
   printf 'needs-decision [key=captain-hold-sample-log-only-1]: captain hold sample-log-only: pending\n' \
     > "$home/state/sample-log-parent.status"
   run_captain "$home" answer sample-log-only --decision-file "$home/log.txt" >/dev/null \
