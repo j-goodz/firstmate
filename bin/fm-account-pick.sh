@@ -77,8 +77,10 @@
 # because the reserve cannot be honored.
 #
 # Output on a pick (stdout, exit 0), three lines:
-#   account=<label>      or "inherited" on fallback
-#   config_dir=<dir>     the chosen store, or --current (possibly empty) on fallback
+#   account=<label>      or "inherited" when the fallback kept an unconfigured
+#                        current store
+#   config_dir=<dir>     the chosen store, or --current (possibly empty) when
+#                        the fallback kept the current store
 #   reason=<one line>
 # An absent config prints nothing, logs nothing, and exits 0, so a home without
 # the file launches exactly as before. A malformed config exits 2 with an error
@@ -87,8 +89,9 @@
 # they fall back to --current.
 #
 # Log: with --log, every pick (fallback included) appends one JSON line holding
-# ts, epoch, task, chosen, config_dir, fallback, refused, reason, the
-# thresholds, the snapshot path, the reserve file, and per account: label,
+# ts, epoch, task, chosen, config_dir, fallback, refused, stale_fallback,
+# reason, the thresholds, the snapshot path, the reserve file, and per
+# account: label,
 # config_dir, signin, status, reserved, reserve_until (epoch or
 # null), reserve_until_local (Toronto time or null), reserve_source ("window" or
 # "file" or null), five_hour_pct, weekly_pct, weekly_resets_at,
