@@ -60,7 +60,7 @@ set_sysfs() {  # <type:temp>...
 
 run_case_spawn() {  # <args...>
   : > "$LAUNCH_LOG"
-  FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" FM_THERMAL_SYSFS="$CASE_DIR/sysfs" \
+  FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" FM_THERMAL_SYSFS="$CASE_DIR/sysfs" FM_HWMON_SYSFS="$CASE_DIR/hwmon" \
     fm_test_run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$@"
 }
 
@@ -260,7 +260,7 @@ EOF
   write_sysfs "$SM_DIR/sysfs" "x86_pkg_temp:92000"
   printf 'max_workers=4\nhold_c=85\n' > "$SM_DIR/config/thermal-gate"
   : > "$LAUNCH_LOG"
-  out=$(FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" FM_THERMAL_SYSFS="$SM_DIR/sysfs" \
+  out=$(FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" FM_THERMAL_SYSFS="$SM_DIR/sysfs" FM_HWMON_SYSFS="$SM_DIR/hwmon" \
     fm_test_run_spawn "$SM_DIR" "$mate_wt" "$FAKEBIN_DIR" mate-a1 "$PROJ_DIR" \
     --mode no-mistakes --yolo off)
   status=$?

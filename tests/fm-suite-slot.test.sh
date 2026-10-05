@@ -10,7 +10,7 @@ set -u
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-unset FM_SUITE_SLOT_HELD FM_SUITE_SLOTS FM_SUITE_NPROC FM_HOME FM_THERMAL_SYSFS FM_TASK_ID FM_SUITE_MIN_AVAILABLE_MB
+unset FM_SUITE_SLOT_HELD FM_SUITE_SLOTS FM_SUITE_NPROC FM_HOME FM_THERMAL_SYSFS FM_HWMON_SYSFS FM_TASK_ID FM_SUITE_MIN_AVAILABLE_MB
 
 SLOT="$ROOT/bin/fm-suite-slot.sh"
 TMP_ROOT=$(fm_test_tmproot fm-suite-slot)
@@ -28,7 +28,7 @@ new_case() {
     CASE="$TMP_ROOT/$1"
     mkdir -p "$CASE/sysfs"
     printf 'MemAvailable:    3145728 kB\n' > "$CASE/meminfo"
-    export FM_SUITE_STATE_DIR="$CASE/state" FM_SUITE_CONFIG="$CASE/config" FM_SUITE_MEMINFO="$CASE/meminfo" FM_THERMAL_SYSFS="$CASE/sysfs"
+    export FM_SUITE_STATE_DIR="$CASE/state" FM_SUITE_CONFIG="$CASE/config" FM_SUITE_MEMINFO="$CASE/meminfo" FM_THERMAL_SYSFS="$CASE/sysfs" FM_HWMON_SYSFS="$CASE/hwmon"
     unset FM_SUITE_SLOTS FM_SUITE_NPROC FM_HOME
 }
 

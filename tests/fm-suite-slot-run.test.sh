@@ -13,7 +13,7 @@ set -u
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-unset FM_SUITE_SLOT_HELD FM_SUITE_SLOTS FM_SUITE_NPROC FM_HOME FM_THERMAL_SYSFS FM_TASK_ID FM_SUITE_MIN_AVAILABLE_MB
+unset FM_SUITE_SLOT_HELD FM_SUITE_SLOTS FM_SUITE_NPROC FM_HOME FM_THERMAL_SYSFS FM_HWMON_SYSFS FM_TASK_ID FM_SUITE_MIN_AVAILABLE_MB
 
 SLOT="$ROOT/bin/fm-suite-slot.sh"
 TMP_ROOT=$(fm_test_tmproot fm-suite-slot-run)
@@ -187,7 +187,7 @@ test_heat_hold_waits_then_clears() {
     printf 'x86_pkg_temp\n' > "$CASE/sysfs/thermal_zone0/type"
     printf '85000\n' > "$CASE/sysfs/thermal_zone0/temp"
     printf 'slots=1\nhot_c=70\nhold_c=80\n' > "$CASE/config"
-    export FM_THERMAL_SYSFS="$CASE/sysfs"
+    export FM_THERMAL_SYSFS="$CASE/sysfs" FM_HWMON_SYSFS="$CASE/hwmon"
     out=$(FM_SUITE_CONFIG="$CASE/config" "$SLOT" run --wait-secs 1 --poll-secs 0.2 -- true 2>&1)
     rc=$?
     expect_code 75 "$rc" "run while the machine is at its heat hold"
@@ -195,7 +195,7 @@ test_heat_hold_waits_then_clears() {
     printf '40000\n' > "$CASE/sysfs/thermal_zone0/temp"
     FM_SUITE_CONFIG="$CASE/config" "$SLOT" run --wait-secs 3 -- true
     expect_code 0 "$?" "run after the machine cooled"
-    unset FM_THERMAL_SYSFS
+    unset FM_THERMAL_SYSFS FM_HWMON_SYSFS
     pass "a heat hold waits like a full house and clears when cool"
 }
 

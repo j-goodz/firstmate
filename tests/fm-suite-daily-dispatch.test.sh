@@ -11,7 +11,7 @@ set -u
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-unset FM_SUITE_SLOT_HELD FM_SUITE_SLOTS FM_SUITE_NPROC FM_HOME FM_THERMAL_SYSFS FM_TASK_ID FM_SUITE_MIN_AVAILABLE_MB
+unset FM_SUITE_SLOT_HELD FM_SUITE_SLOTS FM_SUITE_NPROC FM_HOME FM_THERMAL_SYSFS FM_HWMON_SYSFS FM_TASK_ID FM_SUITE_MIN_AVAILABLE_MB
 
 DAILY="$ROOT/bin/fm-suite-daily.sh"
 TMP_ROOT=$(fm_test_tmproot fm-suite-daily-dispatch)
@@ -206,7 +206,7 @@ test_unusable_placement_falls_back_to_this_machine() {
     printf 'MemAvailable:    4194304 kB\n' > "$CASE/meminfo"
     mkdir -p "$CASE/sysfs"
     FM_SUITE_DAILY_FETCH=0 FM_SUITE_DAILY_REF=main FM_SUITE_SLOTS=1 FM_SUITE_NPROC=4 FM_SUITE_CONFIG="$CASE/none" \
-        FM_SUITE_DAILY_LOADAVG="$CASE/loadavg" FM_SUITE_MEMINFO="$CASE/meminfo" FM_THERMAL_SYSFS="$CASE/sysfs" \
+        FM_SUITE_DAILY_LOADAVG="$CASE/loadavg" FM_SUITE_MEMINFO="$CASE/meminfo" FM_THERMAL_SYSFS="$CASE/sysfs" FM_HWMON_SYSFS="$CASE/hwmon" \
         "$DAILY" dispatch --repo c > /dev/null 2>&1
     expect_code 0 "$?" "dispatch with unusable placement"
     jq -s -e --arg host "$(hostname -s)" 'any(.[]; .event == "dispatch" and .key == "c" and .status == "pass" and .machine == $host)' "$CASE/log.jsonl" > /dev/null \
