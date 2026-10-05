@@ -1,0 +1,6 @@
+== target test against PRE-FIX reaper (base 357edef) ==
+ok - paused lanes with nothing left in flight are exited
+ok - a refused exit is logged once with no retry
+ok - dry run reports decisions and changes nothing
+ok - every decision is one JSON line with a reason, plus a run summary
+not ok - duration_ms wrong with uutils-style date: 86834552

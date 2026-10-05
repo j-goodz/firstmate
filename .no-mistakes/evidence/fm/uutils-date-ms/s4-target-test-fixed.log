@@ -1,0 +1,26 @@
+ok - ownerless idle lane is observed, then closed after the idle window
+ok - ownerless lane with new screen activity is kept
+ok - a pane idle for less than the window is kept, and the window is configurable
+ok - working, secondmate, supervisor, captain and shell-only panes and lab sessions are never closed
+ok - a pane someone may be typing in is kept
+ok - an ownerless pane in a worktree with unlanded work is kept
+ok - a finished idle owned lane is exited through its home and the home is told
+ok - a pane whose agent already exited is not exited or noted again
+ok - in-flight, recently active, unlanded, reportless, ambiguous and secondmate lanes are kept
+ok - paused lanes with nothing left in flight are exited
+ok - a refused exit is logged once with no retry
+ok - dry run reports decisions and changes nothing
+ok - every decision is one JSON line with a reason, plus a run summary
+ok - run duration is a sane millisecond count when date prints nanoseconds
+ok - an overlapping run is logged and skipped
+ok - install-timer writes and enables an hourly one-shot timer
+ok - install-timer refuses when discovery finds no Firstmate home
+ok - a spinner frame is not counted as screen activity
+ok - a screen that cannot be digested yields no fingerprint
+ok - an unreadable screen fails closed and the ownerless pane is kept
+ok - --help prints usage
+ok - discovery finding no home fails closed and closes nothing
+ok - a home added after install is discovered fresh and its lane is exited, not closed
+ok - a changed Herdr pane id is not treated as ownerless
+ok - FM_IDLE_REAP_HOMES adds homes and never limits discovery
+ok - a home registered in data/secondmates.md is discovered and its lane is exited, not closed

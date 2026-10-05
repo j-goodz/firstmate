@@ -1,0 +1,7 @@
+pre-fix fm_idle_reap_ms used:  ms=$(date +%s%3N); ... printf '%s' "$ms"
+host native date: date (uutils coreutils) 0.8.0
+native 'date +%s%3N' => 1791190601910354582   (19 digits: nanoseconds, width ignored)
+PRE-FIX code, native uutils date, run-record duration_ms:
+{"ts":"2026-10-05T08:56:32Z","epoch":1791190592,"host":"homelab","event":"run","mode":"apply","result":"ok","panes":0,"acted":0,"kept":0,"failed":0,"idle_window_s":1800,"duration_ms":68372249}
+POST-FIX code, native uutils date, run-record duration_ms:
+{"ts":"2026-10-05T08:56:28Z","epoch":1791190588,"host":"homelab","event":"run","mode":"apply","result":"ok","panes":0,"acted":0,"kept":0,"failed":0,"idle_window_s":1800,"duration_ms":62}
