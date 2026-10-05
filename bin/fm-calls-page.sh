@@ -91,7 +91,9 @@
 #          fm-captain-hold.sh (`answers` keyed intake on stdin, or `hold`); the
 #          keyed intake shortens each field to 512 characters. An item whose
 #          call is no longer open is reported `skipped:` and records nothing, so
-#          an answer already given in chat is never applied twice. The reserved
+#          an answer already given in chat is never applied twice. A second-mate send
+#          that failed is kept in state/calls-page-undelivered.tsv and retried at
+#          the start of the next apply. The reserved
 #          value `reconcile` is reported `refused:` and never applied. Then the
 #          page is re-rendered best effort (a failed rebuild is a warning, never
 #          a failed apply). Exit 1 only when a recording command failed.
@@ -124,6 +126,7 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 PAGE="$DATA/open-calls/calls.html"
 CURATED="$DATA/open-calls/calls.json"
 LOG="$STATE/calls-page.jsonl"
+UNDELIVERED="$STATE/calls-page-undelivered.tsv"
 HELPER="$SCRIPT_DIR/fm-calls-page.py"
 CAPTAIN_HOLD="${FM_CALLS_PAGE_CAPTAIN_HOLD:-$SCRIPT_DIR/fm-captain-hold.sh}"
 FM_ON="${FM_CALLS_PAGE_FM_ON:-$SCRIPT_DIR/fm-on.sh}"
@@ -385,13 +388,38 @@ route_line() {  # <home> <task> <text>
   printf 'route: %s/%s %s\n' "$1" "$2" "$text"
 }
 
+# Send one recorded answer to a second mate. FM_HOME is passed explicitly
+# because it is only a local default here, so a process-event run without it in
+# the environment would otherwise leave fm-send refusing. A failed send is kept
+# in UNDELIVERED and retried by the next apply.
+try_send() {  # <home> <task> <text>
+  FM_HOME="$FM_HOME" fm_run_timed "$REMOTE_TIMEOUT" "$FM_SEND" "fm-$1" "Call $2: $3" >/dev/null 2>"$WORK/send.err"
+}
+
 send_to_mate() {  # <home> <task> <text>
   local home=$1 task=$2 text=$3
   [ "$home" != local ] || return 0
-  fm_run_timed "$REMOTE_TIMEOUT" "$FM_SEND" "fm-$home" "Call $task: $text" >/dev/null 2>"$WORK/send.err" \
-    || printf 'warning: the answer for %s/%s is recorded, but it was not sent to %s: %s\n' \
+  try_send "$home" "$task" "$text" || {
+    printf '%s\t%s\t%s\n' "$home" "$task" "$text" >> "$UNDELIVERED"
+    printf 'warning: the answer for %s/%s is recorded, but it was not sent to %s (kept for the next apply): %s\n' \
       "$home" "$task" "$home" "$(tail -1 "$WORK/send.err")" >&2
+  }
   return 0
+}
+
+# Retry every answer recorded earlier whose send failed.
+retry_undelivered() {
+  local pending="$WORK/undelivered.pending" home task text
+  [ -s "$UNDELIVERED" ] || return 0
+  mv "$UNDELIVERED" "$pending"
+  while IFS=$'\t' read -r home task text; do
+    [ -n "$home" ] || continue
+    if try_send "$home" "$task" "$text"; then
+      printf 'delivered: %s/%s (answer recorded earlier)\n' "$home" "$task"
+    else
+      printf '%s\t%s\t%s\n' "$home" "$task" "$text" >> "$UNDELIVERED"
+    fi
+  done < "$pending"
 }
 
 # Answer text carried to firstmate for each recorded kind.
@@ -424,6 +452,7 @@ cmd_apply() {
   FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-procevent-lavish.sh" read "$result" > "$WORK/read.txt" \
     || die "cannot read the captured result: $result"
   items=$(python3 "$HELPER" parse-result < "$WORK/read.txt") || die "cannot parse the captured result"
+  retry_undelivered
   collect
   index=$(python3 "$HELPER" index "$WORK/manifest.jsonl" "$TODAY") || die "cannot list the open calls"
   while IFS= read -r item; do

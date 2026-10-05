@@ -381,6 +381,52 @@ assert_not_contains "$LOG" "SEND [fm-local" "a local answer is not sent as a sec
 assert_contains "$out" "rendered:" "apply re-renders the page"
 pass "apply maps option, text, Later, and Not needed answers onto the owning home's captain-hold record"
 
+# --- apply: a second-mate answer is always delivered, and retried if it was not ---
+
+write_send_env_stub() {  # <home>: logs FM_HOME and fails while FM_TEST_SEND_FAIL=1
+  cat > "$1/fm-send-stub.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'SEND home=[%s] [%s]\n' "${FM_HOME:-}" "$*" >> "$FM_TEST_LOG"
+[ "${FM_TEST_SEND_FAIL:-0}" != 1 ] || { echo "FM_HOME is not set" >&2; exit 1; }
+SH
+  chmod +x "$1/fm-send-stub.sh"
+}
+
+SD=$(make_home senddeliver)
+write_local_backlog "$SD"
+add_remote_mate "$SD"
+write_fm_on_stub "$SD"
+write_captain_stub "$SD"
+write_send_env_stub "$SD"
+run_calls "$SD" render >/dev/null 2>&1
+cat > "$SD/result.txt" <<'EOF'
+session:
+  file: /tmp/calls.html
+  status: feedback
+prompts[1]{uid,prompt,selector,tag,text}:
+  "1","Call r1: not needed\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"r1\",\n  \"home\": \"swiftmate\",\n  \"kind\": \"not-needed\",\n  \"answer\": \"Not needed, close it\",\n  \"note\": \"\"\n}","form",call-answer,"Buzz calendar shape"
+EOF
+# First apply: no FM_HOME in the environment (the process-event path) and the
+# send fails. The answer is recorded; the delivery must be kept for a retry.
+env -u FM_HOME FM_STATE_OVERRIDE="$SD/state" FM_DATA_OVERRIDE="$SD/data" \
+  FM_CALLS_PAGE_TODAY=$TODAY FM_CALLS_PAGE_NOW=2026-10-04T21:00:00Z \
+  FM_CALLS_PAGE_FM_ON="$SD/fm-on-stub.sh" FM_CALLS_PAGE_FM_SEND="$SD/fm-send-stub.sh" \
+  FM_TEST_REMOTE_DIR="$SD/remote-swiftmate" FM_TEST_LOG="$SD/calls.log" FM_TEST_SEND_FAIL=1 \
+  "$CALLS" apply "$SD/result.txt" >"$SD/out1" 2>"$SD/err1"
+assert_contains "$(grep -F 'SEND' "$SD/calls.log")" "home=[$ROOT]" "apply without FM_HOME hands fm-send the home derived from the script location"
+# The stub transport does not close the call, so mark it answered the way the
+# owning home's status log would after the recorded answer.
+printf '%s\n' 'resolved [key=captain-hold-r1-1]: answered: not needed' >> "$SD/state/swiftmate.status"
+# Second apply with the send working: the call is no longer open, yet the
+# recorded answer is delivered rather than skipped.
+FM_TEST_SEND_FAIL=0 run_calls "$SD" apply "$SD/result.txt" >"$SD/out2" 2>"$SD/err2"
+send_count=$(grep -c -F 'Call r1: Not needed' "$SD/calls.log")
+assert_equals "2" "$send_count" "the undelivered answer is sent again on the next apply"
+FM_TEST_SEND_FAIL=0 run_calls "$SD" apply "$SD/result.txt" >"$SD/out3" 2>"$SD/err3"
+send_count=$(grep -c -F 'Call r1: Not needed' "$SD/calls.log")
+assert_equals "2" "$send_count" "a delivered answer is not sent a third time"
+pass "a second-mate answer is delivered without FM_HOME and retried after a failed send"
+
 # --- apply: talk with no words records nothing and still routes ------------------
 
 TW=$(make_home talkempty)
