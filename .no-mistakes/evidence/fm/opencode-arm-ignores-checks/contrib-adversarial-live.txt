@@ -1,0 +1,6 @@
+ROOT=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45N9BAQ354GN51K3SV3TYFD
+PASS open-arms: expected=armed actual=armed
+PASS final-retires: expected=retired actual=retired
+PASS error-not-retired: expected=armed actual=armed
+PASS pending-not-retired: expected=armed actual=armed
+PASS mixed-not-retired: expected=armed actual=armed

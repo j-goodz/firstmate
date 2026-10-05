@@ -1,0 +1,14 @@
+LAB=/home/justin/.cache/tmp/contrib-live.lPNJjK
+--- step 1: open contribution, arm ---
+registered: state/contributions.check.sh
+arm rc=0
+RESULT: check.sh PRESENT (armed)
+RESULT: check-trust PRESENT
+--- step 2: contribution becomes final (merged), arm again ---
+registered: state/contributions.check.sh
+arm rc=0
+RESULT: check.sh PRESENT (re-armed)
+RESULT: check-trust PRESENT
+--- state dir after ---
+contributions.check-trust
+contributions.check.sh

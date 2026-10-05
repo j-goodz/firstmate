@@ -1,0 +1,29 @@
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi primary watcher extension checks (install node 24 or tsx)
+ok - OpenCode plugins have an explicit ESM boundary even under a typeless parent package
+ok - OpenCode watcher plugin uses the effective FM_HOME state
+ok - OpenCode watcher plugin sources the effective config
+ok - OpenCode watcher plugin arms for a home with only a registered check
+ok - OpenCode watcher plugin stays idle when the guard would not require supervision
+ok - OpenCode watcher plugin requires session lock ownership
+ok - OpenCode watcher coordinator respects primary scope
+ok - OpenCode watcher plugin starts one successor before wake prompt delivery settles
+ok - OpenCode pre-ready actionable close preserves its successor
+ok - OpenCode hung successor falls back to one typed actionable wake
+ok - OpenCode unretired successor falls back without an overlapping retry
+ok - OpenCode late unretired closes resume classified supervision
+ok - OpenCode clean empty close triggers a bounded continuity retry
+ok - OpenCode established clean closes stop at the configured retry limit
+ok - OpenCode close handler verifies session-lock ownership before successor launch
+ok - OpenCode watcher plugin coordinates with the turn-end guard
+ok - OpenCode healthy arm output does not suppress the turn-end guard
+ok - OpenCode watcher plugin arms in a marked second-mate home
+ok - OpenCode watcher plugin does not arm in a crewmate task worktree
+ok - OpenCode guard follow-up carries the session's most recent user-message model
+ok - OpenCode watcher wake carries the session's most recent user-message model
+ok - OpenCode guard stops after three failing follow-ups and records one failure
+ok - OpenCode guard resets its consecutive-failure bound after a normal turn
+ok - OpenCode guard publishes exactly one failure line to the parent channel
+ok - OpenCode session-start nudge carries the session's most recent user-message model
+ok - OpenCode session-model resolver uses the launch argument before the stored session model
+ok - OpenCode session-model resolver prefers the user-message model over the launch argument
+ok - OpenCode session-model resolver parses --model <p/m>, --model=<p/m>, and -m <p/m>

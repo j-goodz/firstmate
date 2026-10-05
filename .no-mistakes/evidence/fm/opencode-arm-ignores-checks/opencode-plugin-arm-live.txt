@@ -1,0 +1,5 @@
+PLUGIN=/home/justin/.cache/tmp/opencode-arm-live/repo/.opencode/plugins/fm-primary-watch-arm.js
+CASE check-only -> armed pid=3532997
+CASE no-work -> idle
+CASE untrusted-check -> idle
+CASE task-only -> armed pid=3551285
