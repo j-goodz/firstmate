@@ -1,0 +1,4 @@
+### Scenario 3: pre-change script refuses the archived answered call (bug reproduced)
+BASE verify.err: fm-captain-hold: no captain-held task sample-base-call and no migrated hold for it in this home's configured backlog (data directory /home/justin/.cache/tmp/fm-captain-hold.oHPZZR/base-contrast/data); the nearest legacy identity sample-base-scout-decision-sample-base-call also resolves to nothing
+ok - the pre-change script refuses the archived answered call (bug reproduced)
+exit=0

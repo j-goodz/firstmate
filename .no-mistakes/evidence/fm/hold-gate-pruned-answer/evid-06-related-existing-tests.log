@@ -1,0 +1,9 @@
+ok - report-only unresolved captain call is reproduced and completion refuses before loss
+ok - legacy identities, metadata, bindings, and the shim keep working
+ok - cleanup leaves a captain-held work item open with its deliverable, and only an answer closes it
+ok - release and scout report retention distinguish deliveries from rejected merge answers
+ok - an interrupted cleanup keeps the captain call recoverable and session start retains it
+ok - cleanup retains captain calls in the configured backlog
+ok - skipped on markdown-only tasks-axi: verify an unresolvable beads legacy id
+ok - skipped on markdown-only tasks-axi: verify a derived pre-collapse key
+ok - an answered captain call pruned to the archive still passes verify, complete and teardown

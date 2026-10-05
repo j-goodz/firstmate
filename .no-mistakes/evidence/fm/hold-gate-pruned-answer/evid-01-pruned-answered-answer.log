@@ -1,0 +1,3 @@
+### Scenario 1: answered call -> Done retention prune -> verify/complete/teardown (target)
+ok - an answered captain call pruned to the archive still passes verify, complete and teardown
+exit=0

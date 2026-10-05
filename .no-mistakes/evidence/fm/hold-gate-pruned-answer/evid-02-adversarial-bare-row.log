@@ -1,0 +1,15 @@
+### Scenario 2: adversarial bare closed archived row must still be refused
+ADVERSARIAL verify.err: fm-captain-hold: no captain-held task sample-bare-call and no migrated hold for it in this home's configured backlog (data directory /home/justin/.cache/tmp/fm-captain-hold.MStkZs/pruned-bare/data); the nearest legacy identity sample-bare-scout-decision-sample-bare-call also resolves to nothing
+ADVERSARIAL complete.err: fm-captain-hold: no captain-held task sample-bare-call and no migrated hold for it in this home's configured backlog (data directory /home/justin/.cache/tmp/fm-captain-hold.MStkZs/pruned-bare/data); the nearest legacy identity sample-bare-scout-decision-sample-bare-call also resolves to nothing
+ADVERSARIAL teardown.err: ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fm-captain-hold: no captain-held task sample-bare-call and no migrated hold for it in this home's configured backlog (data directory /home/justin/.cache/tmp/fm-captain-hold.MStkZs/pruned-bare/data); the nearest legacy identity sample-bare-scout-decision-sample-bare-call also resolves to nothing
+REFUSED: scout task sample-bare-scout has not passed the captain-call completion gate.
+Inventory its report and any visual review through bin/fm-captain-hold.sh before teardown.
+ok - a bare closed archived row is still refused by verify, complete and teardown
+exit=0

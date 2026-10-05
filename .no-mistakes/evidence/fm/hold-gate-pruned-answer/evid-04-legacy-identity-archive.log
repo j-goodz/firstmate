@@ -1,0 +1,3 @@
+### Scenario 4: archived derived legacy identity still resolves durable
+ok - an archived derived legacy answer passes verify, complete and teardown
+exit=0
