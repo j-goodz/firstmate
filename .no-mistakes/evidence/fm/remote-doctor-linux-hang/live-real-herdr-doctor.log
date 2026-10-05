@@ -1,0 +1,44 @@
+real herdr: herdr 0.9.1
+isolated XDG_CONFIG_HOME=/home/justin/.cache/tmp/opencode/fm-real-doctor-naiM5i/xdg
+doctor: /home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45N50PCRXA76S71919BCJMY/bin/fm-remote-doctor.sh
+--- before: session status ---
+{"running":false,"socket":"/home/justin/.cache/tmp/opencode/fm-real-doctor-naiM5i/xdg/herdr/sessions/fm-remote/herdr.sock"}
+--- driving: OUT=$(doctor --fix)  [pipe capture, as ssh does] ---
+doctor_rc=0 elapsed_ms=201 pipe_returned=true
+--- doctor output ---
+mode=fix
+path=/home/justin/.cache/tmp/opencode/fm-real-doctor-naiM5i/bin:/usr/bin:/bin:/usr/sbin:/sbin
+entrypoint=no
+note: not launched through the fixed remote entrypoint; the reported PATH is this caller environment.
+platform=linux
+fix herdr-server=applied: started the herdr server for session fm-remote
+fix entrypoint-link=applied: linked /home/justin/.cache/tmp/opencode/fm-real-doctor-naiM5i/home/.local/bin/fm-remote-entrypoint.sh to /home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45N50PCRXA76S71919BCJMY/bin/fm-remote-entrypoint.sh
+required git=/usr/bin/git
+required jq=/usr/bin/jq
+required herdr=/home/justin/.cache/tmp/opencode/fm-real-doctor-naiM5i/bin/herdr
+required tasks-axi=/home/justin/.cache/tmp/opencode/fm-real-doctor-naiM5i/bin/tasks-axi
+required treehouse=/home/justin/.cache/tmp/opencode/fm-real-doctor-naiM5i/bin/treehouse
+required harness=claude:/home/justin/.cache/tmp/opencode/fm-real-doctor-naiM5i/bin/claude
+optional tmux=/usr/bin/tmux
+optional no-mistakes=absent
+optional gh=absent
+check herdr=ok: /home/justin/.cache/tmp/opencode/fm-real-doctor-naiM5i/bin/herdr
+check gui-session=skip: no Aqua login session applies on linux
+check remote-job-worker=ok: the Linux remote job worker is running
+check remote-job-worker-loaded=skip: Aqua launch agents do not apply on linux
+check remote-job-probe=ok: the remote job worker published a fresh heartbeat
+check launchagent=skip: launch agents apply only on darwin
+check launchagent-scope=skip: launch agents apply only on darwin
+check launchagent-loaded=skip: launch agents apply only on darwin
+check herdr-server=ok: session fm-remote is running
+check entrypoint-link=ok: /home/justin/.cache/tmp/opencode/fm-real-doctor-naiM5i/home/.local/bin/fm-remote-entrypoint.sh
+ok: remote second-mate readiness confirmed on this host
+--- after: session status (same isolated env) ---
+{"running":true,"socket":"/home/justin/.cache/tmp/opencode/fm-real-doctor-naiM5i/xdg/herdr/sessions/fm-remote/herdr.sock"}
+--- server process tree ---
+server_pid=3512766
+    PID    PPID    PGID    SESS STAT COMMAND
+3512766    7203 3512766 3512766 Ssl  herdr
+    PID    PPID    PGID    SESS STAT COMMAND
+   7203       1    7203    7203 Ss   systemd
+PASS: Linux --fix returned in 201ms with a detached, running real herdr server
