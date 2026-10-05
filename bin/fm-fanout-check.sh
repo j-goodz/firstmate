@@ -21,8 +21,9 @@
 #   1. $STATE/<task-id>.status, if the file exists
 #   2. --body-file <path>, if given and readable
 #   3. when --pr-url is given and --body-file is not: the PR body from
-#      `gh pr view <url> --json body --jq .body` (wrap in `timeout 20` when timeout exists;
-#      any failure, including gh missing, is silently ignored and yields no ids)
+#      `gh pr view <url> --json body --jq .body`, hard-bounded by fm_run_timed
+#      (bin/fm-timeout-lib.sh); any failure, including gh missing or the bound
+#      expiring, is silently ignored and yields no ids)
 #
 # Units ledger rows are JSON lines with at least: run_id, label, outcome. Outcome values that
 # matter: "check_passed" and "free_exhausted". Blank or malformed lines are ignored.
@@ -58,6 +59,10 @@
 
 set -eu
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=bin/fm-timeout-lib.sh
+. "$SCRIPT_DIR/fm-timeout-lib.sh"
+
 # Determine FM_HOME: the repository root that contains this script's bin/ directory
 FM_HOME="${FM_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
@@ -92,7 +97,7 @@ while (( "$#" )); do
       BODY_FILE="$2"
       shift 2
       ;;
-    --*)
+    -*)
       echo "ERROR: unknown option $1" >&2
       exit 2
       ;;
@@ -140,12 +145,7 @@ fi
 
 # 3. --pr-url (only if --body-file not given)
 if [[ -n "$PR_URL" && -z "$BODY_FILE" ]]; then
-  pr_body=""
-  if command -v timeout >/dev/null 2>&1; then
-    pr_body=$(timeout 20 gh pr view "$PR_URL" --json body --jq .body 2>/dev/null || true)
-  else
-    pr_body=$(gh pr view "$PR_URL" --json body --jq .body 2>/dev/null || true)
-  fi
+  pr_body=$(fm_run_timed 20 gh pr view "$PR_URL" --json body --jq .body 2>/dev/null || true)
   if [[ -n "$pr_body" ]]; then
     while IFS= read -r id; do
       if ! [[ " ${seen[*]} " == *" $id "* ]]; then
@@ -243,7 +243,7 @@ if [[ "$verdict" != "yes" ]]; then
 fi
 
 # Append to adoption ledger
-mkdir -p "$DATA"
+mkdir -p "$DATA" 2>/dev/null || true
 
 ts=$(date +%s)
 at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")

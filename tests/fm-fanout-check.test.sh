@@ -329,6 +329,7 @@ test_bad_usage() {
   local state_dir="$tmp_root/state"
   local data_dir="$tmp_root/data"
   local ledger_file="$tmp_root/units.jsonl"
+  local adoption_file="$data_dir/fanout-adoption.jsonl"
   mkdir -p "$state_dir" "$data_dir"
 
   local out errfile="$tmp_root/stderr.txt"
@@ -340,12 +341,69 @@ test_bad_usage() {
   rc=$?
   expect_code 2 $rc "exit code for unknown option"
 
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" -h 2>"$errfile")
+  rc=$?
+  expect_code 2 $rc "exit code for unknown short option"
+  assert_absent "$adoption_file" "a rejected option appends no adoption row"
+
   out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" --help 2>"$errfile")
   rc=$?
   expect_code 0 $rc "exit code for --help"
   assert_contains "$out" "fm-fanout-check" "help output contains script name"
 
   pass "fm-fanout-check.sh: bad usage case"
+}
+
+test_unwritable_data_dir() {
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local ledger_file="$tmp_root/units.jsonl"
+  local blocker="$tmp_root/not-a-directory"
+  local data_dir="$blocker/sub"
+  local task_id="task-unwritable-1"
+  mkdir -p "$state_dir"
+  : > "$blocker"
+  : > "$ledger_file"
+
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
+  local rc=$?
+  expect_code 0 $rc "exit code when the data dir cannot be created"
+  assert_equals "fanout-check: $task_id free_written=no verdict=no-runs units=0 paid_step_ups=0 runs=-" "$out" "stdout when the data dir cannot be created"
+  local stderr_content
+  stderr_content=$(cat "$errfile")
+  assert_contains "$stderr_content" "WARNING: fanout-check:" "stderr reports the adoption-ledger failure"
+
+  pass "fm-fanout-check.sh: unwritable data dir case"
+}
+
+test_pr_url() {
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local data_dir="$tmp_root/data"
+  local ledger_file="$tmp_root/units.jsonl"
+  local fakebin
+  fakebin=$(fm_fakebin "$tmp_root")
+  local task_id="task-pr-url-1"
+  local run_id="fr-20261005T010203Z-abc123"
+  mkdir -p "$state_dir" "$data_dir"
+  printf '{"run_id":"%s","label":"step1","outcome":"check_passed"}\n' "$run_id" > "$ledger_file"
+  cat > "$fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+printf 'PR body mentioning fr-20261005T010203Z-abc123 for this lane.\n'
+SH
+  chmod +x "$fakebin/gh"
+
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(PATH="$fakebin:$PATH" FM_TIMEOUT_MECHANISM_OVERRIDE=bash FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" --pr-url "https://forge.example/pr/1" 2>"$errfile")
+  local rc=$?
+  expect_code 0 $rc "exit code for --pr-url via the shared bounded runner"
+  assert_equals "fanout-check: $task_id free_written=yes verdict=yes units=1 paid_step_ups=0 runs=$run_id" "$out" "stdout for --pr-url via the shared bounded runner"
+  assert_equals "" "$(cat "$errfile")" "stderr empty for --pr-url"
+
+  pass "fm-fanout-check.sh: --pr-url case"
 }
 
 test_ledger_unchanged() {
@@ -385,4 +443,6 @@ test_multiple_ids_on_one_line
 test_malformed_ledger
 test_adoption_accumulates
 test_bad_usage
+test_unwritable_data_dir
+test_pr_url
 test_ledger_unchanged
