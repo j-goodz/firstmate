@@ -433,6 +433,16 @@ When the file is absent, worker launches do not add a board address and retain t
 Malformed or unreadable values refuse the launch before the worker starts, while the adapter refuses the same malformed value before polling.
 The address selects the existing shared server; it does not authorize starting or stopping the server, and the Lavish startup crash remains a vendor-tool concern.
 
+## Fan-out adoption ledger (data/fanout-adoption.jsonl)
+
+Ship briefs name the FreeLLMAPI fan-out as the standard build method, and `bin/fm-brief.sh` renders that section.
+At ship teardown, `bin/fm-fanout-check.sh` reads the task's fan-out run ids from its status log and PR body.
+It reports whether the nexus units ledger (`~/.nexus/fanout-units.jsonl`, or `FM_FANOUT_LEDGER`) holds `check_passed` rows for those runs.
+It appends one JSON line per check to `data/fanout-adoption.jsonl` with the task, `free_written`, verdict (`yes`, `no`, `missing-ledger` or `no-runs`), unit count and paid step-ups.
+A lane with no run ids, or a missing ledger, prints a one-line warning and never blocks teardown.
+`FM_FANOUT_ENGINE` overrides the engine path the scaffold names (default `$HOME/nexus/scripts/free_direct_fanout.py`).
+The script header owns the exact contract.
+
 ## Home brief include (config/brief-include.md)
 
 The optional local, gitignored `config/brief-include.md` carries standing worker instructions that one captain wants on every ship and scout brief, so private brief content needs no edit to a tracked file.

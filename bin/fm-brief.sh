@@ -86,6 +86,11 @@
 # regular file, or text carrying its own "Delivery contract: mode=" line (which
 # a later scout promotion could not outrank), stops the scaffold before
 # anything is written. Secondmate charters never take it.
+# Ship scaffolds carry one "Build method" section between the project-memory section and the
+# Definition of done: the standard FreeLLMAPI fan-out method (free models write the code through
+# scripts/free_direct_fanout.py, the lead reviews, paid models only for free_exhausted units,
+# run ids named in the PR body). The engine path comes from FM_FANOUT_ENGINE, defaulting to
+# $HOME/nexus/scripts/free_direct_fanout.py. bin/fm-fanout-check.sh records adoption at teardown.
 # Refuses to overwrite an existing brief.
 set -eu
 
@@ -494,6 +499,7 @@ case "$MODE" in
 esac
 RULE1=$(fm_ship_rule_one "$MODE" "$ID") || exit 1
 DOD=$(fm_dod_block "$MODE" "$ID") || exit 1
+FANOUT_ENGINE=${FM_FANOUT_ENGINE:-$HOME/nexus/scripts/free_direct_fanout.py}
 
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
@@ -559,6 +565,15 @@ Record only project knowledge useful to almost every future session.
 For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
 If you touch a project \`AGENTS.md\`, follow \`$FM_ROOT/bin/fm-ensure-agents-md.sh\`'s self-governance contract in the same pass.
 Keep it proportionate: skip \`AGENTS.md\` edits for trivial tasks that produced no durable project knowledge.
+
+# Build method
+The standard build method for this task is FreeLLMAPI fan-out: free models write the code, you lead and verify.
+It is the standard method, not an iron rule: skip it for a specific part only when you state the reason in a status line.
+1. Turn the Firstmate spec into a fan-out manifest (a JSON list of units). Use an \`out\` unit for each new file and an \`edit\` unit (SEARCH/REPLACE blocks) for each existing file, each with a \`check\` command that proves the unit works. Write the tests first, from the spec, as their own units.
+2. Run \`python3 $FANOUT_ENGINE --manifest <file>\` (if that path is missing, use the nexus checkout path on this machine). Keep scratch files under ~/scratch/$ID, never inside a git tree.
+3. Review every result and apply it. Never hand-write code. A rate-limited or failed call reroutes to the next free model and is not a failure.
+4. Only units the run reports \`free_exhausted\` may go to a paid model, and only after you append a \`working\` status line naming those units.
+5. Name the fan-out run ids (fr-...) in the PR body and in a status line. Firstmate records whether free models wrote the change; a lane with no run ids gets a warning, never a refusal.
 
 $DOD
 EOF
