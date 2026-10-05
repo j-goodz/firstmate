@@ -64,8 +64,10 @@
 # All mutations serialize on this home's .contributions.lock. Writes refuse
 # symlinks and publish by rename. No forge writes are performed.
 #
-# arm registers the existing authenticated custom-check path. Startup and PR
-# registration call it; when filing a linked upstream issue, call arm as well.
+# arm registers the existing authenticated custom-check path, except when every
+# known contribution is already final with nothing pending, in which case it
+# retires the check instead. Startup and PR registration call it; when filing a
+# linked upstream issue, call arm as well.
 # jq_lib receives literal jq programs, not shell expressions.
 # shellcheck disable=SC2016
 set -eu
