@@ -179,7 +179,7 @@ result_json() {
 
 cmd_run() {
   local key=${1:-} entry src format command sha status_line base tier avail cores load1 lpc limit floor
-  local daily wt logfile idsfile rcfile secs slot_wait t0 rc outer reason json run_inner
+  local daily rundir wt logfile idsfile rcfile secs slot_wait t0 rc outer reason json run_inner
   [ -n "$key" ] || bad_usage "run needs a KEY"
   is_key "$key" || bad_usage "invalid repo key: $key"
   entry=$(config_entry "$key") || { say "$key is not configured on this machine ($CONFIG_FILE)"; exit 10; }
@@ -217,18 +217,19 @@ cmd_run() {
   sha=$(git -C "$src" rev-parse --verify --quiet "${FM_SUITE_DAILY_REF:-origin/main}^{commit}") || skip no-ref
 
   daily="$STATE_DIR/daily/$key"
-  logfile="$daily/last-run.log"
-  idsfile="$daily/ids"
-  rcfile="$daily/rc"
   mkdir -p "$daily"
-  wt=$(mktemp -d "$daily/wt.XXXXXX") || skip no-checkout "$sha"
+  rundir=$(mktemp -d "$daily/wt.XXXXXX") || skip no-checkout "$sha"
+  wt="$rundir/wt"
+  logfile="$rundir/run.log"
+  idsfile="$rundir/ids"
+  rcfile="$rundir/rc"
   # shellcheck disable=SC2329 # Registered by the EXIT trap below.
-  drop_checkout() {
+  drop_run() {
     git -C "$src" worktree remove --force "$wt" > /dev/null 2>&1
-    rm -rf "$wt"
+    rm -rf "$rundir"
     git -C "$src" worktree prune > /dev/null 2>&1
   }
-  trap 'drop_checkout' EXIT
+  trap 'drop_run' EXIT
   trap 'exit 143' INT TERM
   git -C "$src" worktree add --detach --quiet "$wt" "$sha" > /dev/null 2>&1 || skip no-checkout "$sha"
 
@@ -255,6 +256,7 @@ cmd_run() {
   fi
 
   extract_ids "$format" "$logfile" > "$idsfile"
+  cat "$logfile" > "$daily/.last-run.log.$$" 2> /dev/null && mv -f "$daily/.last-run.log.$$" "$daily/last-run.log" 2> /dev/null
   if [ "$rc" -eq 0 ]; then
     json=$(result_json "$key" "$sha" pass "" "$rc" "$((SECONDS - t0))" "$idsfile")
   else
