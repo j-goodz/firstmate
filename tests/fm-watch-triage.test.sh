@@ -3958,6 +3958,42 @@ test_secondmate_paused_resurfaces_in_normal_mode() {
   pass "a declared paused secondmate re-surfaces on the bounded normal-mode cadence"
 }
 
+# The scout fix (test_working_flicker_does_not_reset_the_declared_wait_throttle)
+# bounds the alarm loop for ordinary crews, but a secondmate parked on a declared
+# wait reaches its own branch. Its authoritative crew state can read `working` -
+# a harness turn in flight on the mate's endpoint - while the status log still
+# declares the same wait, and a `working` read says nothing about whether that
+# declaration still stands, so it must not clear the declaration's re-surface
+# throttle. Clearing it let the next inconclusive read count as a first sight and
+# re-open the same loop for mates.
+test_secondmate_working_read_keeps_declared_wait_throttle() {
+  local dir state fakebin out capture_file statusf window key pane_hash sig throttle recheck back
+  dir=$(make_case secondmate-working-throttle); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; capture_file="$dir/pane.txt"; statusf="$state/secondmate-waiting.status"
+  window="test:fm-secondmate-waiting"
+  printf 'idle awaiting external\n' > "$capture_file"
+  printf 'window=%s\nkind=secondmate\n' "$window" > "$state/secondmate-waiting.meta"
+  printf 'paused: awaiting the upstream release\n' > "$statusf"
+  sig=$(seen_sig "$statusf"); printf '%s' "$sig" > "$state/.seen-secondmate-waiting_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  pane_hash=$(hash_text 'idle awaiting external')
+  printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+  : > "$state/.paused-$key"
+  throttle="$state/.paused-resurfaced-$key"
+  recheck="$state/.paused-rechecked-$key"
+  printf 'declared:stale\n' > "$throttle"
+  date +%s > "$recheck"
+  back=$(( $(date +%s) - 5000 ))
+  set_mtime "$back" "$recheck"
+
+  PARKED_CREW_STATE='state: working · source: pane · harness busy' \
+    parked_watch_round "$state" "$fakebin" "$out" "$capture_file" "$window" absorb \
+    || fail "watcher exited while a secondmate on a declared wait only read as working"
+  [ -e "$throttle" ] || fail "a secondmate's working read cleared its declared wait's re-surface throttle"
+  pass "a secondmate's working read keeps the declared wait's re-surface throttle"
+}
+
 # A captain hold is the other declared wait, but unlike paused: it has no
 # current-state mapping, so a held mate reports `unknown` rather than `paused`.
 # The bounded re-surface must still reach it, or a mate's hold rots invisibly:
@@ -6281,6 +6317,7 @@ test_stale_churn_without_a_captain_call_still_alarms
 test_failed_wake_append_does_not_arm_the_captain_hold_throttle
 test_reheld_captain_call_starts_its_own_resurface_window
 test_secondmate_paused_resurfaces_in_normal_mode
+test_secondmate_working_read_keeps_declared_wait_throttle
 test_secondmate_captain_held_resurfaces_in_normal_mode
 test_secondmate_nonpaused_stale_remains_suppressed
 test_secondmate_unpause_clears_pause_tracking
