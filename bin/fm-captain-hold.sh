@@ -770,8 +770,10 @@ resolve_migrated_entry() {  # <origin-or-empty> <entry>
 # Resolve one inventory entry or channel key to the task that carries it: the
 # exact task id when it exists, else the legacy derived identity, else - on the
 # beads backend - the migrated row the markdown-to-beads hold migration wrote.
-# Prints "<resolved id> <how>", where <how> is exact, legacy, migrated-note or
-# migrated-prefix, so a caller can record which evidence carried the attestation.
+# Prints "<resolved id> <how>", where <how> is exact, legacy, migrated-note,
+# migrated-prefix or archived (the entry or its legacy identity is a recorded
+# answer Done retention moved to the done archive), so a caller can record which
+# evidence carried the attestation.
 resolve_entry() {  # <origin-or-empty> <entry>; prints "<id> <how>" or fails
   local origin=$1 entry=$2 legacy migrated rc
   if task_show "$entry"; then
@@ -847,7 +849,8 @@ write_hold_set_stamp() {  # <task-id> <shown-body> <timestamp> <preserve-existin
   rm -f -- "$tmp"
 }
 
-# Resolve one entry and verify the row it names is durably captain-held. A
+# Resolve one entry and verify it is durable - actively captain-held, or carrying
+# a recorded answer even after Done retention moved the row to the archive. A
 # resolution failure that is not the read bound keeps resolve_entry's own
 # status - its stderr already named the entry; 124 means the backend never
 # answered, which is not the same as an unknown entry and must not be spent
