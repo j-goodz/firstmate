@@ -66,6 +66,7 @@ JS
 # ~52s loop period so a regression would emit a second follow-up.
 test_unacknowledged_recovery_is_announced_once_per_generation() {
   local repo home plugin fakebin out status lock_pid messages
+  fm_require_node_typescript "the Pi watcher recovery-loop generation case" || return 0
   repo="$TMP_ROOT/t1-root"
   home="$TMP_ROOT/t1-home"
   fakebin="$TMP_ROOT/t1-fakebin"

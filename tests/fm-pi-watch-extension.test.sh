@@ -4899,6 +4899,7 @@ EOF
   pass "OpenCode session-model resolver parses --model <p/m>, --model=<p/m>, and -m <p/m>"
 }
 
+if fm_require_node_typescript "the Pi primary watcher extension checks"; then
 test_pi_extension_reports_external_healthy_watcher
 test_pi_tool_returns_agent_tool_result
 test_pi_redundant_tool_call_is_owned_noop
@@ -4934,6 +4935,7 @@ test_pi_replacement_tokens_are_process_unique
 test_pi_replacement_persistence_failure_keeps_predecessor_until_successor
 test_pi_process_exit_cleanup_listener_lifecycle
 test_pi_process_exit_cleanup_stops_arm_child
+fi
 test_opencode_plugin_package_boundary_is_explicit_esm
 test_opencode_primary_watch_plugin_uses_effective_state_home
 test_opencode_primary_watch_plugin_sources_effective_config

@@ -335,6 +335,50 @@ fm_live_gate() {
   return 0
 }
 
+# --- node TypeScript capability ---------------------------------------------
+#
+# The Pi-family extension tests load tracked .ts extensions through node's
+# native type stripping. That needs a node built with TypeScript support -
+# node 24, or 22.18+ compiled with amaro. An older build, or a distribution
+# node compiled without it, raises ERR_UNKNOWN_FILE_EXTENSION (or
+# ERR_NO_TYPESCRIPT) instead, so a host tool gap would otherwise be reported as
+# a product failure. Gate those tests on the capability and skip with a named
+# reason when it is absent:
+#
+#   fm_require_node_typescript "what the test covers" || exit 0     # file-level
+#   fm_require_node_typescript "what the test covers" || return 0   # in a test
+#
+# The fleet fix is installing node 24 (or tsx as a loader).
+fm_node_typescript_available() {
+  command -v node >/dev/null 2>&1 || return 1
+  local dir probe rc
+  # The probe file must end in .ts for node to engage type stripping, but a
+  # bare mktemp template with a trailing suffix is not portable to BSD/macOS, so
+  # create the file inside a portable temp directory.
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/fm-node-typescript.XXXXXX") || return 1
+  probe="$dir/probe.ts"
+  printf 'export const ok: boolean = true;\n' > "$probe"
+  FM_NODE_TS_PROBE="$probe" node --input-type=module -e \
+    'import { pathToFileURL } from "node:url"; await import(pathToFileURL(process.env.FM_NODE_TS_PROBE).href);' \
+    >/dev/null 2>&1
+  rc=$?
+  rm -rf "$dir"
+  return "$rc"
+}
+
+# Print one skip: line and return 1 when node cannot load a .ts module, so a
+# caller gates with `|| exit 0` or `|| return 0`. Returns 0 when node is ready.
+fm_require_node_typescript() {  # <what>
+  fm_node_typescript_available && return 0
+  if command -v node >/dev/null 2>&1; then
+    printf 'skip: Pi extension typecheck prerequisite not found: node %s lacks TypeScript type-stripping support for %s (install node 24 or tsx)\n' \
+      "$(node --version 2>/dev/null)" "$1"
+  else
+    printf 'skip: Pi extension typecheck prerequisite not found: node not found for %s\n' "$1"
+  fi
+  return 1
+}
+
 # --- fakebin / PATH shims ---------------------------------------------------
 #
 # fm_fakebin <dir> creates <dir>/fakebin and echoes it; prepend it to PATH to

@@ -2236,9 +2236,13 @@ SH
       "$ROOT/bin/fm-config-push.sh" > "$first_out" 2>&1
   ) &
   first_pid=$!
-  for _ in $(seq 1 100); do
+  # The first push cold-starts fm-config-push - library loads, propagation, then
+  # the reread send the fake tmux records - which routinely outlasts two seconds
+  # on a loaded host. An iteration-counted poll loop stretches under load where a
+  # wall-clock budget does not; 1200 x 0.05s gives at least 60s of headroom.
+  for _ in $(seq 1 1200); do
     [ -e "$entered" ] && break
-    sleep 0.02
+    sleep 0.05
   done
   [ -e "$entered" ] || fail "first config push did not reach pointer delivery"
   first_instr=$(reread_instruction_path "$w/sm") \

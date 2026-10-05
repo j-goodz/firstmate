@@ -1060,6 +1060,7 @@ EOF
 
 test_pi_extension_injects_once_per_logical_agent_run() {
   local repo home ext log out status
+  fm_require_node_typescript "the Pi turn-end guard logical-run case" || return 0
   repo="$TMP_ROOT/pi-logical-run-root"
   home="$TMP_ROOT/pi-logical-run-home"
   ext="$repo/.pi/extensions/fm-primary-turnend-guard.ts"
@@ -1127,6 +1128,7 @@ EOF
 
 test_pi_extension_retries_after_followup_delivery_failure() {
   local repo home ext out status
+  fm_require_node_typescript "the Pi turn-end guard delivery-retry case" || return 0
   repo="$TMP_ROOT/pi-delivery-failure-root"
   home="$TMP_ROOT/pi-delivery-failure-home"
   ext="$repo/.pi/extensions/fm-primary-turnend-guard.ts"

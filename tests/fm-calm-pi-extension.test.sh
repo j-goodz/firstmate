@@ -151,10 +151,11 @@ render_export_dom() {
 
 test_home_resolution() {
   local fixture out status version
-  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    echo "skip: node or npm not found for Pi calm home-resolution test"
+  command -v npm >/dev/null 2>&1 || {
+    echo "skip: npm not found for Pi calm home-resolution test"
     return 0
-  fi
+  }
+  fm_require_node_typescript "the Pi calm home-resolution test" || return 0
   if [ ! -f "$PI_PACKAGE_DIR/package.json" ]; then
     echo "skip: installed @earendil-works/pi-coding-agent package not found"
     return 0
@@ -279,10 +280,11 @@ test_pi_compat_no_upper_bound() {
 
 test_pi_compat_degraded_adapter() {
   local fixture out status
-  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    echo "skip: node or npm not found for Pi calm degraded-adapter test"
+  command -v npm >/dev/null 2>&1 || {
+    echo "skip: npm not found for Pi calm degraded-adapter test"
     return 0
-  fi
+  }
+  fm_require_node_typescript "the Pi calm degraded-adapter test" || return 0
   if [ ! -f "$PI_PACKAGE_DIR/package.json" ]; then
     echo "skip: installed @earendil-works/pi-coding-agent package not found"
     return 0
@@ -385,10 +387,7 @@ JS
 
 test_pi_compat_missing_adapter_exports() {
   local fixture out status
-  if ! command -v node >/dev/null 2>&1; then
-    echo "skip: node not found for Pi calm missing-adapter-export test"
-    return 0
-  fi
+  fm_require_node_typescript "the Pi calm missing-adapter-export test" || return 0
 
   fixture="$TMP_ROOT/missing-adapter-exports"
   mkdir -p \
@@ -440,10 +439,11 @@ JS
 
 test_builtin_gate_load_time() {
   local fixture out output_file status
-  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    echo "skip: node or npm not found for Pi calm gate test"
+  command -v npm >/dev/null 2>&1 || {
+    echo "skip: npm not found for Pi calm gate test"
     return 0
-  fi
+  }
+  fm_require_node_typescript "the Pi calm gate test" || return 0
   if [ ! -f "$PI_PACKAGE_DIR/package.json" ]; then
     echo "skip: installed @earendil-works/pi-coding-agent package not found"
     return 0
@@ -529,10 +529,11 @@ JS
 
 test_calm_activation_collision_and_regression_bound() {
   local fixture out output_file status
-  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    echo "skip: node or npm not found for Pi calm activation test"
+  command -v npm >/dev/null 2>&1 || {
+    echo "skip: npm not found for Pi calm activation test"
     return 0
-  fi
+  }
+  fm_require_node_typescript "the Pi calm activation test" || return 0
   if [ ! -f "$PI_PACKAGE_DIR/package.json" ]; then
     echo "skip: installed @earendil-works/pi-coding-agent package not found"
     return 0
@@ -746,10 +747,11 @@ JS
 
 test_rendering_and_session_lifecycle() {
   local fixture out output_file status version
-  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    echo "skip: node or npm not found for Pi calm renderer test"
+  command -v npm >/dev/null 2>&1 || {
+    echo "skip: npm not found for Pi calm renderer test"
     return 0
-  fi
+  }
+  fm_require_node_typescript "the Pi calm renderer test" || return 0
   if [ ! -f "$PI_PACKAGE_DIR/package.json" ]; then
     echo "skip: installed @earendil-works/pi-coding-agent package not found"
     return 0
@@ -1465,10 +1467,11 @@ JS
 
 test_calm_mid_turn_working_notes() {
   local fixture out output_file status version
-  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    echo "skip: node or npm not found for Pi calm mid-turn renderer test"
+  command -v npm >/dev/null 2>&1 || {
+    echo "skip: npm not found for Pi calm mid-turn renderer test"
     return 0
-  fi
+  }
+  fm_require_node_typescript "the Pi calm mid-turn renderer test" || return 0
   if [ ! -f "$PI_PACKAGE_DIR/package.json" ]; then
     echo "skip: installed @earendil-works/pi-coding-agent package not found"
     return 0
@@ -2383,10 +2386,11 @@ TS
 
 test_working_ship_geometry_and_lifecycle() {
   local fixture out status version
-  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    echo "skip: node or npm not found for Pi Calm working-ship test"
+  command -v npm >/dev/null 2>&1 || {
+    echo "skip: npm not found for Pi Calm working-ship test"
     return 0
-  fi
+  }
+  fm_require_node_typescript "the Pi Calm working-ship test" || return 0
   if [ ! -f "$PI_PACKAGE_DIR/package.json" ]; then
     echo "skip: installed @earendil-works/pi-coding-agent package not found"
     return 0

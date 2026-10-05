@@ -25,14 +25,13 @@ PI_SPRITE="$ROOT/.pi/extensions/lib/fm-calm-working-ship-sprite.ts"
 OPERATIONAL_INPUT="$ROOT/bin/fm-operational-input.sh"
 TMP_ROOT=$(fm_test_tmproot fm-calm-claude-mod)
 
-command -v node >/dev/null 2>&1 || { echo "skip: node not found for the Claude Code Calm mod checks"; exit 0; }
-
 run_node() {  # <script-file>
   node --input-type=module <"$1"
 }
 
 test_plugin_shape() {
   local link resolved autoload
+  command -v node >/dev/null 2>&1 || { echo "skip: node not found for the Calm plugin shape check"; return 0; }
   link="$ROOT/.agents/skills/firstmate-calm"
   [ -L "$link" ] || fail "the Calm mod is not linked into .agents/skills, so Claude Code's project skills-dir scan cannot adopt it"
   resolved=$(cd "$link" && pwd -P) || fail "the .agents/skills/firstmate-calm link does not resolve"
@@ -73,6 +72,7 @@ JS
 
 test_shared_sprite_and_pi_rendering() {
   local out
+  fm_require_node_typescript "the Calm shared sprite and Pi rendering" || return 0
   cat >"$TMP_ROOT/sprite.mjs" <<JS
 import { pathToFileURL } from "node:url";
 const pi = await import(pathToFileURL(${PI_SHIP@Q}).href);
@@ -147,6 +147,7 @@ JS
 
 test_raster_packing() {
   local out
+  fm_require_node_typescript "the Calm raster packing" || return 0
   cat >"$TMP_ROOT/raster.mjs" <<JS
 import { pathToFileURL } from "node:url";
 import { randomBytes } from "node:crypto";
@@ -231,6 +232,7 @@ JS
 
 test_presentation_policy() {
   local out
+  fm_require_node_typescript "the Calm presentation policy" || return 0
   cat >"$TMP_ROOT/policy.mjs" <<JS
 import { pathToFileURL } from "node:url";
 const policy = await import(pathToFileURL(${MOD@Q} + "/lib/fm-calm-presentation.ts").href);
@@ -398,6 +400,7 @@ write_parity_corpus() {
 
 test_classifier_parity_with_shell_owner() {
   local corpus count out shell_verdict port_verdict mismatches=0 compared=0 index file generic_kinds kind
+  fm_require_node_typescript "the Calm operational-input classifier parity" || return 0
   corpus="$TMP_ROOT/corpus"
   count=$(write_parity_corpus "$corpus")
   cat >"$TMP_ROOT/classify.mjs" <<JS

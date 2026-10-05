@@ -357,10 +357,7 @@ test_run_clear_rejects_previous_owner_completion() {
 
 test_pi_startup_classifies_cli_continuations() {
   local fixture out expected actual status=0
-  command -v node >/dev/null 2>&1 || {
-    echo "skip: node not found for Pi continuation classification test"
-    return 0
-  }
+  fm_require_node_typescript "the Pi continuation classification test" || return 0
   fixture="$TMP_ROOT/pi-continuation-source"
   mkdir -p "$fixture/.pi/extensions/lib" "$fixture/bin" "$fixture/state"
   cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$fixture/.pi/extensions/"
@@ -455,10 +452,7 @@ JS
 
 test_pi_sessionstart_generation_prerequisite() {
   local fixture out status=0
-  command -v node >/dev/null 2>&1 || {
-    echo "skip: node not found for Pi session-start generation prerequisite test"
-    return 0
-  }
+  fm_require_node_typescript "the Pi session-start generation prerequisite test" || return 0
   fixture="$TMP_ROOT/pi-sessionstart-generation"
   mkdir -p "$fixture/.pi/extensions/lib" "$fixture/bin" "$fixture/state"
   cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$fixture/.pi/extensions/"
@@ -781,10 +775,7 @@ JS
 
 test_pi_reload_releases_sessionstart_exit_listener() {
   local fixture out status=0
-  command -v node >/dev/null 2>&1 || {
-    echo "skip: node not found for Pi reload exit-listener test"
-    return 0
-  }
+  fm_require_node_typescript "the Pi reload exit-listener test" || return 0
   fixture="$TMP_ROOT/pi-reload-exit-listener"
   mkdir -p "$fixture/.pi/extensions/lib" "$fixture/bin" "$fixture/state"
   cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$fixture/.pi/extensions/"
@@ -912,10 +903,7 @@ JS
 
 test_pi_large_sessionstart_digest_is_delivered_loudly() {
   local fixture out status=0
-  command -v node >/dev/null 2>&1 || {
-    echo "skip: node not found for Pi large session-start delivery test"
-    return 0
-  }
+  fm_require_node_typescript "the Pi large session-start delivery test" || return 0
   fixture="$TMP_ROOT/pi-large-digest"
   mkdir -p "$fixture/.pi/extensions/lib" "$fixture/bin" "$fixture/state" "$fixture/data" "$fixture/config"
   git init -q -b main "$fixture"
