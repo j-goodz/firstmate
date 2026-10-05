@@ -33,13 +33,16 @@
 #   default 600), load-busy (load per CPU at or above
 #   FM_SUITE_DAILY_MAX_LOAD_PER_CORE, default 0.5, halved on a machine with no
 #   suite slots, which runs the daily suite only when nearly idle), no-ref,
-#   no-checkout, or no-slot (the machine's suite slot stayed taken for
+#   no-checkout, already-running (another run of the same key holds the run
+#   lock) or no-slot (the machine's suite slot stayed taken for
 #   FM_SUITE_DAILY_SLOT_WAIT_SECS, default 900). Otherwise the tested commit
 #   (FM_SUITE_DAILY_REF, default origin/main, after a fetch unless
 #   FM_SUITE_DAILY_FETCH=0) is checked out detached under the state directory,
 #   the command runs there niced, bounded by FM_SUITE_DAILY_TIMEOUT_SECS
-#   (default 7200) and, when the machine has suite slots, inside one slot. The
-#   checkout is always removed. Exit 0 for a pass or a fail.
+#   (default 7200) and, when the machine has suite slots, inside one slot. Runs
+#   of one key are serialised by daily/<KEY>/run.lock, and a checkout left by a
+#   killed run is swept before this run starts. The checkout is always removed.
+#   Exit 0 for a pass or a fail.
 #   Every run appends one "daily-run" JSON line to FM_SUITE_DAILY_LOG (default
 #   $HOME/.nexus/suite-daily.jsonl) with ts, host, key, sha, status
 #   (pass|fail|skipped), reason, rc, failures, failed_ids (first 20) and
@@ -180,6 +183,7 @@ result_json() {
 cmd_run() {
   local key=${1:-} entry src format command sha status_line base tier avail cores load1 lpc limit floor
   local daily rundir wt logfile idsfile rcfile secs slot_wait t0 rc outer reason json run_inner
+  local run_fd stale
   [ -n "$key" ] || bad_usage "run needs a KEY"
   is_key "$key" || bad_usage "invalid repo key: $key"
   entry=$(config_entry "$key") || { say "$key is not configured on this machine ($CONFIG_FILE)"; exit 10; }
@@ -218,6 +222,14 @@ cmd_run() {
 
   daily="$STATE_DIR/daily/$key"
   mkdir -p "$daily"
+  exec {run_fd}>> "$daily/run.lock" || skip no-checkout "$sha"
+  flock -n "$run_fd" || skip already-running "$sha"
+  for stale in "$daily"/wt.*; do
+    [ -e "$stale" ] || continue
+    git -C "$src" worktree remove --force "$stale" > /dev/null 2>&1
+    rm -rf "$stale"
+  done
+  git -C "$src" worktree prune > /dev/null 2>&1
   rundir=$(mktemp -d "$daily/wt.XXXXXX") || skip no-checkout "$sha"
   wt="$rundir/wt"
   logfile="$rundir/run.log"
@@ -240,9 +252,9 @@ cmd_run() {
   run_inner='cd "$1" || exit 126; export FM_DAILY_SRC="$2" FM_SUITE_SLOT_HELD=1; nice -n 19 timeout -k 5 "$4" bash -c "$5"; echo $? > "$3"'
   if [ "$base" -gt 0 ]; then
     "$SLOT" run --key "daily-$key" --wait-secs "$slot_wait" --poll-secs 5 -- \
-      bash -c "$run_inner" _ "$wt" "$src" "$rcfile" "$secs" "$command" 2>&1 | tee "$logfile" >&2
+      bash -c "$run_inner" _ "$wt" "$src" "$rcfile" "$secs" "$command" {run_fd}>&- 2>&1 | tee "$logfile" >&2
   else
-    bash -c "$run_inner" _ "$wt" "$src" "$rcfile" "$secs" "$command" 2>&1 | tee "$logfile" >&2
+    bash -c "$run_inner" _ "$wt" "$src" "$rcfile" "$secs" "$command" {run_fd}>&- 2>&1 | tee "$logfile" >&2
   fi
   outer=${PIPESTATUS[0]}
   if [ ! -f "$rcfile" ]; then

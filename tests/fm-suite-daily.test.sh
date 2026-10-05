@@ -187,49 +187,60 @@ test_the_suite_runs_in_a_detached_checkout() {
     pass "the suite runs in a detached checkout, with FM_DAILY_SRC naming the clone"
 }
 
-test_two_overlapping_runs_of_one_key_do_not_collide() {
-    local p1 p2 rc1 rc2 d1 d2
-    new_case overlap fm-test 'd=$(pwd); printf "%s\n" "$d" > "$FM_DAILY_SRC/../checkout-$$"; : > "$d/marker"; sleep 1; [ "$(pwd)" = "$d" ] && [ -f "$d/marker" ] || { echo marker-lost >&2; exit 1; }; echo "FM_TEST_END 2026-10-05T00:00:00Z tests/a.test.sh exit=0 duration_ms=1 gate_skip=false"'
+test_a_second_run_of_one_key_while_the_first_holds_the_lock_is_skipped() {
+    local p1 rc1 n=0 where
+    new_case locked fm-test 'pwd > "$FM_DAILY_SRC/../where"; echo started > "$FM_DAILY_SRC/../started"; sleep 2; echo "FM_TEST_END 2026-10-05T00:00:00Z tests/a.test.sh exit=0 duration_ms=1 gate_skip=false"'
     export FM_SUITE_SLOTS=0
     "$DAILY" run proj > "$CASE/out1" 2> "$CASE/err1" &
     p1=$!
-    "$DAILY" run proj > "$CASE/out2" 2> "$CASE/err2" &
-    p2=$!
+    until [ -f "$CASE/started" ]; do
+        n=$((n + 1))
+        [ "$n" -lt 100 ] || fail "the first run never started"
+        sleep 0.1
+    done
+    daily_run proj
+    expect_code 11 "$RC" "a second run while the first holds the lock"
+    assert_json "$RESULT" '.status == "skipped" and .reason == "already-running"' "already running"
     wait "$p1"
     rc1=$?
-    wait "$p2"
-    rc2=$?
-    expect_code 0 "$rc1" "the first overlapping run"
-    expect_code 0 "$rc2" "the second overlapping run"
+    expect_code 0 "$rc1" "the first run still passes"
     assert_json "$(grep '^RESULT ' "$CASE/out1" | tail -n1 | sed 's/^RESULT //')" '.status == "pass"' "the first result"
-    assert_json "$(grep '^RESULT ' "$CASE/out2" | tail -n1 | sed 's/^RESULT //')" '.status == "pass"' "the second result"
-    d1=$(cat "$CASE"/checkout-* | LC_ALL=C sort | sed -n 1p)
-    d2=$(cat "$CASE"/checkout-* | LC_ALL=C sort | sed -n 2p)
-    assert_not_equals "$d1" "$d2" "each run must see its own checkout"
-    case "$d1" in */daily/proj/wt.*) ;; *) fail "the first checkout ran in $d1, expected a daily/proj/wt.* checkout" ;; esac
+    where=$(cat "$CASE/where")
+    case "$where" in */daily/proj/wt.*) ;; *) fail "the first checkout ran in $where, expected a daily/proj/wt.* checkout" ;; esac
     assert_equals 1 "$(git -C "$SRC" worktree list | wc -l | tr -d ' ')" "no worktree left in the clone"
-    pass "two overlapping runs of one key both pass with their own checkouts"
+    pass "a second run of one key while the first holds the lock is skipped already-running"
 }
 
-test_overlapping_runs_of_one_key_keep_their_own_status() {
-    local p1 p2 rc1 rc2 r1 r2
-    new_case overlapstatus fm-test 'if [ "${FM_TEST_EXPECT:-pass}" = fail ]; then echo "FM_TEST_END 2026-10-05T00:00:00Z tests/b.test.sh exit=1 duration_ms=1 gate_skip=false"; exit 1; fi; sleep 1; echo "FM_TEST_END 2026-10-05T00:00:00Z tests/a.test.sh exit=0 duration_ms=1 gate_skip=false"'
+test_sequential_runs_of_one_key_keep_their_own_status() {
+    local rc1 rc2 r1 r2
+    new_case seqstatus fm-test 'if [ "${FM_TEST_EXPECT:-pass}" = fail ]; then echo "FM_TEST_END 2026-10-05T00:00:00Z tests/b.test.sh exit=1 duration_ms=1 gate_skip=false"; exit 1; fi; echo "FM_TEST_END 2026-10-05T00:00:00Z tests/a.test.sh exit=0 duration_ms=1 gate_skip=false"'
     export FM_SUITE_SLOTS=0
-    FM_TEST_EXPECT=fail "$DAILY" run proj > "$CASE/out1" 2> "$CASE/err1" &
-    p1=$!
-    FM_TEST_EXPECT=pass "$DAILY" run proj > "$CASE/out2" 2> "$CASE/err2" &
-    p2=$!
-    wait "$p1"
+    FM_TEST_EXPECT=fail "$DAILY" run proj > "$CASE/out1" 2> "$CASE/err1"
     rc1=$?
-    wait "$p2"
+    FM_TEST_EXPECT=pass "$DAILY" run proj > "$CASE/out2" 2> "$CASE/err2"
     rc2=$?
-    expect_code 0 "$rc1" "the failing overlapping run still exits 0"
-    expect_code 0 "$rc2" "the passing overlapping run still exits 0"
+    expect_code 0 "$rc1" "the failing run still exits 0"
+    expect_code 0 "$rc2" "the passing run still exits 0"
     r1=$(grep '^RESULT ' "$CASE/out1" | tail -n1 | sed 's/^RESULT //')
     r2=$(grep '^RESULT ' "$CASE/out2" | tail -n1 | sed 's/^RESULT //')
     assert_json "$r1" '.status == "fail" and .reason == "suite-failed" and .rc == 1 and .failed_ids == ["tests/b.test.sh"]' "the failing run keeps its own status"
     assert_json "$r2" '.status == "pass" and .rc == 0 and .failures == 0' "the passing run keeps its own status"
-    pass "overlapping runs of one key each keep their own status"
+    pass "sequential runs of one key each keep their own status"
+}
+
+test_a_leftover_checkout_from_a_killed_run_is_swept() {
+    local left
+    new_case stale fm-test 'echo "FM_TEST_END 2026-10-05T00:00:00Z tests/a.test.sh exit=0 duration_ms=1 gate_skip=false"'
+    left="$CASE/state/daily/proj/wt.killed"
+    mkdir -p "$CASE/state/daily/proj"
+    git -C "$SRC" worktree add --detach --quiet "$left" "$SHA"
+    assert_equals 2 "$(git -C "$SRC" worktree list | wc -l | tr -d ' ')" "the leftover worktree is registered"
+    daily_run proj
+    expect_code 0 "$RC" "the next run still passes"
+    assert_json "$RESULT" '.status == "pass"' "the run passed"
+    assert_absent "$left" "the leftover checkout must be swept"
+    assert_equals 1 "$(git -C "$SRC" worktree list | wc -l | tr -d ' ')" "no worktree left in the clone"
+    pass "a leftover checkout from a killed run is swept on the next run"
 }
 
 test_run_refuses_an_invalid_repo_key() {
@@ -319,8 +330,9 @@ test_a_machine_without_suite_slots_runs_only_when_nearly_idle
 test_the_suite_is_time_bounded
 test_a_busy_slot_skips_the_run
 test_the_suite_runs_in_a_detached_checkout
-test_two_overlapping_runs_of_one_key_do_not_collide
-test_overlapping_runs_of_one_key_keep_their_own_status
+test_a_second_run_of_one_key_while_the_first_holds_the_lock_is_skipped
+test_sequential_runs_of_one_key_keep_their_own_status
+test_a_leftover_checkout_from_a_killed_run_is_swept
 test_run_refuses_an_invalid_repo_key
 test_a_config_line_with_an_invalid_key_is_ignored
 test_status_reads_the_last_line_per_key

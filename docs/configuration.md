@@ -554,7 +554,7 @@ One repo per line as `KEY|PATH|FORMAT|COMMAND`, with blank lines and `#` lines i
 
 | Field | Meaning |
 | --- | --- |
-| `KEY` | short repo name, letters, digits, dot, underscore, dash |
+| `KEY` | short repo name, starts with a letter or digit, then letters, digits, dot, underscore or dash |
 | `PATH` | a git clone of the repo on this machine |
 | `FORMAT` | `pytest`, `fm-test`, or `none`: how failing test ids are read from the output |
 | `COMMAND` | run with `bash -c` in a detached checkout of origin/main, with `FM_DAILY_SRC` set to `PATH` |

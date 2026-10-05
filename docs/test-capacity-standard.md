@@ -49,7 +49,8 @@ The script only reports, and firstmate routes the lane to the machine it names.
 Each configured repo gets one whole-suite run a day in the quiet hours, so lanes never need one.
 `bin/fm-suite-daily.sh dispatch` fires from a timer on homelab at 03:30 ET (up to 15 minutes later) and asks `bin/fm-place.sh` for the machine.
 That machine runs the repo's configured command on a detached checkout of origin/main, inside a suite slot, niced, with a two-hour limit.
-A machine with no suite slots, such as the VPS, takes the run only when its load is under 0.25 per CPU, and any machine skips and logs when it is hot, short of memory, or busy.
+A machine with no suite slots, such as the VPS, takes the run only when its load is under 0.25 per CPU, and any machine skips and logs when it is hot, short of memory, busy, or already running that repo's suite.
+Runs of one repo are serialised by a per-key lock, and a checkout left by a killed run is swept before the next one starts.
 Each run appends a line to `~/.nexus/suite-daily.jsonl` on the machine that ran it, and the dispatcher logs which machine took it.
 A failure is posted once to #issues, keyed on the commit and the failing set.
 Each machine lists the repos it can run in `~/.config/firstmate/suite-daily`, and [configuration.md](configuration.md#daily-suite-run-configfirstmatesuite-daily) owns the format.
