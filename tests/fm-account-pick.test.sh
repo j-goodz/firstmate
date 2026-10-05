@@ -499,14 +499,15 @@ test_stale_fallback_with_unknown_parent_warns() {
   write_snapshot "$(account_json 10 50 96 1200)" "$(account_json 10 50 24 1200)"
   run_pick ""
   expect_code 0 "$STATUS" "pick must succeed"
-  assert_equals inherited "$(field account)" "account should be inherited"
-  assert_equals "" "$(field config_dir)" "config_dir should be empty"
+  assert_equals account-3 "$(field account)" "with no parent account the best stale account must be chosen"
+  assert_equals "$CASE/account-3" "$(field config_dir)" "config_dir must be the chosen stale account's store, never the machine default"
   local stderr_content; stderr_content="$(cat "$CASE/stderr")"
   assert_contains "$stderr_content" "stale-fallback" "stderr should contain stale-fallback"
-  assert_contains "$stderr_content" "unknown" "stderr should contain unknown"
+  assert_contains "$stderr_content" "no parent account is known" "stderr should say no parent account is known"
   local last_log; last_log="$(tail -n 1 "$LOG")"
   assert_equals "stale-fallback" "$(echo "$last_log" | jq -r '.reason | split(":")[0]')" "reason should start with stale-fallback:"
-  pass "stale fallback with unknown parent warns"
+  assert_equals true "$(echo "$last_log" | jq -r '.stale_fallback')" "stale_fallback should be true"
+  pass "stale fallback with unknown parent chooses the best stale account, never the machine default"
 }
 
 test_stale_fallback_with_unconfigured_parent_keeps_its_store() {

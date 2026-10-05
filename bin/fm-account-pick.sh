@@ -62,12 +62,12 @@
 # Every eligible account competes, the supervisor's own included, so both
 # accounts' weekly allowance is spent by its reset and a 5-hour exclusion moves
 # work to the other account instead of stopping it. When every signed-in,
-# unreserved account reads unknown-stale, the script re-runs itself once so the
-# snapshot is read afresh, then takes --current (the parent's own account; its
-# label when --current is a configured store) rather than the machine default,
-# prints one stderr warning, and logs reason "stale-fallback: ..." with
-# stale_fallback true (false on every other row). An empty --current there means
-# the parent account is unknown and the warning says so. With no eligible account
+# unreserved account reads unknown-stale, the script keeps --current (the
+# parent's own account; its label when --current is a configured store) rather
+# than the machine default, prints one stderr warning, and logs reason
+# "stale-fallback: ..." with stale_fallback true (false on every other row).
+# An empty --current there means no parent is known, so it takes the best of
+# those accounts by the stale snapshot's own readings. With no eligible account
 # the pick falls back to --current and says so, unless --current (an empty
 # --current means $HOME/.claude) is a reserved account's store: then it falls
 # back to the first signed-in, unreserved account in config order, and with no
@@ -107,7 +107,6 @@ usage() {
   sed -n '2,/^set -euo pipefail$/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
 }
 
-ORIG_ARGS=("$@")
 CHECK=0
 CONFIG_FILE=
 LOG_FILE=
@@ -411,7 +410,15 @@ RESULT=$(jq -nc \
   | ($ranked[0] // null) as $pick
   | ([ $rows[] | select(.current and .reserved) ][0] // null) as $reserved_current
   | ([ $rows[] | select(.signin and (.reserved | not)) ][0] // null) as $unreserved
-  | ([ $rows[] | select(.signin and (.reserved | not)) ] | (length > 0) and all(.status == "unknown-stale")) as $stale_all
+  | ([ $rows[] | select(.signin and (.reserved | not)) ]) as $usable
+  | ([ $rows[] | select(.current) ][0] // null) as $current_row
+  | (($usable | length) > 0 and ($usable | all(.status == "unknown-stale"))) as $stale_all
+  | ([ $usable[]
+       | . + {stale_score:
+           (if ((.weekly_pct | type) == "number") and ((.hours_to_weekly_reset | type) == "number")
+            then (([100 - .weekly_pct, 0] | max) / ([.hours_to_weekly_reset, 0.1] | max))
+            else -1 end)} ]
+     | sort_by([-.stale_score, (.five_hour_pct // 999), .idx]) | .[0] // null) as $stale_pick
   | def brief: "\(.label) \(.status)\(if .status == "eligible" then " \(.score | r2)%/h" elif .reserved then " until \(.reserve_until_local)" else "" end)";
     (if $pick == null and $reserved_current != null and $unreserved != null then
       {chosen: $unreserved.label, config_dir: $unreserved.config_dir, fallback: true, refused: false,
@@ -421,8 +428,13 @@ RESULT=$(jq -nc \
        reason: ("refusing: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + ") and the fallback, the current account \($reserved_current.label), is reserved until \($reserved_current.reserve_until_local) by its \($reserved_current.reserve_source) reserve")}
     elif $pick == null then
       if $stale_all then
-        {chosen: ([ $rows[] | select(.current) | .label ][0] // "inherited"), config_dir: $current, fallback: true, refused: false, stale_fallback: true,
-         reason: ("stale-fallback: the usage snapshot of every usable account is older than " + ($max_age | tostring) + "s (" + ([ $rows[] | select(.signin and (.reserved | not)) | brief ] | join(", ")) + "); kept the parent account" + (if $current == "" then " (unknown: no CLAUDE_CONFIG_DIR set, so the machine default login applies)" else "" end))}
+        (if $current == "" then
+          {chosen: $stale_pick.label, config_dir: $stale_pick.config_dir, fallback: true, refused: false, stale_fallback: true,
+           reason: ("stale-fallback: the usage snapshot of every usable account is older than " + ($max_age | tostring) + "s (" + ([ $rows[] | select(.signin and (.reserved | not)) | brief ] | join(", ")) + "); no parent account is known, so took " + $stale_pick.label + " by its stale readings")}
+        else
+          {chosen: ($current_row.label // "inherited"), config_dir: $current, fallback: true, refused: false, stale_fallback: true,
+           reason: ("stale-fallback: the usage snapshot of every usable account is older than " + ($max_age | tostring) + "s (" + ([ $rows[] | select(.signin and (.reserved | not)) | brief ] | join(", ")) + "); kept the parent account")}
+        end)
       else
         {chosen: "inherited", config_dir: $current, fallback: true, refused: false,
          reason: ("fallback: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + "); kept the current account")}
@@ -444,10 +456,6 @@ CHOSEN_DIR=$(jq -r .config_dir <<<"$RESULT")
 REASON=$(jq -r .reason <<<"$RESULT")
 REFUSED=$(jq -r .refused <<<"$RESULT")
 STALE_FALLBACK=$(jq -r .stale_fallback <<<"$RESULT")
-
-if [ "$STALE_FALLBACK" = "true" ] && [ -z "${FM_ACCOUNT_PICK_RETRIED-}" ]; then
-  FM_ACCOUNT_PICK_RETRIED=1 exec "$0" "${ORIG_ARGS[@]}"
-fi
 
 if [ "$STALE_FALLBACK" = "true" ]; then
   echo "warning: fm-account-pick.sh: $REASON" >&2
