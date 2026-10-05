@@ -46,6 +46,7 @@ A retirement failure makes the command fail without reversing the already-durabl
 `reconcile list` names every request still outstanding.
 Never use `answer` for an evidence-only moot call: `answer` records what the captain said, while `reconcile close` records verified evidence.
 A captain-held task closed outside this owner leaves no durable answer, so the completion gate keeps failing until `answer` records the decision the captain actually gave.
+A plain backlog `done` of a held task is refused by `bin/fm-tasks-axi.sh`; for one already closed, `answer` still records the decision from the hold-set stamp or a status-log hold key.
 Resolved findings, recommendations that need no captain choice, and prose that merely sounds decision-like do not create held tasks.
 Bearings reads the resulting structured state and must never compensate by scraping historical reports, visual-review artifacts, terminal output, chat, or other prose.
 

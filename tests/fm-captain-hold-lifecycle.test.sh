@@ -1251,6 +1251,76 @@ test_out_of_band_close_is_recordable() {
   pass "an out-of-band close is recordable with the captain's word and nothing else"
 }
 
+# A held call closed with a plain backlog done after its hold marker was lost
+# (unhold then done) still carries its hold-set stamp, which is the evidence
+# `answer` accepts to record the captain's words; teardown then passes.
+test_closed_call_without_hold_marker_is_answerable_from_history() {
+  local home id show
+  home=$(make_home lost-marker)
+  id=sample-lost-marker-review
+  mkdir -p "$home/data/$id"
+  tasks_in "$home" add "$id" "Investigate the lost marker" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create origin"
+  write_origin_meta "$home" "$id"
+  printf 'done: report complete\n' > "$home/state/$id.status"
+  printf '# Review\n\nOne captain choice remains.\n' > "$home/data/$id/report.md"
+  run_captain "$home" hold sample-lost-call --title "Choose the lost call" \
+    --reason "captain choice pending" --repo sample --origin "$id" >/dev/null \
+    || fail "could not hold the call"
+  run_captain "$home" complete "$id" sample-lost-call >/dev/null || fail "completion failed"
+  tasks_in "$home" unhold sample-lost-call >/dev/null
+  tasks_in "$home" "done" sample-lost-call >/dev/null
+  show=$(tasks_in "$home" show sample-lost-call)
+  assert_contains "$show" "hold_kind: \"-\"" "the fixture did not lose the hold marker"
+  printf 'Approved: ship the lost call.\n' > "$home/lost.txt"
+  run_captain "$home" answer sample-lost-call --decision-file "$home/lost.txt" >/dev/null \
+    || fail "answer refused a closed call whose history proves it was captain-held"
+  show=$(tasks_in "$home" show sample-lost-call --full)
+  assert_contains "$show" "Approved: ship the lost call." "the captain words were not recorded"
+  run_captain "$home" verify "$id" >/dev/null || fail "the recorded answer did not satisfy the gate"
+  run_teardown "$home" "$id" >/dev/null 2> "$home/teardown.err" \
+    || fail "teardown refused after the answer: $(cat "$home/teardown.err")"
+
+  # Status-log evidence: a closed task with no marker and no stamp, but whose
+  # parent-channel log carries its captain-hold key.
+  tasks_in "$home" add sample-log-only "Log only call" --kind ship --repo sample >/dev/null
+  tasks_in "$home" "done" sample-log-only >/dev/null
+  printf 'Approved: log only.\n' > "$home/log.txt"
+  if run_captain "$home" answer sample-log-only --decision-file "$home/log.txt" >/dev/null 2>&1; then
+    fail "a never-held task accepted a captain answer"
+  fi
+  printf 'needs-decision [key=captain-hold-sample-log-only-extra-1]: captain hold sample-log-only-extra: pending\n' \
+    > "$home/state/sample-log-parent.status"
+  if run_captain "$home" answer sample-log-only --decision-file "$home/log.txt" >/dev/null 2>&1; then
+    fail "a sibling task's captain-hold key proved a never-held task"
+  fi
+  printf 'needs-decision [key=captain-hold-sample-log-only-1]: captain hold sample-log-only: pending\n' \
+    > "$home/state/sample-log-parent.status"
+  run_captain "$home" answer sample-log-only --decision-file "$home/log.txt" >/dev/null \
+    || fail "status-log evidence of a captain hold was not accepted"
+  pass "a closed call that lost its hold marker is answerable from stamp or status-log evidence"
+}
+
+# A plain backlog done of a captain-held task through the wrapper is refused
+# and names the command that closes it with the captain's words.
+test_plain_done_of_captain_held_task_is_refused() {
+  local home out
+  home=$(make_home plain-done-guard)
+  run_captain "$home" hold sample-guarded-call --title "Guarded call" --reason "captain choice pending" \
+    --repo sample >/dev/null || fail "could not hold the call"
+  if out=$(PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" FM_DATA_OVERRIDE="$home/data" \
+      "$ROOT/bin/fm-tasks-axi.sh" "done" sample-guarded-call 2>&1); then
+    fail "a plain done closed a captain-held task"
+  fi
+  assert_contains "$out" "fm-captain-hold.sh answer sample-guarded-call" "the refusal did not name the supported command"
+  assert_contains "$(tasks_in "$home" show sample-guarded-call)" "state: queued" "the refused done changed the task"
+  tasks_in "$home" add sample-plain-work "Plain work" --kind ship --repo sample >/dev/null
+  PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" FM_DATA_OVERRIDE="$home/data" \
+    "$ROOT/bin/fm-tasks-axi.sh" "done" sample-plain-work >/dev/null \
+    || fail "the guard refused an ordinary task"
+  pass "a plain done of a captain-held task is refused and names the answer command"
+}
+
 # A post-teardown visual review completes against the surviving report and
 # durable tasks, with no volatile task metadata and no second decision database.
 test_visual_review_uses_shared_completion_owner() {
@@ -4074,6 +4144,8 @@ test_hold_stamp_precedes_hold_visibility
 test_interrupted_answer_preserves_hold_age
 test_deferral_leaves_captains_call_until_due
 test_out_of_band_close_is_recordable
+test_closed_call_without_hold_marker_is_answerable_from_history
+test_plain_done_of_captain_held_task_is_refused
 test_visual_review_uses_shared_completion_owner
 test_none_inventory_and_resolved_prose_do_not_create_holds
 test_terminal_single_owner_status_decision_does_not_block_empty_inventory

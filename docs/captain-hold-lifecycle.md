@@ -19,7 +19,8 @@ It requires a non-empty captain decision file of at most 8192 bytes, durably wri
 If the close is interrupted, the still-held task therefore keeps its original age basis.
 A matching retry also completes any resolution-first normalization left unfinished after the close itself succeeded.
 An exact retry is idempotent only when the requested close mode matches the newest record; a drifted answer or mode mismatch is rejected, while a re-held task accepts a new answer as a new record on top.
-On a task closed outside the script, `answer` records the missing block only when the captain-hold annotations tasks-axi preserves through a close prove the captain owned it, and it verifies the task stays closed.
+On a task closed outside the script, `answer` records the missing block only when the captain-hold annotations tasks-axi preserves through a close, the hold-set stamp in the body, or a captain-hold key in a status log prove the captain owned it, and it verifies the task stays closed.
+The backlog wrapper `bin/fm-tasks-axi.sh` refuses a plain `done` of a task that is still held for the captain and names `fm-captain-hold.sh answer`, so the hold marker cannot be dropped by a plain close.
 A hold whose `--until` date has passed keeps those annotations while tasks-axi reports it no longer held, so an expired deferral remains answerable.
 
 The `complete` subcommand unions the reviewed captain-held task ids into `decision_keys=` and appends `decisions_reviewed=1` while originating task metadata is live.
