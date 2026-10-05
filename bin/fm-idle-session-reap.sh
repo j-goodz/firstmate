@@ -313,9 +313,13 @@ fm_idle_reap_log_run() {  # <result>
 }
 
 fm_idle_reap_ms() {
-  local ms
-  ms=$(date +%s%3N 2>/dev/null)
-  case "$ms" in *N|'') printf '%s000' "$(date +%s)" ;; *) printf '%s' "$ms" ;; esac
+  local us=${EPOCHREALTIME:-}
+  if [ -n "$us" ]; then
+    us=${us/[.,]/}
+    printf '%s' "${us%???}"
+  else
+    printf '%s000' "$(date +%s)"
+  fi
 }
 
 # --- decisions ---------------------------------------------------------------

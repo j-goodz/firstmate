@@ -349,6 +349,21 @@ assert_equals "number" "$(jq -r 'select(.event=="run") | .duration_ms | type' "$
   || fail "a pane line is missing a required field"
 pass "every decision is one JSON line with a reason, plus a run summary"
 
+# --- 12b. uutils date ignores %3N width and prints nine digits ---------------
+reset_run
+UUDATE="$TMP_ROOT/uudate"; mkdir -p "$UUDATE"
+REAL_DATE=$(command -v date)
+cat > "$UUDATE/date" <<EOF
+#!/usr/bin/env bash
+if [ "\$1" = "+%s%3N" ]; then exec $REAL_DATE +%s%N; fi
+exec $REAL_DATE "\$@"
+EOF
+chmod +x "$UUDATE/date"
+PATH="$UUDATE:$PATH" run_reap --apply || fail "uutils-date run failed: $(cat "$TMP_ROOT/run.out")"
+dur=$(jq -r 'select(.event=="run") | .duration_ms' "$FM_IDLE_REAP_LOG" | tail -n 1)
+{ [ "$dur" -ge 0 ] && [ "$dur" -le 600000 ]; } 2>/dev/null || fail "duration_ms wrong with uutils-style date: $dur"
+pass "run duration is a sane millisecond count when date prints nanoseconds"
+
 # --- 13. an overlapping run is refused, not queued ----------------------------
 reset_run
 fm_lock_try_acquire "$FM_IDLE_REAP_LOCK" || fail "test could not take the reaper lock"
