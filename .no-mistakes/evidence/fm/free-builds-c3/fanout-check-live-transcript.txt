@@ -1,0 +1,47 @@
+FreeLLMAPI fan-out adoption check - live product transcript
+script: bin/fm-fanout-check.sh @ b889b55ce4b30dcdc6c1e1b96b7592ad7528e345
+date: 2026-10-05T10:43:44Z
+isolated root: /home/justin/.cache/tmp/opencode/fm-lab-ev3.0cbPbc (disposable; never operator ~/.nexus)
+
+### CASE: free-adoption (task=free-task)
+$ FM_HOME=<isolated> bin/fm-fanout-check.sh free-task
+fanout-check: free-task free_written=yes verdict=yes units=2 paid_step_ups=0 runs=fr-20261005T030000Z-aa11bb
+exit=0
+stderr: 
+adoption ledger: {"ts":1791197024,"at":"2026-10-05T10:43:44Z","task":"free-task","free_written":true,"verdict":"yes","units":2,"paid_step_ups":0,"runs":["fr-20261005T030000Z-aa11bb"],"pr":""}
+
+### CASE: paid-only (task=paid-task)
+$ FM_HOME=<isolated> bin/fm-fanout-check.sh paid-task
+fanout-check: paid-task free_written=no verdict=no units=0 paid_step_ups=0 runs=fr-20261005T030100Z-bb22cc
+exit=0
+stderr: WARNING: fanout-check: run ids found but zero units are free-written
+adoption ledger: {"ts":1791197024,"at":"2026-10-05T10:43:44Z","task":"paid-task","free_written":false,"verdict":"no","units":0,"paid_step_ups":0,"runs":["fr-20261005T030100Z-bb22cc"],"pr":""}
+
+### CASE: paid-stepup (task=stepup-task)
+$ FM_HOME=<isolated> bin/fm-fanout-check.sh stepup-task
+fanout-check: stepup-task free_written=no verdict=no units=0 paid_step_ups=1 runs=fr-20261005T030200Z-cc33dd,fr-20261005T030100Z-bb22cc
+exit=0
+stderr: WARNING: fanout-check: run ids found but zero units are free-written
+adoption ledger: {"ts":1791197024,"at":"2026-10-05T10:43:44Z","task":"stepup-task","free_written":false,"verdict":"no","units":0,"paid_step_ups":1,"runs":["fr-20261005T030200Z-cc33dd","fr-20261005T030100Z-bb22cc"],"pr":""}
+
+### CASE: no-runs (task=no-runs-task)
+$ FM_HOME=<isolated> bin/fm-fanout-check.sh no-runs-task
+fanout-check: no-runs-task free_written=no verdict=no-runs units=0 paid_step_ups=0 runs=-
+exit=0
+stderr: WARNING: fanout-check: the lane recorded no fan-out run ids, so the standard build method was not evidenced
+adoption ledger: {"ts":1791197024,"at":"2026-10-05T10:43:44Z","task":"no-runs-task","free_written":false,"verdict":"no-runs","units":0,"paid_step_ups":0,"runs":[],"pr":""}
+
+### CASE: missing-ledger (task=missing-task)
+$ FM_HOME=<isolated> bin/fm-fanout-check.sh missing-task
+fanout-check: missing-task free_written=no verdict=missing-ledger units=0 paid_step_ups=0 runs=fr-20261005T030000Z-aa11bb
+exit=0
+stderr: WARNING: fanout-check: the units ledger file is missing or unreadable
+adoption ledger: {"ts":1791197024,"at":"2026-10-05T10:43:44Z","task":"missing-task","free_written":false,"verdict":"missing-ledger","units":0,"paid_step_ups":0,"runs":["fr-20261005T030000Z-aa11bb"],"pr":""}
+
+### CASE: pr-body-source (task=pr-task; run id only in PR body via disposable fake gh)
+$ bin/fm-fanout-check.sh pr-task --pr-url https://forge.example/pr/1
+fanout-check: pr-task free_written=yes verdict=yes units=1 paid_step_ups=0 runs=fr-20261005T030000Z-aa11bb
+exit=0
+stderr: 
+adoption ledger: {"ts":1791197024,"at":"2026-10-05T10:43:44Z","task":"pr-task","free_written":true,"verdict":"yes","units":1,"paid_step_ups":0,"runs":["fr-20261005T030000Z-aa11bb"],"pr":"https://forge.example/pr/1"}
+

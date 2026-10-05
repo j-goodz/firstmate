@@ -1,0 +1,47 @@
+Ship brief scaffold - rendered Build method section (live)
+date: 2026-10-05T10:43:56Z
+isolated FM_HOME=/home/justin/.cache/tmp/opencode/fm-lab-briefev.yOStTx/home
+
+### mode=no-mistakes  -> /home/justin/.cache/tmp/opencode/fm-lab-briefev.yOStTx/home/data/lab-no-mistakes/brief.md
+section count: 1
+# Build method
+The standard build method for this task is FreeLLMAPI fan-out: free models write the code, you lead and verify.
+It is the standard method, not an iron rule: skip it for a specific part only when you state the reason in a status line.
+1. Turn the Firstmate spec into a fan-out manifest (a JSON list of units). Use an `out` unit for each new file and an `edit` unit (SEARCH/REPLACE blocks) for each existing file, each with a `check` command that proves the unit works. Write the tests first, from the spec, as their own units.
+2. Run `python3 /home/justin/nexus/scripts/free_direct_fanout.py --manifest <file>` (if that path is missing, use the nexus checkout path on this machine). Keep scratch files under ~/scratch/lab-no-mistakes, never inside a git tree.
+3. Review every result and apply it. Never hand-write code. A rate-limited or failed call reroutes to the next free model and is not a failure.
+4. Only units the run reports `free_exhausted` may go to a paid model, and only after you append a `working` status line naming those units.
+5. Name the fan-out run ids (fr-...) in the PR body and in a status line. Firstmate records whether free models wrote the change; a lane with no run ids gets a warning, never a refusal.
+
+
+### mode=direct-PR  -> /home/justin/.cache/tmp/opencode/fm-lab-briefev.yOStTx/home/data/lab-direct-PR/brief.md
+section count: 1
+# Build method
+The standard build method for this task is FreeLLMAPI fan-out: free models write the code, you lead and verify.
+It is the standard method, not an iron rule: skip it for a specific part only when you state the reason in a status line.
+1. Turn the Firstmate spec into a fan-out manifest (a JSON list of units). Use an `out` unit for each new file and an `edit` unit (SEARCH/REPLACE blocks) for each existing file, each with a `check` command that proves the unit works. Write the tests first, from the spec, as their own units.
+2. Run `python3 /home/justin/nexus/scripts/free_direct_fanout.py --manifest <file>` (if that path is missing, use the nexus checkout path on this machine). Keep scratch files under ~/scratch/lab-direct-PR, never inside a git tree.
+3. Review every result and apply it. Never hand-write code. A rate-limited or failed call reroutes to the next free model and is not a failure.
+4. Only units the run reports `free_exhausted` may go to a paid model, and only after you append a `working` status line naming those units.
+5. Name the fan-out run ids (fr-...) in the PR body and in a status line. Firstmate records whether free models wrote the change; a lane with no run ids gets a warning, never a refusal.
+
+
+### mode=local-only  -> /home/justin/.cache/tmp/opencode/fm-lab-briefev.yOStTx/home/data/lab-local-only/brief.md
+section count: 1
+# Build method
+The standard build method for this task is FreeLLMAPI fan-out: free models write the code, you lead and verify.
+It is the standard method, not an iron rule: skip it for a specific part only when you state the reason in a status line.
+1. Turn the Firstmate spec into a fan-out manifest (a JSON list of units). Use an `out` unit for each new file and an `edit` unit (SEARCH/REPLACE blocks) for each existing file, each with a `check` command that proves the unit works. Write the tests first, from the spec, as their own units.
+2. Run `python3 /home/justin/nexus/scripts/free_direct_fanout.py --manifest <file>` (if that path is missing, use the nexus checkout path on this machine). Keep scratch files under ~/scratch/lab-local-only, never inside a git tree.
+3. Review every result and apply it. Never hand-write code. A rate-limited or failed call reroutes to the next free model and is not a failure.
+4. Only units the run reports `free_exhausted` may go to a paid model, and only after you append a `working` status line naming those units.
+5. Name the fan-out run ids (fr-...) in the PR body and in a status line. Firstmate records whether free models wrote the change; a lane with no run ids gets a warning, never a refusal.
+
+
+### scout brief -> /home/justin/.cache/tmp/opencode/fm-lab-briefev.yOStTx/home/data/lab-scout/brief.md
+Build method section count (must be 0): 0
+Build method engine path override (live)
+FM_FANOUT_ENGINE=/opt/custom/engine.py bin/fm-brief.sh eng-task proj --mode no-mistakes
+86:2. Run `python3 /opt/custom/engine.py --manifest <file>` (if that path is missing, use the nexus checkout path on this machine). Keep scratch files under ~/scratch/eng-task, never inside a git tree.
+default render:
+86:2. Run `python3 /home/justin/nexus/scripts/free_direct_fanout.py --manifest <file>` (if that path is missing, use the nexus checkout path on this machine). Keep scratch files under ~/scratch/def-task, never inside a git tree.

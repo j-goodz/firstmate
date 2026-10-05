@@ -1,0 +1,20 @@
+Ship teardown -> adoption-check integration - live run
+date: 2026-10-05T10:43:51Z
+Driven through the real bin/fm-teardown.sh in the repo test harness's hermetic sandbox
+(disposable git project + worktree; FM_STATE_OVERRIDE/FM_DATA_OVERRIDE pinned to the sandbox;
+ FM_FANOUT_LEDGER/FM_FANOUT_MODELS pinned to a disposable fixture, never the operator ~/.nexus).
+
+Setup: ship lane has a real status log naming its fan-out run id, exactly as the brief step 5 instructs:
+  state/task-x1.status: working: fan-out run fr-20261005T020000Z-ad0b71 wrote the change
+Units ledger fixture: 2 check_passed free-model units + 1 rate-limit reroute then free pass.
+
+BEFORE_STATE: task-x1.meta task-x1.status 
+BEFORE_STATUS_CONTENT: working: fan-out run fr-20261005T020000Z-ad0b71 wrote the change
+ENV FM_STATE_OVERRIDE=<unset> FM_DATA_OVERRIDE=<unset>
+TEARDOWN_RC=0
+AFTER_STATE: home-summary.json terminal-outcomes 
+AFTER_STATUS_CONTENT: <gone>
+ADOPTION_LEDGER={"ts":1791197031,"at":"2026-10-05T10:43:51Z","task":"task-x1","free_written":true,"verdict":"yes","units":2,"paid_step_ups":0,"runs":["fr-20261005T020000Z-ad0b71"],"pr":""}
+
+=== preserved sandbox adoption ledger ===
+{"ts":1791197031,"at":"2026-10-05T10:43:51Z","task":"task-x1","free_written":true,"verdict":"yes","units":2,"paid_step_ups":0,"runs":["fr-20261005T020000Z-ad0b71"],"pr":""}
