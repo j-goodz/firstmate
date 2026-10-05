@@ -517,4 +517,98 @@ set -e
 [ "$(grep -c mutation "$REMOTE_HOME/mutations")" -eq 1 ] || fail "ambiguous mutation did not execute exactly once"
 pass "unreachable and ambiguous transport failures are surfaced without retry"
 
+# A host whose non-interactive PATH lacks the entrypoint opts in through
+# config/remote-login-shell and is reached through `bash -lc`. The sshd-like
+# fake joins the ssh argv into one command string and runs it under a PATH that
+# omits the entrypoint, exactly as sshd does, so the login-shell profile is the
+# only way the entrypoint resolves and any quoting mistake shows up as changed
+# argv at the remote command.
+LS_HOME="$TMP_ROOT/login-home"
+LS_BIN="$TMP_ROOT/login-bin"
+mkdir -p "$LS_HOME" "$LS_BIN"
+ln -s "$REMOTE_ROOT/bin/fm-remote-entrypoint.sh" "$LS_BIN/fm-remote-entrypoint.sh"
+# shellcheck disable=SC2016 # $PATH must stay literal for the fake login profile.
+printf 'export PATH="%s:$PATH"\n' "$LS_BIN" > "$LS_HOME/.bash_profile"
+cat > "$FAKEBIN/fake-sshd" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FM_FAKE_SSH_LOG"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) shift 2 ;;
+    --) shift; break ;;
+    *) exit 90 ;;
+  esac
+done
+[ "$1" = remote-mac ] || exit 91
+shift
+exec env -i HOME="$FM_FAKE_LOGIN_HOME" PATH="$FM_FAKE_SSHD_PATH" "$FM_FAKE_SSHD_BASH" -c "$*"
+SH
+chmod +x "$FAKEBIN/fake-sshd"
+BASH_DIR=$(dirname "$(command -v bash)")
+fm_on_sshd() {
+  FM_FAKE_LOGIN_HOME="$LS_HOME" \
+  FM_FAKE_SSHD_PATH="$BASH_DIR:/usr/bin:/bin" \
+  FM_FAKE_SSHD_BASH="$(command -v bash)" \
+  FM_HOME="$LOCAL_HOME" \
+  FM_ROOT_OVERRIDE="$REMOTE_ROOT" \
+  FM_SSH_BIN="$FAKEBIN/fake-sshd" \
+  FM_FAKE_SSH_LOG="$SSH_LOG" \
+  FM_REMOTE_JOB_PLATFORM_OVERRIDE=Linux \
+  FM_REMOTE_JOB_STATE_ROOT="$TMP_ROOT/remote-jobs" \
+  "$ROOT/bin/fm-on.sh" "$@"
+}
+
+rm -f "$LOCAL_HOME/config/remote-login-shell"
+: > "$SSH_LOG"
+set +e
+fm_on_sshd ios fm-probe-two.sh > "$TMP_ROOT/ls-default.out" 2> "$TMP_ROOT/ls-default.err"
+rc=$?
+set -e
+[ "$rc" -eq 127 ] || fail "plain ssh did not report command-not-found on a PATH without the entrypoint (got $rc)"
+assert_grep 'not found' "$TMP_ROOT/ls-default.err" "plain ssh failure was not command-not-found"
+DEFAULT_TAIL=$(tail -n 1 "$SSH_LOG" | sed 's/^.*-- remote-mac //')
+case "$DEFAULT_TAIL" in
+  "fm-remote-entrypoint.sh 1 "*) ;;
+  *) fail "default transport argv changed shape: $DEFAULT_TAIL" ;;
+esac
+case "$DEFAULT_TAIL" in *bash*|*-lc*) fail "default transport used a login shell: $DEFAULT_TAIL" ;; esac
+pass "a host not listed in config/remote-login-shell keeps the plain entrypoint call"
+
+mkdir -p "$LOCAL_HOME/config"
+printf '# hosts whose plain ssh PATH lacks the entrypoint\nother-host\nremote-mac  \n' > "$LOCAL_HOME/config/remote-login-shell"
+LS_ARGV_ACTUAL="$REMOTE_HOME/argv-login.bin"
+LS_ARGV_EXPECTED="$TMP_ROOT/argv-login-expected.bin"
+# shellcheck disable=SC2016 # Literal shell-looking argv is the injection probe.
+printf '%s\0' 'plain' 'two words' '$(touch /tmp/fm-on-login-injected)' "it's" 'say "hi"' '$HOME `id` ; echo x' '' $'line one\nline two' > "$LS_ARGV_EXPECTED"
+: > "$SSH_LOG"
+set +e
+# shellcheck disable=SC2016 # Literal shell-looking argv is the injection probe.
+fm_on_sshd --stdin ios fm-probe-one.sh "$LS_ARGV_ACTUAL" 23 \
+  'plain' 'two words' '$(touch /tmp/fm-on-login-injected)' "it's" 'say "hi"' '$HOME `id` ; echo x' '' $'line one\nline two' \
+  < "$TMP_ROOT/stdin" > "$TMP_ROOT/ls.out" 2> "$TMP_ROOT/ls.err"
+rc=$?
+set -e
+[ "$rc" -eq 23 ] || fail "login-shell path did not preserve the remote exit status (got $rc): $(cat "$TMP_ROOT/ls.err")"
+cmp -s "$LS_ARGV_EXPECTED" "$LS_ARGV_ACTUAL" || fail "login-shell path changed argv boundaries or bytes"
+assert_grep 'stdout: 8 args' "$TMP_ROOT/ls.out" "login-shell path lost remote stdout"
+assert_grep 'stdin: payload one' "$TMP_ROOT/ls.out" "login-shell path lost caller stdin"
+assert_grep 'stderr: separate' "$TMP_ROOT/ls.err" "login-shell path merged stderr into stdout"
+assert_absent /tmp/fm-on-login-injected "login-shell path interpreted shell-looking argv"
+LS_TAIL=$(tail -n 1 "$SSH_LOG" | sed 's/^.*-- remote-mac //')
+case "$LS_TAIL" in
+  "bash -lc "*) ;;
+  *) fail "opted-in host was not reached through bash -lc: $LS_TAIL" ;;
+esac
+case "$LS_TAIL" in *two\ words*|*injected*|*HOME*) fail "caller argv was interpolated into the login-shell command string: $LS_TAIL" ;; esac
+pass "an opted-in host reaches the entrypoint through bash -lc with argv, stdin, stdout, stderr and status intact"
+
+printf 'someone-else\n' > "$LOCAL_HOME/config/remote-login-shell"
+set +e
+fm_on_sshd ios fm-probe-two.sh >/dev/null 2>&1
+rc=$?
+set -e
+[ "$rc" -eq 127 ] || fail "a host absent from config/remote-login-shell was routed through a login shell (got $rc)"
+pass "login-shell routing applies only to the listed host"
+rm -f "$LOCAL_HOME/config/remote-login-shell"
+
 echo "ALL TESTS PASSED"

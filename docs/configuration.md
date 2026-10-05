@@ -132,6 +132,14 @@ The tracked `.tasks.toml` paths resolve against the directory tasks-axi runs in,
 tasks-axi writes by renaming a temp file over its target, which replaces a symlink with a regular file, so linking the code-root copy into the home forks the queue on the first such write rather than keeping the two in step.
 Every routine firstmate backlog command therefore runs through [`bin/fm-tasks-axi.sh`](../bin/fm-tasks-axi.sh), which addresses this home's backlog and archive from any working directory exactly as lifecycle transitions do, and bootstrap reports a code-root `data/backlog.md` or `data/done-archive.md` that is not this home's own file as a `BACKLOG_RECONCILE: code-root ...` line even in a read-only session.
 
+## Remote login shell (config/remote-login-shell)
+
+The local, gitignored `config/remote-login-shell` file lists SSH aliases of remote secondmate hosts, one per line.
+Blank lines and lines starting with `#` are ignored, and trailing whitespace is trimmed.
+`bin/fm-on.sh`, the only place that runs `fm-remote-entrypoint.sh` over SSH, reaches a listed host through `bash -lc` so a login profile can supply the `PATH` the plain non-interactive session lacks.
+An absent file or an unlisted alias keeps the plain call unchanged.
+`FM_CONFIG_OVERRIDE` relocates the file for tests, and [Remote second mates](remote-secondmates.md#prerequisites) owns the setup guidance.
+
 ## Runtime backend (config/backend / FM_BACKEND)
 
 For spawn-capable adapters, the runtime session-provider backend controls where task windows/endpoints are created, captured, sent to, watched, and killed.

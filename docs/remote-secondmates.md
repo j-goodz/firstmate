@@ -25,6 +25,11 @@ mkdir -p ~/.local/bin
 ln -s /absolute/path/to/firstmate/bin/fm-remote-entrypoint.sh ~/.local/bin/fm-remote-entrypoint.sh
 ```
 
+If the account's non-interactive `PATH` cannot include that directory (for example CachyOS, where only a login shell adds `~/.local/bin`), keep the symlink and list the host alias in the primary's `config/remote-login-shell`, one alias per line, instead of changing the remote machine.
+`fm-on.sh` then runs `bash -lc 'exec fm-remote-entrypoint.sh "$@"' fm-remote-entrypoint.sh <args>` for that host, which is also the path the seed and doctor take.
+The `-c` string is constant and every value stays a separate argv word, so the encoded-argv contract below is unchanged, and hosts not listed keep the plain call.
+[Remote login shell](configuration.md#remote-login-shell-configremote-login-shell) owns the file format.
+
 The entrypoint accepts encoded argv for genuine executable `bin/fm-*.sh` files only.
 It never accepts a shell command string.
 The readiness-owning doctor runs over this plain SSH bootstrap so read-only mode can report worker gaps and `--fix` can install or repair the worker.
