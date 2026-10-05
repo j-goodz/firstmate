@@ -126,7 +126,7 @@ seen=()
 status_file="$STATE/$TASK_ID.status"
 if [[ -f "$status_file" ]]; then
   while IFS= read -r id; do
-    if ! [[ " ${seen[*]} " == *" $id "* ]]; then
+    if ! [[ " ${seen[*]:-} " == *" $id "* ]]; then
       seen+=("$id")
       run_ids+=("$id")
     fi
@@ -136,7 +136,7 @@ fi
 # 2. --body-file
 if [[ -n "$BODY_FILE" && -r "$BODY_FILE" ]]; then
   while IFS= read -r id; do
-    if ! [[ " ${seen[*]} " == *" $id "* ]]; then
+    if ! [[ " ${seen[*]:-} " == *" $id "* ]]; then
       seen+=("$id")
       run_ids+=("$id")
     fi
@@ -148,7 +148,7 @@ if [[ -n "$PR_URL" && -z "$BODY_FILE" ]]; then
   pr_body=$(fm_run_timed 20 gh pr view "$PR_URL" --json body --jq .body 2>/dev/null || true)
   if [[ -n "$pr_body" ]]; then
     while IFS= read -r id; do
-      if ! [[ " ${seen[*]} " == *" $id "* ]]; then
+      if ! [[ " ${seen[*]:-} " == *" $id "* ]]; then
         seen+=("$id")
         run_ids+=("$id")
       fi
