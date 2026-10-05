@@ -131,9 +131,15 @@ fm_nm_run_status_class() {  # <status_word>
 # 2026-09-20: a truncated overview with zero rows for this task's branch has
 # only `count:`/`runs[...]:`), so repo identity is looked up by the task
 # worktree path itself, which is exactly what `no-mistakes` records as a
-# repo's `working_path`; the recorded spelling is matched exactly, so a task
-# worktree that is not absolute, or whose spelling differs from the recorded
-# one, reads as unreadable rather than guessed among candidates.
+# repo's `working_path`. no-mistakes registers only a project's primary
+# checkout, so a treehouse task worktree (a linked worktree whose absolute
+# `--git-dir` differs from its absolute `--git-common-dir`) has no row of its
+# own: when the exact path finds none, the reader resolves that worktree's
+# primary checkout from the absolute common git dir's parent and looks that
+# up instead. Every recorded spelling is still matched exactly, so a task
+# worktree that is not absolute, or a primary checkout whose spelling differs
+# from the recorded one, reads as unreadable rather than guessed among
+# candidates.
 # The reader subprocess is bounded by $4 seconds (default 10), so a contended
 # database can never outlast the caller's per-read budget.
 # If that reader or inventory is unavailable, report unknown with available
