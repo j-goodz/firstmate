@@ -30,11 +30,11 @@
 # are ignored. A unit is a distinct (run_id, label) pair. Only rows whose run_id is one of the
 # collected run ids count.
 #
-# Free vs paid provenance comes from the row that produced the code: requested_model, or
-# served_model when requested_model is empty. A free model is one named by the ranked list in
-# $FM_FANOUT_MODELS (plus the engine's seed fallback and "auto"); any other model is paid. A
-# check_passed row counts as free-written only when its model is free, so a run a lead handed
-# wholesale to a paid model is never recorded as free adoption.
+# Free vs paid provenance comes from the row that produced the code: requested_model or
+# served_model, either of which marks the row free when the ranked list in $FM_FANOUT_MODELS
+# (plus the engine's seed fallback and "auto") names it; any model neither field names is paid.
+# A check_passed row counts as free-written when either field names a free model, so a run a
+# lead handed wholesale to a paid model is never recorded as free adoption.
 #
 # Verdict, decided in this order:
 #   no-runs         no run id was found anywhere
