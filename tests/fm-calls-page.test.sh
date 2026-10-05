@@ -700,3 +700,116 @@ EOF
 else
   pass "saved-marker browser behavior (node absent, skipped)"
 fi
+
+# --- an armed page is never rewritten under the captain ---------------------------
+#
+# Once a page is armed (shown to him), apply and every captain-hold mutation
+# record their answers but leave its file alone; render without arming writes a
+# preview file instead; only `arm --new` builds a NEW file and board, and the
+# old file keeps serving unchanged.
+
+AR=$(make_home armed)
+write_local_backlog "$AR"
+write_fm_on_stub "$AR"
+write_captain_stub "$AR"
+write_fm_send_stub "$AR"
+mkdir -p "$AR/bin-stubs"
+cat > "$AR/bin-stubs/lavish-axi" <<'SH'
+#!/usr/bin/env bash
+printf 'opened %s\nhttp://box.example.ts.net:4387/session/key-%s\n' "$1" "$(basename "$1" .html)"
+SH
+cat > "$AR/bin-stubs/lavish-sys" <<'SH'
+#!/usr/bin/env bash
+printf 'http://lavish-box.sys/session/%s\n' "${2##*/}"
+SH
+cat > "$AR/procevent-stub.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'ARM %s\n' "$*" >> "$FM_TEST_LOG"
+SH
+chmod +x "$AR/bin-stubs/lavish-axi" "$AR/bin-stubs/lavish-sys" "$AR/procevent-stub.sh"
+run_armed() {  # <args...>
+  PATH="$AR/bin-stubs:$PATH" FM_CALLS_PAGE_PROCEVENT_LAVISH="$AR/procevent-stub.sh" run_calls "$AR" "$@"
+}
+armed_captain() {  # <args...>
+  FM_HOME="$AR" FM_STATE_OVERRIDE='' FM_DATA_OVERRIDE='' FM_CONFIG_OVERRIDE='' \
+    FM_CALLS_PAGE_TODAY=$TODAY "$ROOT/bin/fm-captain-hold.sh" "$@"
+}
+APAGE=$(page_of "$AR")
+
+out=$(run_armed arm 2>"$AR/err"); rc=$?
+expect_code 0 "$rc" "arm succeeds"
+assert_present "$APAGE" "arm renders the first page"
+assert_contains "$out" "link: http://lavish-box.sys/session/key-calls" "arm prints the page's link"
+FIRST_SUM=$(cksum < "$APAGE")
+
+# A hold mutation and a recorded answer leave the armed file byte-identical.
+armed_captain hold armed1 --title "Added while armed" --repo nexus --reason "New call while armed" >/dev/null 2>"$AR/err"; rc=$?
+expect_code 0 "$rc" "a hold mutation succeeds on an armed page"
+assert_equals "$FIRST_SUM" "$(cksum < "$APAGE")" "a hold mutation leaves the armed page's bytes unchanged"
+printf 'Yes\n' > "$AR/decision.txt"
+armed_captain answer armed1 --decision-file "$AR/decision.txt" >/dev/null 2>"$AR/err"; rc=$?
+expect_code 0 "$rc" "an answer succeeds on an armed page"
+assert_equals "$FIRST_SUM" "$(cksum < "$APAGE")" "an answer leaves the armed page's bytes unchanged"
+printf 'a1\tyes\t\n' | armed_captain answers --source "chat" >/dev/null 2>&1
+assert_equals "$FIRST_SUM" "$(cksum < "$APAGE")" "a keyed chat answer leaves the armed page's bytes unchanged"
+
+# apply records the answer and leaves the armed file alone.
+cat > "$AR/result.txt" <<'EOF'
+session:
+  file: /tmp/calls.html
+  status: feedback
+prompts[1]{uid,prompt,selector,tag,text}:
+  "1","Call w1: Build it narrower\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"w1\",\n  \"home\": \"local\",\n  \"kind\": \"option\",\n  \"value\": \"narrow\",\n  \"answer\": \"Build it narrower\",\n  \"note\": \"\"\n}","form",call-answer,"Ship the widget"
+EOF
+out=$(FM_CALLS_PAGE_CAPTAIN_HOLD="$AR/captain-stub.sh" FM_TEST_REAL_CAPTAIN="$ROOT/bin/fm-captain-hold.sh" run_armed apply "$AR/result.txt" 2>"$AR/err"); rc=$?
+expect_code 0 "$rc" "apply succeeds on an armed page"
+assert_contains "$out" "applied: local/w1 option" "apply still records the answer"
+assert_equals "$FIRST_SUM" "$(cksum < "$APAGE")" "apply leaves the armed page's bytes unchanged"
+
+# render without arming and --if-present never write over the armed file.
+out=$(run_armed render 2>"$AR/err"); rc=$?
+expect_code 0 "$rc" "render succeeds while a page is armed"
+assert_equals "$FIRST_SUM" "$(cksum < "$APAGE")" "render leaves the armed page's bytes unchanged"
+PREVIEW=$(printf '%s\n' "$out" | sed -n 's/^rendered: \([^ ]*\) .*/\1/p')
+assert_not_equals "$APAGE" "$PREVIEW" "render writes its preview to a different file"
+assert_present "$PREVIEW" "the preview file exists"
+run_armed render --if-present >/dev/null 2>&1; rc=$?
+expect_code 0 "$rc" "render --if-present succeeds while a page is armed"
+assert_equals "$FIRST_SUM" "$(cksum < "$APAGE")" "render --if-present leaves the armed page's bytes unchanged"
+
+# Arming again resumes the same page and rewrites nothing.
+out2=$(run_armed arm 2>"$AR/err"); rc=$?
+expect_code 0 "$rc" "arm again succeeds"
+assert_contains "$out2" "link: http://lavish-box.sys/session/key-calls" "arm again keeps the same link"
+assert_equals "$FIRST_SUM" "$(cksum < "$APAGE")" "arm again leaves the armed page's bytes unchanged"
+
+# An explicit new page writes a NEW file, arms a new board, and says so.
+out3=$(run_armed arm --new 2>"$AR/err"); rc=$?
+expect_code 0 "$rc" "arm --new succeeds"
+NEW_LINK=$(printf '%s\n' "$out3" | sed -n 's/^link: //p')
+assert_not_equals "http://lavish-box.sys/session/key-calls" "$NEW_LINK" "arm --new prints a different link"
+assert_contains "$out3" "replaced:" "arm --new reports the page it replaced"
+assert_contains "$out3" "tell the captain a new page replaced the old one" "arm --new prints the note for firstmate"
+assert_contains "$out3" "http://lavish-box.sys/session/key-calls" "the note names the old link, which keeps working"
+assert_equals "$FIRST_SUM" "$(cksum < "$APAGE")" "the old page's bytes are unchanged after arm --new"
+NEW_PAGES=("$AR"/data/open-calls/calls-2*.html)
+NEW_PAGE=${NEW_PAGES[0]}
+assert_present "$NEW_PAGE" "arm --new writes a new page file"
+assert_not_equals "$APAGE" "$NEW_PAGE" "the new page is a different file"
+assert_grep 'data-call="e1"' "$NEW_PAGE" "the new page carries the current open calls"
+assert_no_grep 'data-call="a1"' "$NEW_PAGE" "the new page no longer carries a call answered since the old page"
+assert_grep 'data-call="a1"' "$APAGE" "the old page still serves its original content"
+assert_grep "ARM arm $NEW_PAGE" "$AR/calls.log" "arm --new arms the new board"
+NEW_SUM=$(cksum < "$NEW_PAGE")
+
+# The new page is now the armed one: mutations leave it alone too.
+armed_captain hold armed2 --title "After the new page" --repo nexus --reason "Another call" >/dev/null 2>&1
+assert_equals "$NEW_SUM" "$(cksum < "$NEW_PAGE")" "the newly armed page is never rewritten by a mutation"
+assert_equals "$FIRST_SUM" "$(cksum < "$APAGE")" "the old page stays unchanged after later mutations"
+
+# A second --new in the same second still gets its own file.
+run_armed arm --new >/dev/null 2>&1; rc=$?
+expect_code 0 "$rc" "a second arm --new succeeds"
+pages=("$AR"/data/open-calls/calls-2*.html)
+assert_equals "2" "${#pages[@]}" "each arm --new keeps a separate page file"
+pass "an armed page is never rewritten; only arm --new builds a new page and board"

@@ -243,9 +243,11 @@ publish_parent_hold() {  # <task-id> <occurrence> <verb> <note>
 }
 
 # Every successful mutation rebuilds the captain's open-calls page, when this
-# home has one, so an answered call leaves it whichever channel answered.
-# bin/fm-calls-page.sh owns the page. Best effort: the mutation is already
-# durable, so a failed rebuild is one stderr line, never a failed command.
+# home has one that is not armed, so an answered call leaves it whichever
+# channel answered. An armed page (the one the captain has open) is never
+# rewritten, because that reloads it under him; bin/fm-calls-page.sh owns the
+# page and that rule. Best effort: the mutation is already durable, so a failed
+# rebuild is one stderr line, never a failed command.
 calls_page_rerender() {
   local err
   [ "${FM_CALLS_PAGE_RERENDER:-1}" != 0 ] || return 0
