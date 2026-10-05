@@ -39,9 +39,12 @@
 #   (FM_SUITE_DAILY_REF, default origin/main, after a fetch unless
 #   FM_SUITE_DAILY_FETCH=0) is checked out detached under the state directory,
 #   the command runs there niced, bounded by FM_SUITE_DAILY_TIMEOUT_SECS
-#   (default 7200) and, when the machine has suite slots, inside one slot. Runs
-#   of one key are serialised by daily/<KEY>/run.lock, and a checkout left by a
-#   killed run is swept before this run starts. The checkout is always removed.
+#   (default 7200) and, when the machine has suite slots and flock is present,
+#   inside one slot. Runs of one key are serialised by daily/<KEY>/run.lock only
+#   where flock is present; a host without it (stock macOS) skips the lock and
+#   the slot and runs ungated, as the slot gate itself does, so already-running
+#   and no-slot never fire there. A checkout left by a killed run is swept
+#   before this run starts. The checkout is always removed.
 #   Exit 0 for a pass or a fail.
 #   Every run appends one "daily-run" JSON line to FM_SUITE_DAILY_LOG (default
 #   $HOME/.nexus/suite-daily.jsonl) with ts, host, key, sha, status
