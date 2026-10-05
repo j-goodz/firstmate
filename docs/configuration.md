@@ -412,6 +412,7 @@ At every launch, accounts without a usable sign-in, without fresh data, or witho
 The remaining account whose unused weekly allowance would expire soonest wins, measured as remaining weekly percent per hour until its weekly reset, so an account with a far reset is preserved.
 Every qualifying account competes, including the one Firstmate itself runs on, so both accounts' weekly allowance gets used by its reset and a full 5-hour window moves work to the other account instead of stopping it.
 When every account drops out, the launch keeps the inherited account and says so.
+When every usable account drops out only because its usage data is stale, the picker re-reads the snapshot once, then keeps the launching session's own account rather than the machine default and warns on stderr, and the pick log row carries a `stale-fallback` reason.
 
 Two optional reserve lines keep an account out of every pick, fallback included.
 A `reserve` line names an account and two local times, and holds that account out Monday to Friday between them in America/Toronto time; `reserve <label> 03:00 08:00` lets the trading account start each weekday morning with a fresh 5-hour window.

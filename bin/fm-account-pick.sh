@@ -61,7 +61,13 @@
 # The highest score wins; ties break on lower five_hour_pct, then config order.
 # Every eligible account competes, the supervisor's own included, so both
 # accounts' weekly allowance is spent by its reset and a 5-hour exclusion moves
-# work to the other account instead of stopping it. With no eligible account
+# work to the other account instead of stopping it. When every signed-in,
+# unreserved account reads unknown-stale, the script re-runs itself once so the
+# snapshot is read afresh, then takes --current (the parent's own account; its
+# label when --current is a configured store) rather than the machine default,
+# prints one stderr warning, and logs reason "stale-fallback: ..." with
+# stale_fallback true (false on every other row). An empty --current there means
+# the parent account is unknown and the warning says so. With no eligible account
 # the pick falls back to --current and says so, unless --current (an empty
 # --current means $HOME/.claude) is a reserved account's store: then it falls
 # back to the first signed-in, unreserved account in config order, and with no
@@ -101,6 +107,7 @@ usage() {
   sed -n '2,/^set -euo pipefail$/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
 }
 
+ORIG_ARGS=("$@")
 CHECK=0
 CONFIG_FILE=
 LOG_FILE=
@@ -404,6 +411,7 @@ RESULT=$(jq -nc \
   | ($ranked[0] // null) as $pick
   | ([ $rows[] | select(.current and .reserved) ][0] // null) as $reserved_current
   | ([ $rows[] | select(.signin and (.reserved | not)) ][0] // null) as $unreserved
+  | ([ $rows[] | select(.signin and (.reserved | not)) ] | (length > 0) and all(.status == "unknown-stale")) as $stale_all
   | def brief: "\(.label) \(.status)\(if .status == "eligible" then " \(.score | r2)%/h" elif .reserved then " until \(.reserve_until_local)" else "" end)";
     (if $pick == null and $reserved_current != null and $unreserved != null then
       {chosen: $unreserved.label, config_dir: $unreserved.config_dir, fallback: true, refused: false,
@@ -412,24 +420,38 @@ RESULT=$(jq -nc \
       {chosen: null, config_dir: null, fallback: true, refused: true,
        reason: ("refusing: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + ") and the fallback, the current account \($reserved_current.label), is reserved until \($reserved_current.reserve_until_local) by its \($reserved_current.reserve_source) reserve")}
     elif $pick == null then
-      {chosen: "inherited", config_dir: $current, fallback: true, refused: false,
-       reason: ("fallback: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + "); kept the current account")}
+      if $stale_all then
+        {chosen: ([ $rows[] | select(.current) | .label ][0] // "inherited"), config_dir: $current, fallback: true, refused: false, stale_fallback: true,
+         reason: ("stale-fallback: the usage snapshot of every usable account is older than " + ($max_age | tostring) + "s (" + ([ $rows[] | select(.signin and (.reserved | not)) | brief ] | join(", ")) + "); kept the parent account" + (if $current == "" then " (unknown: no CLAUDE_CONFIG_DIR set, so the machine default login applies)" else "" end))}
+      else
+        {chosen: "inherited", config_dir: $current, fallback: true, refused: false,
+         reason: ("fallback: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + "); kept the current account")}
+      end
     else
       {chosen: $pick.label, config_dir: $pick.config_dir, fallback: false, refused: false,
        reason: ("\($pick.label): \(100 - $pick.weekly_pct | r2)% weekly left, resets in \($pick.hours_to_weekly_reset)h (\($pick.score | r2)%/h), 5h \($pick.five_hour_pct)%"
          + (if ($rows | length) > 1 then "; others: " + ([ $rows[] | select(.label != $pick.label) | brief ] | join(", ")) else "" end))}
     end) as $choice
-  | $choice + {
+  | ({stale_fallback: false} + $choice + {
       ts: ($now | todate), epoch: $now, task: $task,
       five_hour_max: $five_max, weekly_max: $weekly_max, max_age_s: $max_age, snapshot: $snapshot,
       reserve_file: (if $reserve_file == "" then null else $reserve_file end),
-      accounts: [ $rows[] | del(.idx, .current) ]}
+      accounts: [ $rows[] | del(.idx, .current) ]})
 ')
 
 CHOSEN=$(jq -r .chosen <<<"$RESULT")
 CHOSEN_DIR=$(jq -r .config_dir <<<"$RESULT")
 REASON=$(jq -r .reason <<<"$RESULT")
 REFUSED=$(jq -r .refused <<<"$RESULT")
+STALE_FALLBACK=$(jq -r .stale_fallback <<<"$RESULT")
+
+if [ "$STALE_FALLBACK" = "true" ] && [ -z "${FM_ACCOUNT_PICK_RETRIED-}" ]; then
+  FM_ACCOUNT_PICK_RETRIED=1 exec "$0" "${ORIG_ARGS[@]}"
+fi
+
+if [ "$STALE_FALLBACK" = "true" ]; then
+  echo "warning: fm-account-pick.sh: $REASON" >&2
+fi
 
 if [ -n "$LOG_FILE" ]; then
   if ! printf '%s\n' "$RESULT" >>"$LOG_FILE" 2>/dev/null; then
