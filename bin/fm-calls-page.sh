@@ -487,7 +487,7 @@ cmd_apply() {
         printf 'skipped: %s/%s (the save carried no answer)\n' "$home" "$call"
         continue
       fi
-      kind=talk
+      kind="talk"
     fi
     if [ "$kind" = talk ]; then
       if [ -n "$note" ]; then
