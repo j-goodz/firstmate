@@ -114,14 +114,20 @@ async function primaryScopeMatches(paths) {
   return result.code === 0;
 }
 
-function shouldArm(paths) {
+// "Does this home need a watcher" is owned by bin/fm-supervision-lib.sh, the
+// predicate bin/fm-turnend-guard.sh uses, so a registered check or event source
+// arms exactly when the guard would call the turn blind.
+async function supervisionNeeded(paths) {
+  const lib = `${ADAPTER_ROOT}/bin/fm-supervision-lib.sh`;
+  if (!existsSync(lib)) return false;
+  const result = await runProcess("bash", ["-c", '. "$1" || exit 1; fm_supervision_needed "$2"', "bash", lib, paths.state]);
+  return result.code === 0;
+}
+
+async function shouldArm(paths) {
   if (existsSync(`${paths.state}/.afk`)) return false;
   if (existsSync(`${paths.config}/x-mode.env`)) return true;
-  try {
-    return readdirSync(paths.state).some((name) => name.endsWith(".meta"));
-  } catch {
-    return false;
-  }
+  return supervisionNeeded(paths);
 }
 
 async function sessionOwnsLock(paths) {
@@ -464,7 +470,7 @@ async function beginArm(paths, sessionID, client, predecessorArmPid) {
   if (!(await sessionOwnsLock(paths))) return { status: "read-only", armChild: null };
   if (child) return { status: "existing", armChild: child };
   if (retryTimer) return { status: "retrying", armChild: null };
-  if (!shouldArm(paths)) return { status: "not-needed", armChild: null };
+  if (!(await shouldArm(paths))) return { status: "not-needed", armChild: null };
   return { status: "spawned", armChild: spawnArm(paths, sessionID, client, predecessorArmPid) };
 }
 

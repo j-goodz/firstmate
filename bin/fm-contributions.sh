@@ -64,8 +64,10 @@
 # All mutations serialize on this home's .contributions.lock. Writes refuse
 # symlinks and publish by rename. No forge writes are performed.
 #
-# arm registers the existing authenticated custom-check path. Startup and PR
-# registration call it; when filing a linked upstream issue, call arm as well.
+# arm registers the existing authenticated custom-check path, except when every
+# known contribution is already final with nothing pending, in which case it
+# retires the check instead. Startup and PR registration call it; when filing a
+# linked upstream issue, call arm as well.
 # jq_lib receives literal jq programs, not shell expressions.
 # shellcheck disable=SC2016
 set -eu
@@ -398,6 +400,19 @@ arm() {
       --slurpfile saved "$TMP/saved.json" 'known($input[0];$saved[0]) | length > 0' >/dev/null; then
       return 0
     fi
+  fi
+  # A home whose every known contribution is final with nothing pending has
+  # nothing left to observe: retire the check instead of keeping a registered
+  # check that holds the watcher open for no work.
+  get_input; read_saved
+  if [ "$ERRORS" -eq 0 ] && jq_lib -ne --slurpfile input "$TMP/input.json" \
+    --slurpfile saved "$TMP/saved.json" 'known($input[0];$saved[0]) as $k
+      | ($k | length) > 0 and all($k[]; . as $x
+        | ([$saved[0][] | select(.task == $x.task) | .records[] | select(.url == $x.url)] | first)
+        | . != null and .error == null and (.observation.state | IN("merged","closed"))
+          and ((.pending // []) | length) == 0)' >/dev/null; then
+    "$SCRIPT_DIR/fm-check-unregister.sh" contributions
+    return
   fi
   device=$(fm_pr_file_device "$STATE")
   fm_pr_regular_destination_on_device_or_absent "$STATE/contributions.check.sh" "$device" || fail 'unsafe check destination'

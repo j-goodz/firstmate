@@ -3462,6 +3462,61 @@ EOF
   pass "OpenCode watcher plugin sources the effective config"
 }
 
+# Drives one session.idle against a home holding the given state files and
+# prints "armed" or "idle" depending on whether the watch arm ran.
+opencode_arm_outcome() {
+  local name=$1 plugin repo home log f
+  shift
+  plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  repo="$TMP_ROOT/opencode-$name-root"
+  home="$TMP_ROOT/opencode-$name-home"
+  log="$TMP_ROOT/opencode-$name.log"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  git init -q "$repo"
+  : > "$repo/AGENTS.md"
+  for f in "$@"; do : > "$home/state/$f"; done
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'armed\n' >> "${FM_ARM_LOG:?}"
+printf 'watcher: healthy pid=1 (beacon 0s)\n'
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  PLUGIN="$plugin" WORKTREE="$repo" FM_HOME="$home" FM_ARM_LOG="$log" node 2>&1 <<'EOF'
+import { existsSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+const client = { session: { promptAsync: async () => {} } };
+const hooks = await mod.FmPrimaryWatchArm({
+  client,
+  directory: process.env.WORKTREE,
+  worktree: process.env.WORKTREE,
+});
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+await hooks.event({ event: { type: "session.idle", properties: { sessionID: "session-test" } } });
+for (let i = 0; i < 100 && !existsSync(process.env.FM_ARM_LOG); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+console.log(existsSync(process.env.FM_ARM_LOG) ? "armed" : "idle");
+EOF
+}
+
+test_opencode_primary_watch_plugin_arms_for_registered_check_only() {
+  local out
+  out=$(opencode_arm_outcome check-only contributions.check.sh contributions.check-trust)
+  [ "$out" = armed ] || fail "OpenCode plugin did not arm a home holding only a registered check: $out"
+  pass "OpenCode watcher plugin arms for a home with only a registered check"
+}
+
+test_opencode_primary_watch_plugin_idle_without_work() {
+  local out
+  out=$(opencode_arm_outcome no-work)
+  [ "$out" = idle ] || fail "OpenCode plugin armed a home with no task, check or source: $out"
+  out=$(opencode_arm_outcome untrusted-check pr-task.check.sh)
+  [ "$out" = idle ] || fail "OpenCode plugin armed for a check with no registration binding: $out"
+  pass "OpenCode watcher plugin stays idle when the guard would not require supervision"
+}
+
 test_opencode_primary_watch_plugin_requires_session_lock() {
   local plugin repo home log out status
   plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
@@ -4939,6 +4994,8 @@ fi
 test_opencode_plugin_package_boundary_is_explicit_esm
 test_opencode_primary_watch_plugin_uses_effective_state_home
 test_opencode_primary_watch_plugin_sources_effective_config
+test_opencode_primary_watch_plugin_arms_for_registered_check_only
+test_opencode_primary_watch_plugin_idle_without_work
 test_opencode_primary_watch_plugin_requires_session_lock
 test_opencode_watch_arm_coordinator_respects_primary_scope
 test_opencode_primary_watch_plugin_rearms_after_wake
