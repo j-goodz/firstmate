@@ -11,10 +11,15 @@
 # /sys/class/thermal/thermal_zone*/temp. It prints nothing and exits 3 when no
 # zone is readable, so a caller can tell "no sensor on this host" apart from
 # "0 C". A zone is readable only when its temp is a plain optional-signed
-# integer, so a disabled or otherwise non-numeric sensor is skipped.
+# integer, so a disabled or otherwise non-numeric sensor is skipped. When no
+# thermal zone is readable, it falls back to /sys/class/hwmon to find CPU
+# temperature sensors (k10temp, zenpower, or coretemp).
 #
 # FM_THERMAL_SYSFS overrides the sysfs thermal class directory (default
 # /sys/class/thermal); it exists so tests can drive fixture trees, and is not a
+# supported production setting.
+# FM_HWMON_SYSFS overrides the sysfs hwmon class directory (default
+# /sys/class/hwmon); it exists so tests can drive fixture trees, and is not a
 # supported production setting.
 set -u
 
@@ -29,6 +34,9 @@ thermal zone is readable.
 
 FM_THERMAL_SYSFS overrides the sysfs thermal class directory (default
 /sys/class/thermal); it exists for tests against fixture trees.
+
+FM_HWMON_SYSFS overrides the sysfs hwmon class directory (default
+/sys/class/hwmon); it exists for tests against fixture trees.
 EOF
 }
 
@@ -75,4 +83,51 @@ if [ "$have_max" -eq 1 ]; then
   printf '%s\n' "$((best_max / 1000))"
   exit 0
 fi
+
+HWMON=${FM_HWMON_SYSFS:-/sys/class/hwmon}
+for chip in "$HWMON"/hwmon*; do
+  [ -d "$chip" ] || continue
+  name=$(tr -d '[:space:]' < "$chip/name" 2>/dev/null) || continue
+  case "$name" in
+    k10temp|zenpower|coretemp) ;;
+    *) continue ;;
+  esac
+
+  # Prefer the package-level sensor (Tctl, then Tdie, for AMD; "Package id N"
+  # for Intel), otherwise the hottest readable input. Labels are read with
+  # whitespace stripped, so "Package id 0" arrives as "Packageid0".
+  tctl='' tdie='' pkg='' hottest=''
+  for input in "$chip"/temp*_input; do
+    [ -r "$input" ] || continue
+    raw=$(tr -d '[:space:]' < "$input" 2>/dev/null) || continue
+    [[ $raw =~ ^-?[0-9]+$ ]] || continue
+    label=$(tr -d '[:space:]' < "${input%_input}_label" 2>/dev/null) || label=
+    case "$label" in
+      Tctl) tctl=$raw ;;
+      Tdie) tdie=$raw ;;
+      Packageid*) [ -n "$pkg" ] || pkg=$raw ;;
+    esac
+    if [ -z "$hottest" ] || [ "$raw" -gt "$hottest" ]; then
+      hottest=$raw
+    fi
+  done
+  if [ "$name" = coretemp ]; then
+    best_chip=${pkg:-$hottest}
+  else
+    best_chip=${tctl:-${tdie:-$hottest}}
+  fi
+
+  if [ -n "$best_chip" ]; then
+    if [ -z "$best_max" ] || [ "$best_chip" -gt "$best_max" ]; then
+      best_max=$best_chip
+      have_max=1
+    fi
+  fi
+done
+
+if [ "$have_max" -eq 1 ]; then
+  printf '%s\n' "$((best_max / 1000))"
+  exit 0
+fi
 exit 3
+

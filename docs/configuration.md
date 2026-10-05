@@ -519,7 +519,7 @@ Every claude launch's inline `--settings` JSON also carries `"attribution":{"com
 The optional local, gitignored `config/thermal-gate` file caps how much concurrent build and test load a home starts when its host is hot.
 An absent file means no gate and no behaviour change, and the file is not inherited by secondmate homes: each home sets its own thresholds for its own machine.
 The gate applies to fresh ship and scout spawns only, before any endpoint, worktree, or record is created; a secondmate spawn and a worker relaunch are never refused.
-It reads the host CPU temperature through [`bin/fm-host-temp.sh`](../bin/fm-host-temp.sh), which prefers the `x86_pkg_temp` zone and otherwise reports the hottest readable `/sys/class/thermal/thermal_zone*` sensor, and it counts this home's workers whose semantic busy state classifies as busy through [`bin/fm-busy-lib.sh`](../bin/fm-busy-lib.sh), so an idle, finished, waiting, missing, or stale-generation record does not consume the cap.
+It reads the host CPU temperature through [`bin/fm-host-temp.sh`](../bin/fm-host-temp.sh), which prefers the `x86_pkg_temp` zone and otherwise reports the hottest readable `/sys/class/thermal/thermal_zone*` sensor, and when no thermal zone is readable (as on hosts such as homelab) falls back to the CPU chip in `/sys/class/hwmon` (`k10temp`, `zenpower`, or `coretemp`, preferring `Tctl`, then `Tdie`, or the `Package id` input), and it counts this home's workers whose semantic busy state classifies as busy through [`bin/fm-busy-lib.sh`](../bin/fm-busy-lib.sh), so an idle, finished, waiting, missing, or stale-generation record does not consume the cap.
 
 Four integer `key=value` lines, each optional and interpreted on its own:
 
