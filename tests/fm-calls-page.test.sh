@@ -354,9 +354,9 @@ assert_not_contains "$(grep -F 'HOLD [answer] [a1]' <<<"$LOG")" "--release" "a c
 assert_contains "$LOG" "DECISION Answer: Switch to Solaar" "the decision records the chosen option"
 assert_contains "$LOG" "and remove Logi" "the decision keeps the captain's own words"
 # A text answer on a held work item releases the hold so the work resumes.
-assert_contains "$LOG" "HOLD [answer] [w1] [--decision-file]" "a text answer records through answer"
-assert_contains "$(grep -F 'HOLD [answer] [w1]' <<<"$LOG")" "[--release]" "an answer on held work releases it"
-assert_contains "$LOG" "DECISION Answer: Build it narrower" "a text answer records the captain's words"
+assert_not_contains "$LOG" "HOLD [answer] [w1]" "typed words with no option picked never close or release the call"
+assert_contains "$(grep -F 'HOLD [hold] [w1]' <<<"$LOG")" "Build it narrower" "typed words re-hold the call with the captain's words"
+assert_contains "$out" "route: local/w1 Build it narrower" "typed words are routed to firstmate"
 # Later parks the call for one week.
 assert_contains "$LOG" "HOLD [hold] [e1] [--reason]" "Later re-holds the call"
 assert_contains "$(grep -F 'HOLD [hold] [e1]' <<<"$LOG")" "[--until] [2026-10-11]" "Later parks it until today plus seven days"
@@ -380,6 +380,115 @@ assert_contains "$LOG" "SEND [fm-swiftmate Call r1: Not needed]" "a second-mate 
 assert_not_contains "$LOG" "SEND [fm-local" "a local answer is not sent as a second-mate message"
 assert_contains "$out" "rendered:" "apply re-renders the page"
 pass "apply maps option, text, Later, and Not needed answers onto the owning home's captain-hold record"
+
+# --- apply: a second-mate answer is always delivered, and retried if it was not ---
+
+write_send_env_stub() {  # <home>: logs FM_HOME and fails while FM_TEST_SEND_FAIL=1
+  cat > "$1/fm-send-stub.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'SEND home=[%s] [%s]\n' "${FM_HOME:-}" "$*" >> "$FM_TEST_LOG"
+[ "${FM_TEST_SEND_FAIL:-0}" != 1 ] || { echo "FM_HOME is not set" >&2; exit 1; }
+SH
+  chmod +x "$1/fm-send-stub.sh"
+}
+
+SD=$(make_home senddeliver)
+write_local_backlog "$SD"
+add_remote_mate "$SD"
+write_fm_on_stub "$SD"
+write_captain_stub "$SD"
+write_send_env_stub "$SD"
+run_calls "$SD" render >/dev/null 2>&1
+cat > "$SD/result.txt" <<'EOF'
+session:
+  file: /tmp/calls.html
+  status: feedback
+prompts[1]{uid,prompt,selector,tag,text}:
+  "1","Call r1: not needed\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"r1\",\n  \"home\": \"swiftmate\",\n  \"kind\": \"not-needed\",\n  \"answer\": \"Not needed, close it\",\n  \"note\": \"\"\n}","form",call-answer,"Buzz calendar shape"
+EOF
+# First apply: no FM_HOME in the environment (the process-event path) and the
+# send fails. The answer is recorded; the delivery must be kept for a retry.
+env -u FM_HOME FM_STATE_OVERRIDE="$SD/state" FM_DATA_OVERRIDE="$SD/data" \
+  FM_CALLS_PAGE_TODAY=$TODAY FM_CALLS_PAGE_NOW=2026-10-04T21:00:00Z \
+  FM_CALLS_PAGE_FM_ON="$SD/fm-on-stub.sh" FM_CALLS_PAGE_FM_SEND="$SD/fm-send-stub.sh" \
+  FM_TEST_REMOTE_DIR="$SD/remote-swiftmate" FM_TEST_LOG="$SD/calls.log" FM_TEST_SEND_FAIL=1 \
+  "$CALLS" apply "$SD/result.txt" >"$SD/out1" 2>"$SD/err1"
+assert_contains "$(grep -F 'SEND' "$SD/calls.log")" "home=[$ROOT]" "apply without FM_HOME hands fm-send the home derived from the script location"
+# The stub transport does not close the call, so mark it answered the way the
+# owning home's status log would after the recorded answer.
+printf '%s\n' 'resolved [key=captain-hold-r1-1]: answered: not needed' >> "$SD/state/swiftmate.status"
+# Second apply with the send working: the call is no longer open, yet the
+# recorded answer is delivered rather than skipped.
+FM_TEST_SEND_FAIL=0 run_calls "$SD" apply "$SD/result.txt" >"$SD/out2" 2>"$SD/err2"
+send_count=$(grep -c -F 'Call r1: Not needed' "$SD/calls.log")
+assert_equals "2" "$send_count" "the undelivered answer is sent again on the next apply"
+FM_TEST_SEND_FAIL=0 run_calls "$SD" apply "$SD/result.txt" >"$SD/out3" 2>"$SD/err3"
+send_count=$(grep -c -F 'Call r1: Not needed' "$SD/calls.log")
+assert_equals "2" "$send_count" "a delivered answer is not sent a third time"
+pass "a second-mate answer is delivered without FM_HOME and retried after a failed send"
+
+SM=$(make_home sendmulti)
+write_local_backlog "$SM"
+add_remote_mate "$SM"
+write_fm_on_stub "$SM"
+write_captain_stub "$SM"
+write_send_env_stub "$SM"
+run_calls "$SM" render >/dev/null 2>&1
+cat > "$SM/result.txt" <<'EOF'
+session:
+  file: /tmp/calls.html
+  status: feedback
+prompts[1]{uid,prompt,selector,tag,text}:
+  "1","Call r1: not needed\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"r1\",\n  \"home\": \"swiftmate\",\n  \"kind\": \"option\",\n  \"answer\": \"first line\\nsecond line\",\n  \"note\": \"\"\n}","form",call-answer,"Buzz calendar shape"
+EOF
+FM_TEST_SEND_FAIL=1 run_calls "$SM" apply "$SM/result.txt" >"$SM/out1" 2>"$SM/err1"
+printf '%s\n' 'resolved [key=captain-hold-r1-1]: answered: not needed' >> "$SM/state/swiftmate.status"
+FM_TEST_SEND_FAIL=0 run_calls "$SM" apply "$SM/result.txt" >"$SM/out2" 2>"$SM/err2"
+assert_equals "2" "$(grep -c -F 'SEND' "$SM/calls.log")" "a multi-line answer is one undelivered record, retried once"
+assert_contains "$(grep -F 'SEND' "$SM/calls.log" | tail -1)" "first line second line" "the retried multi-line answer arrives whole"
+pass "a multi-line second-mate answer survives the undelivered queue"
+
+# --- apply: typed text with no option picked never closes a call (state/calls-page.jsonl, 2026-10-05 15:21:41Z) ---
+
+TX=$(make_home textonly)
+cat > "$TX/data/backlog.md" <<'EOF'
+# Backlog
+
+## Queued
+- [ ] twitter-follow-execute - Run the follow cleanup (repo: nexus) (kind: captain) (since 2026-10-02) (hold: Start the follow cleanup) (hold-kind: captain)
+  Captain hold set: 2026-10-02T10:00:00Z
+EOF
+add_remote_mate "$TX"
+sed -i 's/^- \[ \] r1 - Buzz calendar shape/- [ ] intake-agent-build - Build the intake agent/' "$TX/remote-swiftmate/backlog.md"
+sed -i 's/captain-hold-r1-1/captain-hold-intake-agent-build-1/' "$TX/state/swiftmate.status"
+write_fm_on_stub "$TX"
+write_captain_stub "$TX"
+write_fm_send_stub "$TX"
+# The two real apply lines that closed live work.
+cat > "$TX/real-lines.jsonl" <<'EOF'
+{"at":"2026-10-05T15:21:41Z","event":"apply","home":"swiftmate","call":"intake-agent-build","kind":"text","outcome":"applied"}
+{"at":"2026-10-05T15:21:41Z","event":"apply","home":"local","call":"twitter-follow-execute","kind":"text","outcome":"applied"}
+EOF
+run_calls "$TX" render >/dev/null 2>&1
+{
+  printf 'session:\n  file: /tmp/calls.html\n  status: feedback\nprompts[2]{uid,prompt,selector,tag,text}:\n'
+  n=0
+  while IFS= read -r line; do
+    n=$((n + 1))
+    h=$(jq -r .home <<<"$line"); c=$(jq -r .call <<<"$line"); k=$(jq -r .kind <<<"$line")
+    printf '  "%s","Call %s: text\\n\\nContext data:\\n{\\n  \\"schema\\": \\"open-call-answer.v1\\",\\n  \\"call\\": \\"%s\\",\\n  \\"home\\": \\"%s\\",\\n  \\"kind\\": \\"%s\\",\\n  \\"answer\\": \\"\\",\\n  \\"note\\": \\"why are you asking me this\\"\\n}","form",call-answer,"%s"\n' "$n" "$c" "$c" "$h" "$k" "$c"
+  done < "$TX/real-lines.jsonl"
+} > "$TX/result.txt"
+txout=$(FM_CALLS_PAGE_CAPTAIN_HOLD="$TX/captain-stub.sh" FM_TEST_REAL_CAPTAIN="$ROOT/bin/fm-captain-hold.sh" run_calls "$TX" apply "$TX/result.txt" 2>/dev/null)
+TXLOG=$(cat "$TX/calls.log" 2>/dev/null)
+assert_not_contains "$TXLOG" "HOLD [answer]" "a local text-only save never records an answer"
+assert_not_contains "$TXLOG" "answers" "a second-mate text-only save never records an answer"
+assert_contains "$TXLOG" "HOLD [hold] [twitter-follow-execute]" "the local call stays held with the captain's words"
+assert_contains "$TXLOG" "ON swiftmate fm-captain-hold.sh [hold] [intake-agent-build]" "the second-mate call stays held with the captain's words"
+assert_contains "$txout" "route: local/twitter-follow-execute why are you asking me this" "the local words are raised to firstmate"
+assert_contains "$txout" "route: swiftmate/intake-agent-build why are you asking me this" "the second-mate words are raised to firstmate"
+assert_not_contains "$txout" "applied: local/twitter-follow-execute text" "a text-only save is not reported as an applied answer"
+pass "typed text with no option picked is raised, never recorded as a decision"
 
 # --- apply: talk with no words records nothing and still routes ------------------
 

@@ -73,26 +73,29 @@
 # apply    Apply each open-call-answer.v1 item in a captured Lavish result (read
 #          through bin/fm-procevent-lavish.sh read; the last save per call
 #          wins) to the call's owning home through bin/fm-captain-hold.sh:
-#            option or text  `answer <task> --decision-file <captain's words>`,
+#            option          `answer <task> --decision-file <captain's words>`,
 #                            with --release when the held task is a work item
 #                            rather than a call-only task (kind captain);
 #            later           `hold <task> --reason <parked note> --until <today+7>`;
 #            not-needed      answer "Not needed" and close (never --release);
-#            talk            with the captain's words, re-`hold` the call with
-#                            those words in its reason so it stays open; with no
-#                            words, record nothing. Either way it is printed as
-#                            `talk:` for firstmate to raise in chat.
+#            text or talk    typed words with no option picked are never a
+#                            decision: with the captain's words, re-`hold` the
+#                            call with those words in its reason so it stays
+#                            open; with no words, record nothing. Either way it
+#                            is printed as `talk:` for firstmate to raise in chat.
 #          Every recorded answer and every talk prints one
 #          `route: <home>/<task> <answer>` line so firstmate acts on it; an
-#          option, text, Later, or Not needed answer for a call held in a second
+#          option, Later, or Not needed answer for a call held in a second
 #          mate home is also sent to `fm-<home>` through bin/fm-send.sh, so its
 #          home files any follow-up work the decision authorizes (best effort).
 #          A second mate's remote calls go through `fm-on.sh` to its own
 #          fm-captain-hold.sh (`answers` keyed intake on stdin, or `hold`); the
 #          keyed intake shortens each field to 512 characters. An item whose
 #          call is no longer open is reported `skipped:` and records nothing, so
-#          an answer already given in chat is never applied twice. The reserved
-#          value `reconcile` is reported `refused:` and never applied. Then the
+#          an answer already given in chat is never applied twice. A second-mate
+#          send that failed is kept in state/calls-page-undelivered.tsv and
+#          retried at the start of the next apply. The reserved value
+#          `reconcile` is reported `refused:` and never applied. Then the
 #          page is re-rendered best effort (a failed rebuild is a warning, never
 #          a failed apply). Exit 1 only when a recording command failed.
 #
@@ -124,6 +127,7 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 PAGE="$DATA/open-calls/calls.html"
 CURATED="$DATA/open-calls/calls.json"
 LOG="$STATE/calls-page.jsonl"
+UNDELIVERED="$STATE/calls-page-undelivered.tsv"
 HELPER="$SCRIPT_DIR/fm-calls-page.py"
 CAPTAIN_HOLD="${FM_CALLS_PAGE_CAPTAIN_HOLD:-$SCRIPT_DIR/fm-captain-hold.sh}"
 FM_ON="${FM_CALLS_PAGE_FM_ON:-$SCRIPT_DIR/fm-on.sh}"
@@ -385,13 +389,39 @@ route_line() {  # <home> <task> <text>
   printf 'route: %s/%s %s\n' "$1" "$2" "$text"
 }
 
+# Send one recorded answer to a second mate. FM_HOME is passed explicitly
+# because it is only a local default here, so a process-event run without it in
+# the environment would otherwise leave fm-send refusing. A failed send is kept
+# in UNDELIVERED and retried by the next apply.
+try_send() {  # <home> <task> <text>
+  FM_HOME="$FM_HOME" fm_run_timed "$REMOTE_TIMEOUT" "$FM_SEND" "fm-$1" "Call $2: $3" >/dev/null 2>"$WORK/send.err"
+}
+
 send_to_mate() {  # <home> <task> <text>
-  local home=$1 task=$2 text=$3
+  local home=$1 task=$2 text
+  text=$(printf '%s' "$3" | tr '\n\t\r' '   ')
   [ "$home" != local ] || return 0
-  fm_run_timed "$REMOTE_TIMEOUT" "$FM_SEND" "fm-$home" "Call $task: $text" >/dev/null 2>"$WORK/send.err" \
-    || printf 'warning: the answer for %s/%s is recorded, but it was not sent to %s: %s\n' \
+  try_send "$home" "$task" "$text" || {
+    printf '%s\t%s\t%s\n' "$home" "$task" "$text" >> "$UNDELIVERED"
+    printf 'warning: the answer for %s/%s is recorded, but it was not sent to %s (kept for the next apply): %s\n' \
       "$home" "$task" "$home" "$(tail -1 "$WORK/send.err")" >&2
+  }
   return 0
+}
+
+# Retry every answer recorded earlier whose send failed.
+retry_undelivered() {
+  local pending="$WORK/undelivered.pending" home task text
+  [ -s "$UNDELIVERED" ] || return 0
+  mv "$UNDELIVERED" "$pending"
+  while IFS=$'\t' read -r home task text; do
+    [ -n "$home" ] || continue
+    if try_send "$home" "$task" "$text"; then
+      printf 'delivered: %s/%s (answer recorded earlier)\n' "$home" "$task"
+    else
+      printf '%s\t%s\t%s\n' "$home" "$task" "$text" >> "$UNDELIVERED"
+    fi
+  done < "$pending"
 }
 
 # Answer text carried to firstmate for each recorded kind.
@@ -424,6 +454,7 @@ cmd_apply() {
   FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-procevent-lavish.sh" read "$result" > "$WORK/read.txt" \
     || die "cannot read the captured result: $result"
   items=$(python3 "$HELPER" parse-result < "$WORK/read.txt") || die "cannot parse the captured result"
+  retry_undelivered
   collect
   index=$(python3 "$HELPER" index "$WORK/manifest.jsonl" "$TODAY") || die "cannot list the open calls"
   while IFS= read -r item; do
@@ -449,6 +480,15 @@ cmd_apply() {
       printf 'skipped: %s/%s (no registered home by that name)\n' "$home" "$call"
       log_event --arg event apply --arg home "$home" --arg call "$call" --arg outcome skipped-unknown-home
       continue
+    fi
+    # Typed words with no option picked are a reply to raise, never a decision.
+    if [ "$kind" = text ]; then
+      [ -n "$note" ] || note=$answer
+      if [ -z "$note" ]; then
+        printf 'skipped: %s/%s (the save carried no answer)\n' "$home" "$call"
+        continue
+      fi
+      kind="talk"
     fi
     if [ "$kind" = talk ]; then
       if [ -n "$note" ]; then
