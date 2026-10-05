@@ -1,0 +1,5 @@
+ok - plain dir inside primary checkout keeps main
+ok - primary checkout as worktree keeps main
+ok - linked worktree on default branch keeps main
+ok - normal linked worktree gets its branch deleted
+ok - fixture temp root inside a checkout cannot resolve it

@@ -1,0 +1,19 @@
+scenario1: outer HEAD=main main_exists=yes
+scenario1 stderr: ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ●  WATCHER DOWN - SUPERVISION IS OFF ●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 0s ago). ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair. ●  This is a supervision warning only; the guarded operation WILL still run. ●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &. ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ teardown: not detaching or deleting a branch at /tmp/fm-teardown-live/scenes/plain-dir/outer/data/inner/wt: not the root of its own work tree 
+PASS  scenario1 plain-dir-inside-checkout keeps main (FIXED)
+scenario2 (PRE-FIX): outer HEAD=DETACHED main_exists=no rc=0
+PASS  scenario2 PRE-FIX reproduces the incident (main deleted/detached)
+scenario3: HEAD=main main_exists=yes
+PASS  scenario3 primary checkout as worktree keeps main
+scenario4: main_exists=yes warning=1
+PASS  scenario4 linked worktree on default branch keeps main
+scenario5: fm_branch_exists=no wt_head=DETACHED warning=0
+PASS  scenario5 normal linked worktree fm/ branch still deleted + detached
+scenario6: verdict=CONTAINED ceiling=unset
+PASS  scenario6 fixture temp root cannot climb into enclosing checkout
+scenario6b (PRE-FIX lib): verdict=ESCAPED
+PASS  scenario6b PRE-FIX lib escapes into enclosing checkout (reproduces)
+scenario7: rc=0 HEAD=main main_exists=yes warning=1
+PASS  scenario7 orca block uses the guard and keeps main
+
+TOTAL pass=8 fail=0

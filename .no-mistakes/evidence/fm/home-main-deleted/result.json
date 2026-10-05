@@ -1,0 +1,98 @@
+{
+  "findings": [],
+  "summary": "Validated the teardown detach/branch-delete guard against the real bin/fm-teardown.sh in disposable fixtures, including a pre-fix reproduction and the orca code path. The fix protects an enclosing checkout's main branch, preserves normal linked-worktree cleanup, and the new regression test runs green in the pr-forge family. No issues found.",
+  "tested": [
+    "`bash tests/fm-teardown-detach-guard.test.sh` (new regression test, all 5 cases pass)",
+    "`bin/fm-test-run.sh tests/fm-teardown-detach-guard.test.sh` (runner maps to family=pr-forge, exit=0)",
+    "Live driver `/home/justin/.no-mistakes/evidence/01M45H8V5TGC73BJZH6G3WJT4E/live-scenarios-driver.sh` (8 scenarios against the real teardown + base-commit teardown + orca backend path)"
+  ],
+  "testing_summary": "Drove the real bin/fm-teardown.sh task --force in isolated throwaway FM_HOME fixtures with fake external tools. Scenario 1 (task worktree is a plain directory inside a primary checkout) kept outer main and HEAD on main and printed the one-line 'not detaching or deleting a branch' warning; scenario 2 ran the same fixture against the base-commit teardown and reproduced the incident exactly (HEAD detached, refs/heads/main deleted). Scenario 3 (primary checkout itself as worktree) and scenario 4 (linked worktree checked out on the default branch) both kept main with the warning. Scenario 5 (normal linked worktree on fm/task-x1) still detached and deleted the fm/ branch with no warning, so normal cleanup is intact. Scenario 6/6b confirmed tests/lib.sh GIT_CEILING_DIRECTORIES keeps fixture git discovery contained, while the pre-fix lib.sh escaped into the enclosing checkout. Scenario 7 drove the orca backend block (hand-built orca CLI stub, since orca is not installed) and it reached the shared guard, skipped the detach/delete, and kept main. The new regression test passes directly and through bin/fm-test-run.sh (family=pr-forge). No failures.",
+  "artifacts": [
+    {
+      "kind": "log",
+      "label": "Live scenario driver output (8 scenarios, pre-fix reproduction, orca block)",
+      "path": "/home/justin/.no-mistakes/evidence/01M45H8V5TGC73BJZH6G3WJT4E/live-scenarios.txt"
+    },
+    {
+      "kind": "other",
+      "label": "Live scenario driver script (reproducible, uses disposable fixtures only)",
+      "path": "/home/justin/.no-mistakes/evidence/01M45H8V5TGC73BJZH6G3WJT4E/live-scenarios-driver.sh"
+    },
+    {
+      "kind": "log",
+      "label": "New regression test output (fm-teardown-detach-guard.test.sh)",
+      "path": "/home/justin/.no-mistakes/evidence/01M45H8V5TGC73BJZH6G3WJT4E/regression-test-output.txt"
+    },
+    {
+      "kind": "log",
+      "label": "Test runner output, family=pr-forge",
+      "path": "/home/justin/.no-mistakes/evidence/01M45H8V5TGC73BJZH6G3WJT4E/runner-output.txt"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "Teardown of a task whose worktree is a plain directory inside a live primary checkout keeps the enclosing checkout's main branch and HEAD untouched, and warns once",
+      "result": "pass",
+      "live": true,
+      "evidence": "live-scenarios.txt scenario1: outer HEAD=main main_exists=yes; stderr contains 'teardown: not detaching or deleting a branch at ...: not the root of its own work tree'",
+      "reason": ""
+    },
+    {
+      "name": "Pre-fix reproduction: the base-commit teardown on that same fixture detaches the enclosing checkout and deletes its main branch (proves the regression test's bug)",
+      "result": "pass",
+      "live": true,
+      "evidence": "live-scenarios.txt scenario2 (PRE-FIX): outer HEAD=DETACHED main_exists=no rc=0",
+      "reason": ""
+    },
+    {
+      "name": "Passing the primary checkout itself as the worktree path no longer detaches/deletes its branch",
+      "result": "pass",
+      "live": true,
+      "evidence": "live-scenarios.txt scenario3: HEAD=main main_exists=yes; a 'not detaching' warning is printed",
+      "reason": ""
+    },
+    {
+      "name": "A linked worktree checked out on the default branch keeps the default branch ref instead of deleting it",
+      "result": "pass",
+      "live": true,
+      "evidence": "live-scenarios.txt scenario4: main_exists=yes warning=1",
+      "reason": ""
+    },
+    {
+      "name": "Normal cleanup is preserved: a linked worktree on an fm/ branch is still detached and its branch deleted, with no warning",
+      "result": "pass",
+      "live": true,
+      "evidence": "live-scenarios.txt scenario5: fm_branch_exists=no wt_head=DETACHED warning=0",
+      "reason": ""
+    },
+    {
+      "name": "tests/lib.sh GIT_CEILING_DIRECTORIES contains git discovery from a fixture temp root nested inside an enclosing checkout",
+      "result": "pass",
+      "live": true,
+      "evidence": "live-scenarios.txt scenario6: verdict=CONTAINED (sourced current tests/lib.sh with TMPDIR inside an enclosing repo and fm_test_tmproot could not resolve it)",
+      "reason": ""
+    },
+    {
+      "name": "Pre-fix control: the base-commit tests/lib.sh escapes into the enclosing checkout (proves the ceiling fix is load-bearing)",
+      "result": "pass",
+      "live": true,
+      "evidence": "live-scenarios.txt scenario6b (PRE-FIX lib): verdict=ESCAPED",
+      "reason": ""
+    },
+    {
+      "name": "The orca backend block reaches the same guard and protects the enclosing checkout's main branch",
+      "result": "pass",
+      "live": true,
+      "evidence": "live-scenarios.txt scenario7: rc=0 HEAD=main main_exists=yes warning=1 (real fm-teardown.sh orca path; only the absent orca CLI is a hand-built stub)",
+      "reason": ""
+    },
+    {
+      "name": "The new regression test is registered in the pr-forge family and runs green through the repo test runner",
+      "result": "pass",
+      "live": true,
+      "evidence": "runner-output.txt: FM_TEST_END exit=0 family=pr-forge; regression-test-output.txt: 5 ok lines",
+      "reason": ""
+    }
+  ],
+  "verdict": "go"
+}
