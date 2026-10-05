@@ -466,6 +466,72 @@ test_reserve_without_jq_refuses() {
   pass "a configured reserve that cannot be evaluated refuses rather than falling back"
 }
 
+test_stale_snapshot_falls_back_to_parent_account() {
+  new_case stale_fallback_parent
+  write_snapshot "$(account_json 10 50 96 1200)" "$(account_json 10 50 24 1200)"
+  run_pick "$CASE/account-3"
+  expect_code 0 "$STATUS" "pick must succeed"
+  assert_equals account-3 "$(field account)" "account should be account-3"
+  assert_equals "$CASE/account-3" "$(field config_dir)" "config_dir should be account-3 store"
+  assert_contains "$(cat "$CASE/stderr")" "stale-fallback" "stderr should contain stale-fallback"
+  local last_log; last_log="$(tail -n 1 "$LOG")"
+  assert_equals "stale-fallback" "$(echo "$last_log" | jq -r '.reason | split(":")[0]')" "reason should start with stale-fallback:"
+  assert_equals true "$(echo "$last_log" | jq -r '.fallback')" "fallback should be true"
+  assert_equals true "$(echo "$last_log" | jq -r '.stale_fallback')" "stale_fallback should be true"
+  assert_equals 1 "$(wc -l < "$LOG")" "log should have exactly one line"
+  pass "stale snapshot falls back to parent account"
+}
+
+test_fresh_snapshot_is_unchanged_by_stale_fallback() {
+  new_case fresh_no_fallback
+  write_snapshot "$(account_json 10 50 96 30)" "$(account_json 10 50 24 30)"
+  run_pick "$CASE/account-1"
+  expect_code 0 "$STATUS" "pick must succeed"
+  assert_equals account-3 "$(field account)" "account should be account-3"
+  assert_not_contains "$(cat "$CASE/stderr")" "stale-fallback" "stderr should not contain stale-fallback"
+  local last_log; last_log="$(tail -n 1 "$LOG")"
+  assert_equals false "$(echo "$last_log" | jq -r '.stale_fallback')" "stale_fallback should be false"
+  pass "fresh snapshot unchanged by stale fallback"
+}
+
+test_stale_fallback_with_unknown_parent_warns() {
+  new_case stale_unknown_parent
+  write_snapshot "$(account_json 10 50 96 1200)" "$(account_json 10 50 24 1200)"
+  run_pick ""
+  expect_code 0 "$STATUS" "pick must succeed"
+  assert_equals account-3 "$(field account)" "with no parent account the best stale account must be chosen"
+  assert_equals "$CASE/account-3" "$(field config_dir)" "config_dir must be the chosen stale account's store, never the machine default"
+  local stderr_content; stderr_content="$(cat "$CASE/stderr")"
+  assert_contains "$stderr_content" "stale-fallback" "stderr should contain stale-fallback"
+  assert_contains "$stderr_content" "no parent account is known" "stderr should say no parent account is known"
+  local last_log; last_log="$(tail -n 1 "$LOG")"
+  assert_equals "stale-fallback" "$(echo "$last_log" | jq -r '.reason | split(":")[0]')" "reason should start with stale-fallback:"
+  assert_equals true "$(echo "$last_log" | jq -r '.stale_fallback')" "stale_fallback should be true"
+  pass "stale fallback with unknown parent chooses the best stale account, never the machine default"
+}
+
+test_stale_fallback_with_unconfigured_parent_keeps_its_store() {
+  new_case stale_unconfigured_parent
+  write_snapshot "$(account_json 10 50 96 1200)" "$(account_json 10 50 24 1200)"
+  run_pick
+  expect_code 0 "$STATUS" "pick must succeed"
+  assert_equals inherited "$(field account)" "account should be inherited"
+  assert_equals "$CASE/inherited" "$(field config_dir)" "config_dir should be inherited store"
+  assert_contains "$(cat "$CASE/stderr")" "stale-fallback" "stderr should contain stale-fallback"
+  pass "stale fallback with unconfigured parent keeps its store"
+}
+
+test_stale_and_five_hour_excluded_is_not_stale_fallback() {
+  new_case stale_five_hour_excluded
+  write_snapshot "$(account_json 90 50 96 30)" "$(account_json 10 50 24 1200)"
+  run_pick
+  expect_code 0 "$STATUS" "pick must succeed"
+  assert_not_contains "$(cat "$CASE/stderr")" "stale-fallback" "stderr should not contain stale-fallback"
+  local last_log; last_log="$(tail -n 1 "$LOG")"
+  assert_equals false "$(echo "$last_log" | jq -r '.stale_fallback')" "stale_fallback should be false"
+  pass "stale and five hour excluded is not stale fallback"
+}
+
 test_absent_config_is_a_noop
 test_sooner_weekly_reset_wins_at_equal_remaining
 test_spend_rate_ranks_remaining_over_hours
@@ -492,5 +558,10 @@ test_reserved_current_falls_back_to_unreserved_account
 test_supervisor_account_is_never_held_idle
 test_reserve_config_is_validated
 test_reserve_without_jq_refuses
+test_stale_snapshot_falls_back_to_parent_account
+test_fresh_snapshot_is_unchanged_by_stale_fallback
+test_stale_fallback_with_unknown_parent_warns
+test_stale_fallback_with_unconfigured_parent_keeps_its_store
+test_stale_and_five_hour_excluded_is_not_stale_fallback
 
 echo "# all fm-account-pick tests passed"
