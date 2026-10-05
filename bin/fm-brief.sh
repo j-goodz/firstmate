@@ -67,6 +67,10 @@
 # Every scaffold also carries the steering-inbox receive-and-ack section:
 # process state/<id>.inbox/*.msg in order and acknowledge each by moving it to
 # handled/ (record, doorbell, and ladder owned by bin/fm-task-inbox-lib.sh).
+# Ship and scout scaffolds also carry the "Test method (the standard method)"
+# section: affected tests only while working, one test file on main for an
+# unrelated-looking failure, and whole-suite runs only through the machine
+# slot gate. docs/test-capacity-standard.md owns the standard.
 # Ship tasks include a project-memory section so durable project-intrinsic
 # learnings can be committed to AGENTS.md through the project's delivery path;
 # it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
@@ -257,6 +261,19 @@ When a terminal message says an instruction is waiting there - and at any natura
 The move IS the acknowledgement: without it firstmate rings again and eventually treats you as stuck. An empty or absent inbox needs no action.
 EOF
 INBOX_SECTION=${INBOX_SECTION%$'\n'}
+
+# The standard test method, included in ship and scout scaffolds. The
+# standard, its machine sizing and its placement rule are owned by
+# docs/test-capacity-standard.md; this section carries only what a lane does.
+IFS= read -r -d '' TEST_METHOD_SECTION <<EOF || true
+# Test method (the standard method)
+The standard is docs/test-capacity-standard.md in the firstmate repo; this is the standard method, and a per-task exception applies only when this brief's Firstmate spec says so.
+1. While working, run only the tests your change affects: in the firstmate repo \`$FM_ROOT/bin/fm-test-run.sh --changed\`, in the nexus repo \`NEXUS_GATE_SCOPE=1 ./run-tests.sh\`, in any other repo the test files that name the modules you changed.
+2. When a failing test looks unrelated to your change, run that one test file on main (a detached checkout of \`origin/main\` under your scratch directory) and compare. Never run a whole suite on main.
+3. Do not run a whole suite yourself. The broader run happens once per change, in the no-mistakes test step or your delivery mode's single validation run.
+   A whole-suite run that must happen goes through \`$FM_ROOT/bin/fm-suite-slot.sh run --key <repo> -- <command>\`, which waits for a free slot on this machine and refuses on a machine with none.
+EOF
+TEST_METHOD_SECTION=${TEST_METHOD_SECTION%$'\n'}
 
 if [ "$KIND" = secondmate ]; then
 SECONDMATE_PROJECTS=""
@@ -462,6 +479,8 @@ The report is the only thing that survives, so anything worth keeping must be in
 
 $INBOX_SECTION
 
+$TEST_METHOD_SECTION
+
 # Definition of done
 Write your findings to \`$DATA/$ID/report.md\`.
 The report must stand alone: what you did, what you found, the evidence (commands run, output, file:line references), and what you recommend.
@@ -552,6 +571,8 @@ $ASK_USER_BLOCK
    timed-out call was only waiting for a read while the run kept working.
 
 $INBOX_SECTION
+
+$TEST_METHOD_SECTION
 
 # Project memory
 If \`AGENTS.md\` or \`CLAUDE.md\` already exists, or if this task produced durable project-intrinsic knowledge, run \`$FM_ROOT/bin/fm-ensure-agents-md.sh .\` in the worktree.

@@ -1,0 +1,59 @@
+.FF.FF                                                                   [100%]
+==================================== ERRORS ====================================
+_________________ ERROR collecting tests/test_broken_import.py _________________
+ImportError while importing test module '/work/tests/test_broken_import.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/lib/python3.14/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_broken_import.py:1: in <module>
+    import module_that_does_not_exist
+E   ModuleNotFoundError: No module named 'module_that_does_not_exist'
+=================================== FAILURES ===================================
+___________________________________ test_bad ___________________________________
+
+    def test_bad():
+>       assert 1 == 2
+E       assert 1 == 2
+
+tests/test_alpha.py:7: AssertionError
+_______________________________ test_param[1-2] ________________________________
+
+a = 1, b = 2
+
+    @pytest.mark.parametrize("a,b", [(1, 2), (3, 3)])
+    def test_param(a, b):
+>       assert a == b
+E       assert 1 == 2
+
+tests/test_alpha.py:11: AssertionError
+____________________________ TestKlass.test_method _____________________________
+
+self = <test_alpha.TestKlass object at 0x77515f8f39d0>
+
+    def test_method(self):
+>       raise ValueError("boom - with dash")
+E       ValueError: boom - with dash
+
+tests/test_alpha.py:15: ValueError
+____________________________ test_dash_param[a - b] ____________________________
+
+s = 'a - b'
+
+    @pytest.mark.parametrize("s", ["a - b"])
+    def test_dash_param(s):
+>       assert s == "c"
+E       AssertionError: assert 'a - b' == 'c'
+E         
+E         - c
+E         + a - b
+
+tests/test_alpha.py:19: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_alpha.py::test_bad - assert 1 == 2
+FAILED tests/test_alpha.py::test_param[1-2] - assert 1 == 2
+FAILED tests/test_alpha.py::TestKlass::test_method - ValueError: boom - with ...
+FAILED tests/test_alpha.py::test_dash_param[a - b] - AssertionError: assert '...
+ERROR tests/test_broken_import.py
+4 failed, 2 passed, 1 error in 0.06s

@@ -1843,6 +1843,9 @@ with open(out, "w", encoding="utf-8") as fh:
 PY
 }
 
+# The original arguments, kept for the whole-suite slot re-exec below.
+FM_TEST_RUN_ARGV=("$@")
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --all)
@@ -2075,6 +2078,18 @@ esac
 # who named no selection mode is told that rather than this.
 if [ -n "${MODE:-}" ] && [ "$LIST_ONLY" -eq 0 ] && [ "$LIST_SCHEDULED" -eq 0 ]; then
   refuse_primary_checkout_for_task
+fi
+
+# A whole-suite run takes a machine-wide suite slot (docs/test-capacity-standard.md)
+# by re-executing through bin/fm-suite-slot.sh, so full suites never stack on one
+# machine. Narrower selections, inspection modes, CI, a run already inside a slot,
+# and a runner copied without its sibling gate are unchanged, as is a host
+# without flock or bash 5 (stock macOS), which the gate needs.
+if [ "${MODE:-}" = all ] && [ "$LIST_ONLY" -eq 0 ] && [ "$LIST_SCHEDULED" -eq 0 ] \
+  && [ -z "${CI:-}" ] && [ "${FM_SUITE_SLOT_HELD:-}" != 1 ] \
+  && [ "${BASH_VERSINFO[0]}" -ge 5 ] && command -v flock >/dev/null 2>&1 \
+  && [ -x "$ROOT/bin/fm-suite-slot.sh" ]; then
+  exec "$ROOT/bin/fm-suite-slot.sh" run --key firstmate -- "$ROOT/bin/fm-test-run.sh" "${FM_TEST_RUN_ARGV[@]}"
 fi
 
 case "${MODE:-}" in

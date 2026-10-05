@@ -526,6 +526,43 @@ The temperature is read fresh on every spawn, so a change takes effect on the ne
 The gate only decides whether and how much this home starts; changing the machine itself stays out of scope.
 [`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns the delivery mechanics, with regression coverage in [`tests/fm-host-temp.test.sh`](../tests/fm-host-temp.test.sh) and [`tests/fm-spawn-thermal-gate.test.sh`](../tests/fm-spawn-thermal-gate.test.sh).
 
+## Suite slots (~/.config/firstmate/suite-slots)
+
+The optional machine file `${XDG_CONFIG_HOME:-$HOME/.config}/firstmate/suite-slots` sizes the machine-wide gate for whole-suite runs described in [test-capacity-standard.md](test-capacity-standard.md).
+It belongs to the machine rather than a home, so every home and worktree on the machine shares one limit, and it is local, untracked, and never inherited.
+An absent file changes nothing: one slot per six logical CPUs rounded down, a 600 MB available-memory floor, and no heat limit.
+
+Four integer `key=value` lines, each optional and interpreted on its own:
+
+| Key | Meaning |
+| --- | --- |
+| `slots` | whole-suite runs allowed at once while cool; 0 makes the machine light-work only |
+| `hot_c` | at or above this Celsius, at most one run may hold a slot |
+| `hold_c` | at or above this Celsius, no run may start |
+| `min_available_mb` | available memory below this admits no new run |
+
+When `hot_c` or `hold_c` is absent the gate reads the same key from `$FM_HOME/config/thermal-gate`, so a home that already sets its heat limits there keeps one source.
+Placement reads each machine's gate through [`bin/fm-place.sh`](../bin/fm-place.sh).
+[`fm-suite-slot.sh --help`](../bin/fm-suite-slot.sh) owns the mechanics, with regression coverage in [`tests/fm-suite-slot.test.sh`](../tests/fm-suite-slot.test.sh), [`tests/fm-place.test.sh`](../tests/fm-place.test.sh), and [`tests/fm-test-run-suite-slot.test.sh`](../tests/fm-test-run-suite-slot.test.sh).
+
+## Daily suite run (~/.config/firstmate/suite-daily)
+
+The optional machine file `${XDG_CONFIG_HOME:-$HOME/.config}/firstmate/suite-daily` lists the repos this machine can run a daily whole-suite test for, as described in [test-capacity-standard.md](test-capacity-standard.md).
+It is local, untracked, and never inherited, and an absent file means this machine runs no daily suites.
+
+One repo per line as `KEY|PATH|FORMAT|COMMAND`, with blank lines and `#` lines ignored:
+
+| Field | Meaning |
+| --- | --- |
+| `KEY` | short repo name, letters, digits, dot, underscore, dash |
+| `PATH` | a git clone of the repo on this machine |
+| `FORMAT` | `pytest`, `fm-test`, or `none`: how failing test ids are read from the output |
+| `COMMAND` | run with `bash -c` in a detached checkout of origin/main, with `FM_DAILY_SRC` set to `PATH` |
+
+The timer and dispatcher live on one machine only (`bin/fm-suite-daily.sh install`), so exactly one machine runs each repo a day.
+Results go to `~/.nexus/suite-daily.jsonl`, and `bin/fm-suite-daily.sh status` prints the latest per repo.
+[`fm-suite-daily.sh --help`](../bin/fm-suite-daily.sh) owns the mechanics, with regression coverage in [`tests/fm-suite-daily.test.sh`](../tests/fm-suite-daily.test.sh) and [`tests/fm-suite-daily-dispatch.test.sh`](../tests/fm-suite-daily-dispatch.test.sh).
+
 ## Crew dispatch profiles (config/crew-dispatch.json)
 
 `config/crew-dispatch.json` is an optional local, gitignored file containing natural-language rules that firstmate reads before dispatching a crewmate or scout.
