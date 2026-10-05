@@ -107,6 +107,8 @@ fm_backend_source herdr
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
 # shellcheck source=bin/fm-secondmate-registry-lib.sh
 . "$SCRIPT_DIR/fm-secondmate-registry-lib.sh"
+# shellcheck source=bin/fm-timing-lib.sh
+. "$SCRIPT_DIR/fm-timing-lib.sh"
 
 FM_IDLE_REAP_UNIT=fm-idle-session-reap
 
@@ -301,7 +303,7 @@ fm_idle_reap_log_pane() {  # <action> <reason> [idle_s] [detail]
 
 fm_idle_reap_log_run() {  # <result>
   local end_ms
-  end_ms=$(fm_idle_reap_ms)
+  end_ms=$(fm_timing_now_ms)
   jq -nc \
     --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson epoch "$NOW" --arg host "$HOST" \
     --arg mode "$MODE" --arg result "$1" --argjson panes "$PANES" --argjson acted "$ACTED" \
@@ -310,16 +312,6 @@ fm_idle_reap_log_run() {  # <result>
     {ts:$ts, epoch:$epoch, host:$host, event:"run", mode:$mode, result:$result,
      panes:$panes, acted:$acted, kept:$kept, failed:$failed, idle_window_s:$window,
      duration_ms:$duration}' >> "$LOG" 2>/dev/null || true
-}
-
-fm_idle_reap_ms() {
-  local us=${EPOCHREALTIME:-}
-  if [ -n "$us" ]; then
-    us=${us/[.,]/}
-    printf '%s' "${us%???}"
-  else
-    printf '%s000' "$(date +%s)"
-  fi
 }
 
 # --- decisions ---------------------------------------------------------------
@@ -522,7 +514,7 @@ fm_idle_reap_main() {
   LOG=${FM_IDLE_REAP_LOG:-$HOME/.nexus/session-reaper.jsonl}
   SEEN=${FM_IDLE_REAP_SEEN:-$HOME/.nexus/session-reaper-seen.tsv}
   LOCK=${FM_IDLE_REAP_LOCK:-$HOME/.nexus/session-reaper.lock}
-  START_MS=$(fm_idle_reap_ms)
+  START_MS=$(fm_timing_now_ms)
   PANES=0 ACTED=0 KEPT=0 FAILED=0
   mkdir -p "${LOG%/*}" "${SEEN%/*}" "${LOCK%/*}" 2>/dev/null || true
 
