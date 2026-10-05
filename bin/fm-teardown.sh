@@ -313,6 +313,8 @@ SUB_HOME_PARENT_MARKER=".fm-secondmate-parent"
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
 # shellcheck source=bin/fm-nm-run-lib.sh
 . "$SCRIPT_DIR/fm-nm-run-lib.sh"
+# shellcheck source=bin/fm-tangle-lib.sh
+. "$SCRIPT_DIR/fm-tangle-lib.sh"
 if [ "$#" -lt 1 ] || ! fm_task_id_path_safe "$1"; then
   echo "error: invalid teardown request" >&2
   exit 2
@@ -2365,6 +2367,30 @@ teardown_owns_worktree() {
   [ "$TEARDOWN_SLOT_REASSIGNED" != 1 ]
 }
 
+# detaching and deleting a branch is only safe on a task worktree that is its
+# own linked-worktree root, because git -C walks up and a plain directory
+# inside another checkout would otherwise resolve to that checkout
+teardown_branch_cleanup_allowed() {
+  local wt=$1 branch=$2 abs_wt="" top="" git_dir="" common_dir="" default_branch="" reason=""
+  abs_wt=$(cd "$wt" 2>/dev/null && pwd -P) || reason="failed to resolve absolute path"
+  [ -n "$reason" ] || top=$(git -C "$wt" rev-parse --show-toplevel 2>/dev/null) || reason="not the root of its own work tree"
+  [ -n "$reason" ] || top=$(cd "$top" 2>/dev/null && pwd -P) || reason="not the root of its own work tree"
+  [ -n "$reason" ] || [ "$top" = "$abs_wt" ] || reason="not the root of its own work tree"
+  [ -n "$reason" ] || git_dir=$(git -C "$wt" rev-parse --absolute-git-dir 2>/dev/null) || reason="a primary checkout, not a linked worktree"
+  [ -n "$reason" ] || git_dir=$(cd "$git_dir" 2>/dev/null && pwd -P) || reason="a primary checkout, not a linked worktree"
+  [ -n "$reason" ] || common_dir=$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || reason="a primary checkout, not a linked worktree"
+  [ -n "$reason" ] || common_dir=$(cd "$common_dir" 2>/dev/null && pwd -P) || reason="a primary checkout, not a linked worktree"
+  [ -n "$reason" ] || [ "$git_dir" != "$common_dir" ] || reason="a primary checkout, not a linked worktree"
+  [ -n "$reason" ] || { default_branch=$(fm_default_branch "$wt" 2>/dev/null) || default_branch=""; [ -z "$default_branch" ] || [ "$branch" != "$default_branch" ]; } || reason="on the default branch"
+  [ -n "$reason" ] || [ "$branch" != "main" ] || reason="on the default branch"
+  [ -n "$reason" ] || [ "$branch" != "master" ] || reason="on the default branch"
+  if [ -n "$reason" ]; then
+    echo "teardown: not detaching or deleting a branch at $wt: $reason" >&2
+    return 1
+  fi
+  return 0
+}
+
 firstmate_home_has_treehouse_slot() {
   local home=$1
   worktree_registered_for_project "$FM_ROOT" "$home"
@@ -3474,7 +3500,7 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
   fi
   if [ -d "$WT" ]; then
     branch=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
-    if [ "$branch" != "HEAD" ]; then
+    if [ "$branch" != "HEAD" ] && teardown_branch_cleanup_allowed "$WT" "$branch"; then
       if git -C "$WT" checkout --detach -q 2>/dev/null; then
         git -C "$WT" branch -D "$branch" >/dev/null 2>&1 || true
       fi
@@ -3492,7 +3518,7 @@ elif [ "$KIND" != secondmate ] && ! teardown_owns_worktree; then
   :
 elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
   branch=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
-  if [ "$branch" != "HEAD" ]; then
+  if [ "$branch" != "HEAD" ] && teardown_branch_cleanup_allowed "$WT" "$branch"; then
     if git -C "$WT" checkout --detach -q 2>/dev/null; then
       git -C "$WT" branch -D "$branch" >/dev/null 2>&1 || true
     fi

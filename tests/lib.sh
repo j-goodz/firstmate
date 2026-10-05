@@ -102,6 +102,17 @@ pass() {
 
 FM_TEST_CLEANUP_DIRS=()
 FM_TEST_CLEANUP_REGISTRY=$(mktemp "${TMPDIR:-/tmp}/.fm-test-cleanup.$$.XXXXXX") || return 1
+# Prevent git from walking up past the fixture temp directory.
+# This avoids accidentally affecting an enclosing git checkout.
+# Set GIT_CEILING_DIRECTORIES to the resolved TMPDIR.
+FM_TEST_GIT_CEILING=$(cd -P -- "${TMPDIR:-/tmp}" 2>/dev/null && pwd -P)
+if [ -n "$FM_TEST_GIT_CEILING" ]; then
+  if [ -n "${GIT_CEILING_DIRECTORIES:-}" ]; then
+    export GIT_CEILING_DIRECTORIES="$FM_TEST_GIT_CEILING:$GIT_CEILING_DIRECTORIES"
+  else
+    export GIT_CEILING_DIRECTORIES="$FM_TEST_GIT_CEILING"
+  fi
+fi
 
 fm_test_pid_identity() {
   local pid=$1
