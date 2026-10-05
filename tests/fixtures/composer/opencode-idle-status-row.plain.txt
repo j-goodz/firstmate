@@ -1,0 +1,20 @@
+     + Thought: 187ms
+
+  ┃
+  ┃  $ bin/fm-wake-drain.sh --ack-through 285 --recovery-generation 3974338.1791189909.LqUB25 2>&1 | tail -2; echo
+  ┃  acked
+  ┃
+  ┃  acked
+  ┃
+
+     Captain, shipshape. That watcher notice is the known benign one — nothing in flight and supervision correctly
+     idle.
+
+     ▣  Build · DeepSeek V4.1 Flash · 14.6s
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · DeepSeek V4.1 Flash DeepSeek
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+   /home/justin/vpsmate-home                                                     651.2K (65%) · $1.40  ctrl+p commands

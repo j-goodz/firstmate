@@ -825,6 +825,38 @@ test_cursorless_container_rejects_contiguous_lower_activity() {
   pass "fm_composer_classify_screen: cursorless containers reject only contiguous unclaimed activity"
 }
 
+# Real idle opencode pane (opencode on DeepSeek V4.1 Flash, herdr session
+# fm-remote, captured through the herdr adapter's own read: plain and
+# `--format ansi`, last 20 rows). opencode draws its status row (path,
+# context, `ctrl+p commands`) directly under the left-bar floor; it is
+# opencode furniture, not lower activity, so the idle pane must read empty.
+# A draft typed into the same composer must never read empty.
+test_real_opencode_idle_pane_with_status_row_reads_empty() {
+  local fx=$ROOT/tests/fixtures/composer plain ansi draft_plain draft_ansi row line n i out
+  plain=$(cat "$fx/opencode-idle-status-row.plain.txt")
+  ansi=$(cat "$fx/opencode-idle-status-row.ansi.txt")
+  assert_screen "real idle opencode pane, plain" empty "$CAPS_PLAIN" "$plain"
+  assert_screen "real idle opencode pane, styled" empty "$CAPS_STYLED" "$ansi"
+  assert_screen "real idle opencode pane, styled no identity" empty "$CAPS_STYLED_NOID" "$ansi"
+
+  # Typed draft: swap the last blank left-bar row above the mode/model row.
+  draft_plain=$(printf '%s\n' "$plain" | awk 'NR==17{print "  ┃  refactor the parser please"; next} {print}')
+  assert_screen "typed draft on real pane, plain" unknown "$CAPS_PLAIN" "$draft_plain"
+  n=0; i=0; draft_ansi=''
+  while IFS= read -r line; do
+    i=$((i + 1))
+    row=$(printf '%s\n' "$line" | fm_composer_strip_ansi)
+    fm_composer_normalize_trim_var row
+    if [ "$row" = '┃' ]; then n=$i; fi
+    if [ "$row" = '┃  Build · DeepSeek V4.1 Flash DeepSeek' ]; then break; fi
+  done <<<"$ansi"
+  [ "$n" -gt 0 ] || fail "styled fixture lost its blank left-bar rows"
+  draft_ansi=$(printf '%s\n' "$ansi" | awk -v n="$n" -v esc="$ESC" 'NR==n{print "  ┃  " esc "[38;2;238;238;238mrefactor the parser please" esc "[0m"; next} {print}')
+  out=$(fm_composer_classify_screen "$CAPS_STYLED" "$draft_ansi")
+  [ "$out" = pending ] || fail "typed draft on real styled pane: expected pending, got '$out'"
+  pass "fm_composer_classify_screen: real idle opencode pane reads empty, a typed draft does not"
+}
+
 test_bottom_most_candidate_wins() {
   # The one ranking rule: the live composer is bottom-anchored, so a stale
   # decorative box (codex's startup banner) can never outrank the real row
@@ -974,3 +1006,5 @@ test_queued_enter_verdict_does_not_convert_other_states() {
 test_queued_enter_verdict_busy_pending_is_empty
 test_queued_enter_verdict_idle_pending_stays_pending
 test_queued_enter_verdict_does_not_convert_other_states
+
+test_real_opencode_idle_pane_with_status_row_reads_empty
