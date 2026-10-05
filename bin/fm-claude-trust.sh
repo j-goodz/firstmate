@@ -37,6 +37,14 @@
 # second dialog's flags: a secondmate home has no separate "project" entry to
 # carry consent forward from, so its registration stays trust-only.
 #
+# INHERITED APPROVAL (remote homes). A remote secondmate home is seeded fresh, so its project clones never have an entry carrying the approval, and the first worker would wedge on the imports dialog.
+# bin/fm-remote-home-seed.sh asks the PARENT home, through bin/fm-claude-imports-approved.sh, whether it holds an explicit approval for the same git origin, and bin/fm-remote-home-provision.sh then records the remote clone path in the remote home's config/claude-import-approvals.
+# bin/fm-spawn.sh names that file to this script in FM_CLAUDE_IMPORT_APPROVALS.
+# When a line of that file resolves to the project checkout argument, worktree mode treats the project as approved exactly as if its own entry said so, and writes the same flags on the project entry and the worktree entry.
+# It is a carry-forward of consent the parent's human already gave, never a new one: an absent, unreadable, empty or non-matching file changes nothing.
+# The file must be a regular file this user owns and not a symlink, or it is ignored.
+# A recorded decline on the remote project entry still refuses the whole registration, because the decline check runs before the approval is consulted and a decline on the remote machine is its own human's explicit answer.
+#
 # TWO PROJECT-CONFIG ENTRIES IN WORKTREE MODE, NOT ONE. Registering both flags
 # on the worktree entry alone (the original trust-only design) leaves the
 # external-imports dialog showing. Verified 2026-09-06 by disassembling the
@@ -401,10 +409,11 @@ fi
 # never to answer that dialog on the human's behalf. So the import flags land
 # on the project entry - the only place the imports check ever reads (see the
 # disassembly note above) - only when that entry ALREADY carries
-# hasClaudeMdExternalIncludesApproved===true, i.e. the human already said yes
-# at some point and this write is a same-value refresh, not new consent from
-# an absent flag. When it is not already true (including plain absent, the
-# common case for a project claude has never asked about), the import flags
+# hasClaudeMdExternalIncludesApproved===true or a parent-inherited approval
+# covers the same checkout (see INHERITED APPROVAL above), i.e. the human
+# already said yes at some point and this write is a same-value refresh, not
+# new consent from an absent flag. When neither holds (including plain absent,
+# the common case for a project claude has never asked about), the import flags
 # are left untouched on both entries: writing them to the worktree entry alone
 # would be a pure no-op (the imports check never reads it) that only obscures
 # the real state, so trust still registers normally but the import dialog is
@@ -413,16 +422,28 @@ fi
 # consent the human was never asked for.
 TRUST_FLAG='hasTrustDialogAccepted'
 IMPORT_FLAGS='["hasClaudeMdExternalIncludesApproved","hasClaudeMdExternalIncludesWarningShown"]'
+# Compute INHERITED approval (default 0)
+INHERITED=0
+if [ "$MODE" = worktree ] && [ -n "${FM_CLAUDE_IMPORT_APPROVALS:-}" ] && [ -f "$FM_CLAUDE_IMPORT_APPROVALS" ] && [ ! -L "$FM_CLAUDE_IMPORT_APPROVALS" ] && [ -O "$FM_CLAUDE_IMPORT_APPROVALS" ]; then
+  while IFS= read -r approval_line || [ -n "$approval_line" ]; do
+    [ -z "$approval_line" ] && continue
+    approval_real=$(real_dir "$approval_line") || true
+    if [ -n "$approval_real" ] && [ "$approval_real" = "$PROJ_CANON" ]; then
+      INHERITED=1
+      break
+    fi
+  done < "$FM_CLAUDE_IMPORT_APPROVALS"
+fi
 if [ "$MODE" = worktree ]; then
-  WRITE_ARGS=("$STORE" "$MODE" "$TARGET_REAL" "$PROJ_CANON" "$TRUST_FLAG" "$IMPORT_FLAGS")
+  WRITE_ARGS=("$STORE" "$MODE" "$TARGET_REAL" "$PROJ_CANON" "$TRUST_FLAG" "$IMPORT_FLAGS" "$INHERITED")
 else
-  WRITE_ARGS=("$STORE" "$MODE" "$TARGET_REAL" "" "$TRUST_FLAG" "$IMPORT_FLAGS")
+  WRITE_ARGS=("$STORE" "$MODE" "$TARGET_REAL" "" "$TRUST_FLAG" "$IMPORT_FLAGS" "0")
 fi
 if ! node - "${WRITE_ARGS[@]}" <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const [store, mode, target, project, trustFlag, importFlagsJson] = process.argv.slice(2);
+const [store, mode, target, project, trustFlag, importFlagsJson, inherited] = process.argv.slice(2);
 const importFlags = JSON.parse(importFlagsJson);
 const readStore = () => {
   try {
@@ -488,7 +509,9 @@ const attempt = () => {
         `project entry for ${project} in ${store} already declined external CLAUDE.md imports; refusing to override that consent`,
       );
     }
-    const carryImportConsent = approvedExternalImports(projects, project);
+    // A parent-inherited approval (see the INHERITED APPROVAL header paragraph) counts as the
+    // same explicit consent as the project entry's own; the decline check above already ran.
+    const carryImportConsent = approvedExternalImports(projects, project) || inherited === "1";
     const targetFlags = carryImportConsent ? [trustFlag, ...importFlags] : [trustFlag];
     const projectFlags = carryImportConsent ? [trustFlag, ...importFlags] : [trustFlag];
     setFlags(projects, target, targetFlags);

@@ -17,6 +17,10 @@
 # .fm-secondmate-home marker commits the complete seed last.
 # A newly created home is removed on failure. An existing matching seeded home
 # is converged only through guarded ordinary-file updates and new project clones.
+# Project names named by import_approved manifest lines (optional, so an older parent still provisions)
+# are written as absolute clone paths, one per line, to config/claude-import-approvals on every
+# provision, empty when none; bin/fm-claude-trust.sh reads it so the first Claude worker in that clone
+# is not stopped by the external-imports dialog.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -80,6 +84,7 @@ rollback() {
       done < "$CREATED_PROJECTS"
       restore_owned_file data/charter.md || true
       restore_owned_file data/projects.md || true
+      restore_owned_file config/claude-import-approvals || true
       restore_owned_file .fm-secondmate-home || true
       restore_owned_file .fm-secondmate-parent || true
       [ "$CREATED_BACKLOG" -eq 0 ] || rm -f -- "$FM_HOME/data/backlog.md"
@@ -157,7 +162,7 @@ if [ -e "$FM_HOME" ] || [ -L "$FM_HOME" ]; then
     fi
   done
   mkdir -p "$TMP/before/data"
-  for rel in data/charter.md data/projects.md .fm-secondmate-home .fm-secondmate-parent; do
+  for rel in data/charter.md data/projects.md config/claude-import-approvals .fm-secondmate-home .fm-secondmate-parent; do
     existing="$FM_HOME/$rel"
     if [ -e "$existing" ] || [ -L "$existing" ]; then
       [ -f "$existing" ] && [ ! -L "$existing" ] || die "existing remote home has unsafe owned file: $rel"
@@ -195,6 +200,8 @@ fi
 
 PROJECT_REG="$TMP/projects.md"
 : > "$PROJECT_REG"
+IMPORT_APPROVALS="$TMP/import-approvals"
+: > "$IMPORT_APPROVALS"
 while IFS= read -r record; do
   [ -n "$record" ] || continue
   encoded=${record#project=}
@@ -237,11 +244,20 @@ EOF
     fi
   fi
   printf '%s\n' "$REGISTRY_LINE" >> "$PROJECT_REG"
+  if grep -Fxq "import_approved=$NAME_B64" "$TMP/manifest"; then
+    printf '%s\n' "$DEST" >> "$IMPORT_APPROVALS"
+  fi
 done < <(grep '^project=' "$TMP/manifest")
 
 cp "$TMP/charter" "$FM_HOME/data/charter.md.tmp.$$"
 chmod 600 "$FM_HOME/data/charter.md.tmp.$$"
 mv -f -- "$FM_HOME/data/charter.md.tmp.$$" "$FM_HOME/data/charter.md"
+if [ -e "$FM_HOME/config/claude-import-approvals" ] || [ -L "$FM_HOME/config/claude-import-approvals" ]; then
+  [ -f "$FM_HOME/config/claude-import-approvals" ] && [ ! -L "$FM_HOME/config/claude-import-approvals" ] \
+    || die "remote import-approvals record is not a safe regular file"
+fi
+cp "$IMPORT_APPROVALS" "$FM_HOME/config/claude-import-approvals.tmp.$$"
+mv -f -- "$FM_HOME/config/claude-import-approvals.tmp.$$" "$FM_HOME/config/claude-import-approvals"
 cp "$PROJECT_REG" "$FM_HOME/data/projects.md.tmp.$$"
 mv -f -- "$FM_HOME/data/projects.md.tmp.$$" "$FM_HOME/data/projects.md"
 {
