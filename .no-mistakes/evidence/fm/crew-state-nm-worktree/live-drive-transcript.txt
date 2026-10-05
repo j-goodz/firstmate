@@ -1,0 +1,17 @@
+### setup
+primary checkout : /home/justin/.cache/tmp/fm-live-drive.AJXQVb/primary  (registered in disposable state.sqlite)
+linked worktree  : /home/justin/.cache/tmp/fm-live-drive.AJXQVb/linked   (branch fm/live-lane, HEAD 5ffa74f9)
+git-dir          : /home/justin/.cache/tmp/fm-live-drive.AJXQVb/primary/.git/worktrees/linked
+git-common-dir   : /home/justin/.cache/tmp/fm-live-drive.AJXQVb/primary/.git
+
+### A. REAL no-mistakes CLI + linked worktree, POST-FIX fm-crew-state
+state: working · source: run-step · validating (running) · run: 01NEW
+
+### B. REAL no-mistakes CLI + linked worktree, PRE-FIX fm-crew-state (the reported bug)
+state: unknown · source: run-step · complete same-branch run inventory unreadable; run ids: 01NEW, 01OLD; last reported run id: 01NEW
+
+### C. GUARD: capped overview, primary checkout NOT registered, POST-FIX
+state: unknown · source: run-step · complete same-branch run inventory unreadable; run ids: 01NEW, 01OLD; last reported run id: 01NEW
+
+### D. CONTROL: capped overview, primary checkout registered, POST-FIX
+state: working · source: run-step · validating (running) · run: 01NEW
