@@ -1532,9 +1532,17 @@ busy_turn_bound_check() {  # <window> <task> <hash> <since-file> <escalation-fil
   return 1
 }
 
-clear_pause_state() {  # <window-key>
+# The optional second argument "keep-throttle" drops the pane-scoped pause flag
+# and recheck but keeps the re-surface throttle. Pass it wherever the crew merely
+# read as working or busy while its status log still carries the same declared
+# wait: the throttle is bound to that declaration's signature and the cadence
+# window, so a new declaration can never inherit it, whereas erasing it let a
+# working/inconclusive flicker count every inconclusive read as a first sight
+# (the 2026-10-03 parked-scout alarm loop). Only an ended declaration clears it.
+clear_pause_state() {  # <window-key> [keep-throttle]
   local key=$1
-  rm -f "$STATE/.paused-$key" "$STATE/.paused-rechecked-$key" "$STATE/.paused-resurfaced-$key"
+  rm -f "$STATE/.paused-$key" "$STATE/.paused-rechecked-$key"
+  [ "${2-}" = keep-throttle ] || rm -f "$STATE/.paused-resurfaced-$key"
 }
 
 # The hash-scoped half of clear_pause_tracking: the stale suppressor, its wedge
@@ -1549,9 +1557,9 @@ clear_stale_hash_tracking() {  # <window-key>
     "$STATE/.waiting-resurfaced-$key"
 }
 
-clear_pause_tracking() {  # <window-key>
+clear_pause_tracking() {  # <window-key> [keep-throttle]
   local key=$1
-  clear_pause_state "$key"
+  clear_pause_state "$key" "${2-}"
   clear_stale_hash_tracking "$key"
 }
 
@@ -2854,7 +2862,7 @@ EOF
             task=$(window_to_task "$w" "$STATE")
             case "$(pause_state_class "$w" "$task")" in
               working)
-                clear_pause_tracking "$key"
+                clear_pause_tracking "$key" keep-throttle
                 printf '%s' "$h" > "$sf"
                 date +%s > "$ssf"
                 triage_log "absorbed non-terminal stale (provably working): $w"
@@ -2871,7 +2879,7 @@ EOF
             if [ -e "$pf" ] || status_is_paused_or_captain_held "$(last_status_line "$STATE/$task.status")"; then
               case "$(pause_state_class "$w" "$task")" in
                 paused)  handle_paused_stale "$w" "$task" "$h" ;;
-                working) clear_pause_state "$key"
+                working) clear_pause_state "$key" keep-throttle
                          printf '%s' "$h" > "$sf"
                          wedge_timer_check "$w" "$ssf" "non-terminal stale (provably working after a declared pause)" "$ewf" "$task" "$h"
                          triage_log "absorbed non-terminal stale (provably working): $w" ;;
@@ -2899,7 +2907,7 @@ EOF
         # recorded it, or the re-surface throttle it depends on would be erased and
         # the pause would re-surface every poll instead of once per long cadence.
         if [ "$paused_bound" -ne 0 ] && [ -e "$pf" ] && { [ "$n" -ge 2 ] || ! status_is_paused_or_captain_held "$(last_status_line "$STATE/$(window_to_task "$w" "$STATE").status")"; }; then
-          clear_pause_tracking "$key"
+          clear_pause_tracking "$key" keep-throttle
         fi
       fi
     else
@@ -2925,12 +2933,12 @@ EOF
           # hash reaches surface_nonterminal_stale below, so the whole declared
           # wait would re-alarm far inside PAUSE_RESURFACE_SECS.
           none)   clear_stale_hash_tracking "$key" ;;
-          *)      clear_pause_tracking "$key" ;;
+          *)      clear_pause_tracking "$key" keep-throttle ;;
         esac
       elif [ "$paused_bound" -ne 0 ] && [ -e "$pf" ]; then
         # Same rule as the stable-hash branch: never clear pause bookkeeping the
         # declared-pause cadence recorded on this very poll.
-        clear_pause_tracking "$key"
+        clear_pause_tracking "$key" keep-throttle
       fi
     fi
   done < <(recorded_windows)
