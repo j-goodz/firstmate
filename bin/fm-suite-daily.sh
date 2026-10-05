@@ -112,6 +112,17 @@ is_key() {
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
+# hash_ids: first 12 chars of a portable hash of stdin.
+hash_ids() {
+  if command -v sha256sum > /dev/null 2>&1; then
+    sha256sum | cut -c1-12
+  elif command -v shasum > /dev/null 2>&1; then
+    shasum -a 256 | cut -c1-12
+  elif command -v cksum > /dev/null 2>&1; then
+    cksum | awk '{print $1}' | cut -c1-12
+  fi
+}
+
 log_line() {  # <json>
   { mkdir -p "$(dirname "$LOG_FILE")" && printf '%s\n' "$1" >> "$LOG_FILE"; } 2> /dev/null || true
 }
@@ -223,10 +234,12 @@ cmd_run() {
   daily="$STATE_DIR/daily/$key"
   mkdir -p "$daily"
   exec {run_fd}>> "$daily/run.lock" || skip no-checkout "$sha"
-  flock -n "$run_fd" || skip already-running "$sha"
+  if command -v flock > /dev/null 2>&1; then
+    flock -n "$run_fd" || skip already-running "$sha"
+  fi
   for stale in "$daily"/wt.*; do
     [ -e "$stale" ] || continue
-    git -C "$src" worktree remove --force "$stale" > /dev/null 2>&1
+    git -C "$src" worktree remove --force "$stale/wt" > /dev/null 2>&1
     rm -rf "$stale"
   done
   git -C "$src" worktree prune > /dev/null 2>&1
@@ -250,7 +263,7 @@ cmd_run() {
   rm -f "$rcfile"
   # shellcheck disable=SC2016  # the runner is a bash -c program, expanded there
   run_inner='cd "$1" || exit 126; export FM_DAILY_SRC="$2" FM_SUITE_SLOT_HELD=1; nice -n 19 timeout -k 5 "$4" bash -c "$5"; echo $? > "$3"'
-  if [ "$base" -gt 0 ]; then
+  if [ "$base" -gt 0 ] && command -v flock > /dev/null 2>&1; then
     "$SLOT" run --key "daily-$key" --wait-secs "$slot_wait" --poll-secs 5 -- \
       bash -c "$run_inner" _ "$wt" "$src" "$rcfile" "$secs" "$command" {run_fd}>&- 2>&1 | tee "$logfile" >&2
   else
@@ -290,7 +303,7 @@ alert_for() {
   sha=$(jq -r '.sha' <<< "$result")
   ids=$(jq -r '(.failed_ids // []) | sort | .[]' <<< "$result")
   n=$(jq -r '.failures // 0' <<< "$result")
-  sig="suite-daily:$key:$sha:$(printf '%s\n' "$ids" | md5sum | cut -c1-12)"
+  sig="suite-daily:$key:$sha:$(printf '%s\n' "$ids" | hash_ids)"
   first=$(printf '%s\n' "$ids" | head -n3 | paste -sd, - | sed 's/,/, /g')
   more=''
   [ "$n" -le 3 ] || more=", +$((n - 3)) more"

@@ -137,6 +137,26 @@ test_a_failure_alerts_once_per_failing_set() {
     pass "a failure calls the alert command with a sig that depends on the failing set"
 }
 
+test_a_failure_alerts_once_per_failing_set_without_md5sum() {
+    local sig1 sig2 sig3 sans
+    new_case nomd5
+    sans=$(fm_test_base_path_sans "$PATH" md5sum)
+    reply swift 0 fail tests/x.test.sh tests/y.test.sh
+    PATH="$sans" "$DAILY" dispatch --repo a > /dev/null 2>&1
+    sig1=$(sed -n 4p "$CASE/alerts")
+    assert_not_equals "suite-daily:a:0123456789abcdef0123456789abcdef01234567:" "$sig1" "the sig must not collapse to an empty hash"
+    : > "$CASE/alerts"
+    PATH="$sans" "$DAILY" dispatch --repo a > /dev/null 2>&1
+    sig2=$(sed -n 4p "$CASE/alerts")
+    assert_equals "$sig1" "$sig2" "the same failing set must give the same sig without md5sum"
+    reply swift 0 fail tests/x.test.sh tests/z.test.sh
+    : > "$CASE/alerts"
+    PATH="$sans" "$DAILY" dispatch --repo a > /dev/null 2>&1
+    sig3=$(sed -n 4p "$CASE/alerts")
+    assert_not_equals "$sig1" "$sig3" "a different failing set must give a different sig without md5sum"
+    pass "without md5sum a failure still alerts once per failing set"
+}
+
 assert_json_has_alerted_true() {  # <log>
     jq -s -e 'any(.[]; .event == "dispatch" and .alerted == true)' "$1" > /dev/null || fail "no dispatch line with alerted true: $(cat "$1")"
 }
@@ -249,6 +269,7 @@ test_the_first_machine_that_runs_it_ends_the_search
 test_an_unreachable_machine_falls_through_to_the_next
 test_repo_selection
 test_a_failure_alerts_once_per_failing_set
+test_a_failure_alerts_once_per_failing_set_without_md5sum
 test_a_pass_does_not_alert
 test_no_alert_command_still_logs_the_failure
 test_every_machine_skipping_is_logged_and_exits_zero

@@ -211,6 +211,20 @@ test_a_second_run_of_one_key_while_the_first_holds_the_lock_is_skipped() {
     pass "a second run of one key while the first holds the lock is skipped already-running"
 }
 
+test_a_host_without_flock_runs_ungated() {
+    local sans
+    new_case noflock fm-test 'echo "FM_TEST_END 2026-10-05T00:00:00Z tests/a.test.sh exit=0 duration_ms=1 gate_skip=false"'
+    export FM_SUITE_SLOTS=1
+    sans=$(fm_test_base_path_sans "$PATH" flock)
+    PATH="$sans" "$DAILY" run proj > "$CASE/out" 2> "$CASE/err"
+    RC=$?
+    RESULT=$(grep '^RESULT ' "$CASE/out" | tail -n1)
+    RESULT=${RESULT#RESULT }
+    expect_code 0 "$RC" "a host without flock still runs the suite"
+    assert_json "$RESULT" '.status == "pass"' "the suite ran and passed without flock"
+    pass "a host without flock runs the daily suite ungated instead of reporting already-running"
+}
+
 test_sequential_runs_of_one_key_keep_their_own_status() {
     local rc1 rc2 r1 r2
     new_case seqstatus fm-test 'if [ "${FM_TEST_EXPECT:-pass}" = fail ]; then echo "FM_TEST_END 2026-10-05T00:00:00Z tests/b.test.sh exit=1 duration_ms=1 gate_skip=false"; exit 1; fi; echo "FM_TEST_END 2026-10-05T00:00:00Z tests/a.test.sh exit=0 duration_ms=1 gate_skip=false"'
@@ -232,13 +246,13 @@ test_a_leftover_checkout_from_a_killed_run_is_swept() {
     local left
     new_case stale fm-test 'echo "FM_TEST_END 2026-10-05T00:00:00Z tests/a.test.sh exit=0 duration_ms=1 gate_skip=false"'
     left="$CASE/state/daily/proj/wt.killed"
-    mkdir -p "$CASE/state/daily/proj"
-    git -C "$SRC" worktree add --detach --quiet "$left" "$SHA"
+    mkdir -p "$left"
+    git -C "$SRC" worktree add --detach --quiet "$left/wt" "$SHA"
     assert_equals 2 "$(git -C "$SRC" worktree list | wc -l | tr -d ' ')" "the leftover worktree is registered"
     daily_run proj
     expect_code 0 "$RC" "the next run still passes"
     assert_json "$RESULT" '.status == "pass"' "the run passed"
-    assert_absent "$left" "the leftover checkout must be swept"
+    assert_absent "$left" "the leftover run directory must be swept"
     assert_equals 1 "$(git -C "$SRC" worktree list | wc -l | tr -d ' ')" "no worktree left in the clone"
     pass "a leftover checkout from a killed run is swept on the next run"
 }
@@ -331,6 +345,7 @@ test_the_suite_is_time_bounded
 test_a_busy_slot_skips_the_run
 test_the_suite_runs_in_a_detached_checkout
 test_a_second_run_of_one_key_while_the_first_holds_the_lock_is_skipped
+test_a_host_without_flock_runs_ungated
 test_sequential_runs_of_one_key_keep_their_own_status
 test_a_leftover_checkout_from_a_killed_run_is_swept
 test_run_refuses_an_invalid_repo_key
