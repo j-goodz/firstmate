@@ -4,11 +4,14 @@
 #
 # Usage:
 #   fm-calls-page.sh render [--if-present]
-#   fm-calls-page.sh arm [--reopen]
+#   fm-calls-page.sh arm [--reopen | --new]
 #   fm-calls-page.sh apply <result-file>
 #
 # render   Collect every open captain call and write data/open-calls/calls.html
-#          atomically. A call is open when its task is held for the captain
+#          atomically, unless a page is armed (see arm): the armed page is the
+#          one the captain has open, so it is never rewritten, and render then
+#          writes data/open-calls/calls-preview.html instead, a file that is
+#          never armed and exists only for checks. A call is open when its task is held for the captain
 #          (hold kind captain, not Done) and its hold-until date is absent,
 #          today, or past. A hold-until date still in the future makes the call
 #          parked: it is listed only by title and date in a collapsed list.
@@ -59,17 +62,29 @@
 #          the reader's finger. The collapsed marker is keyed to the page build,
 #          so the next re-render leaves every still-open card answerable again,
 #          and a talk save (nothing recorded) writes no persistent marker at all.
-#          --if-present makes render a silent no-op when the page does not exist
-#          yet, which is how bin/fm-captain-hold.sh calls it after every
-#          successful mutation (best effort: a failed re-render never fails the
-#          mutation). Lavish live-reloads an artifact when its file changes, so
-#          an open review page refreshes without any extra step.
+#          --if-present makes render a silent no-op when no page exists yet or
+#          when the page is armed, which is how bin/fm-captain-hold.sh and
+#          bin/fm-send.sh call it after every successful mutation (best effort:
+#          a failed re-render never fails the mutation). Lavish live-reloads an
+#          artifact when its file changes, which would reset whatever the
+#          captain is doing on it, so nothing rewrites a page once it is armed.
 #          Prints `rendered: <path> open=<n> parked=<n>`.
 # arm      Render the page if it is missing, open or resume its Lavish session
 #          (`lavish-axi <page>`; --reopen only when the captain asks to reopen a
-#          session he ended), and arm it through bin/fm-procevent-lavish.sh arm.
-#          Idempotent: resuming an open session changes nothing, and arming
-#          again republishes the same registration for the same source.
+#          session he ended), arm it through bin/fm-procevent-lavish.sh arm, and
+#          record it as the armed page in data/open-calls/armed (page path and
+#          link). Idempotent: with an armed page, arm resumes that same file and
+#          session without rendering, and arming again republishes the same
+#          registration for the same source.
+#          --new is the only way a fresh page is built: it renders the current
+#          calls into a NEW file data/open-calls/calls-<build time>.html, opens
+#          and arms a NEW board for it, and records it as the armed page. The
+#          old page file and its board are left exactly as they were, so the old
+#          link keeps working until he leaves it. When a page was armed before,
+#          it prints `replaced: <old page> <old link>` and a `note for
+#          firstmate:` line to relay: tell the captain a new page replaced the
+#          old one, with its link. Run it only when the captain should get a new
+#          page, never to refresh the old one behind his back.
 # apply    Apply each open-call-answer.v1 item in a captured Lavish result (read
 #          through bin/fm-procevent-lavish.sh read; the last save per call
 #          wins) to the call's owning home through bin/fm-captain-hold.sh:
@@ -97,7 +112,10 @@
 #          retried at the start of the next apply. The reserved value
 #          `reconcile` is reported `refused:` and never applied. Then the
 #          page is re-rendered best effort (a failed rebuild is a warning, never
-#          a failed apply). Exit 1 only when a recording command failed.
+#          a failed apply) unless it is armed, in which case it is left alone:
+#          the page's own Saved and collapse state already shows his progress,
+#          and a rewrite would reload it under him. Exit 1 only when a
+#          recording command failed.
 #
 # Every render and applied item appends one JSON line to state/calls-page.jsonl
 # (capped to its newest 2000 lines).
@@ -106,7 +124,8 @@
 # time) pin the clock; FM_CALLS_PAGE_REMOTE_TIMEOUT bounds each remote read
 # (default 30 seconds); FM_CALLS_PAGE_FM_ON, FM_CALLS_PAGE_FM_SEND and
 # FM_CALLS_PAGE_CAPTAIN_HOLD replace the transport, the second-mate send, and
-# the captain-hold command (test seams).
+# the captain-hold command, and FM_CALLS_PAGE_PROCEVENT_LAVISH replaces the
+# Lavish arming adapter (test seams).
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -126,12 +145,15 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 
 PAGE="$DATA/open-calls/calls.html"
 CURATED="$DATA/open-calls/calls.json"
+ARMED="$DATA/open-calls/armed"
+PREVIEW="$DATA/open-calls/calls-preview.html"
 LOG="$STATE/calls-page.jsonl"
 UNDELIVERED="$STATE/calls-page-undelivered.tsv"
 HELPER="$SCRIPT_DIR/fm-calls-page.py"
 CAPTAIN_HOLD="${FM_CALLS_PAGE_CAPTAIN_HOLD:-$SCRIPT_DIR/fm-captain-hold.sh}"
 FM_ON="${FM_CALLS_PAGE_FM_ON:-$SCRIPT_DIR/fm-on.sh}"
 FM_SEND="${FM_CALLS_PAGE_FM_SEND:-$SCRIPT_DIR/fm-send.sh}"
+PROCEVENT_LAVISH="${FM_CALLS_PAGE_PROCEVENT_LAVISH:-$SCRIPT_DIR/fm-procevent-lavish.sh}"
 REMOTE_TIMEOUT=${FM_CALLS_PAGE_REMOTE_TIMEOUT:-30}
 TODAY=${FM_CALLS_PAGE_TODAY:-$(date -u +%Y-%m-%d)}
 NOW=${FM_CALLS_PAGE_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
@@ -248,15 +270,33 @@ collect() {
   done < "$reg"
 }
 
-do_render() {
-  local out started errors
+# The page the captain has open: the file `arm` recorded, while it still exists.
+# Sets ARMED_PAGE and ARMED_LINK.
+ARMED_PAGE=
+ARMED_LINK=
+armed_page() {
+  ARMED_PAGE=
+  ARMED_LINK=
+  [ -f "$ARMED" ] && [ ! -L "$ARMED" ] || return 1
+  { IFS= read -r ARMED_PAGE; IFS= read -r ARMED_LINK; } < "$ARMED" || true
+  [ -n "$ARMED_PAGE" ] && [ -f "$ARMED_PAGE" ]
+}
+
+record_armed() {  # <page> <link>
+  if ! { printf '%s\n%s\n' "$1" "$2" > "$ARMED.tmp" && mv -f -- "$ARMED.tmp" "$ARMED"; }; then
+    die "cannot record the armed page in $ARMED"
+  fi
+}
+
+do_render() {  # [target-file]
+  local out started errors target=${1:-$PAGE}
   started=$(date +%s)
   mkdir -p "$DATA/open-calls" || die "cannot create $DATA/open-calls"
   collect
-  out=$(python3 "$HELPER" render "$WORK/manifest.jsonl" "$TODAY" "$NOW" "$PAGE" "$CURATED" 2>"$WORK/render.err") \
+  out=$(python3 "$HELPER" render "$WORK/manifest.jsonl" "$TODAY" "$NOW" "$target" "$CURATED" 2>"$WORK/render.err") \
     || die "the calls page could not be written: $(tail -1 "$WORK/render.err")"
   errors=$(jq -s '[.[] | select(.error != null)] | length' "$WORK/manifest.jsonl")
-  printf 'rendered: %s %s\n' "$PAGE" "$out"
+  printf 'rendered: %s %s\n' "$target" "$out"
   log_event --arg event render --arg counts "$out" --arg unreadable_homes "$errors" \
     --arg seconds "$(( $(date +%s) - started ))"
 }
@@ -276,29 +316,51 @@ cmd_render() {
     esac
     shift
   done
-  if [ "$if_present" = 1 ] && [ ! -f "$PAGE" ]; then
+  if [ "$if_present" = 1 ] && [ ! -f "$PAGE" ] && [ ! -f "$ARMED" ]; then
     return 0
   fi
   start_work
+  if armed_page; then
+    [ "$if_present" = 0 ] || return 0
+    do_render "$PREVIEW"
+    return
+  fi
   do_render
 }
 
 cmd_arm() {
-  local reopen=0 opened link
+  local reopen=0 fresh=0 opened link target stamp n=1 old_page='' old_link=''
   local -a open_args=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --reopen) reopen=1 ;;
+      --new) fresh=1 ;;
       *) usage >&2; exit 2 ;;
     esac
     shift
   done
+  [ "$reopen" = 0 ] || [ "$fresh" = 0 ] || { usage >&2; exit 2; }
   command -v lavish-axi >/dev/null 2>&1 || die "lavish-axi is not installed"
-  if [ ! -f "$PAGE" ]; then
-    start_work
-    do_render
+  start_work
+  if armed_page; then
+    old_page=$ARMED_PAGE
+    old_link=$ARMED_LINK
   fi
-  open_args=("$PAGE")
+  if [ "$fresh" = 1 ]; then
+    stamp=$(printf '%s' "$NOW" | tr -d ':-')
+    target="$DATA/open-calls/calls-$stamp.html"
+    while [ -e "$target" ]; do
+      n=$((n + 1))
+      target="$DATA/open-calls/calls-$stamp-$n.html"
+    done
+    do_render "$target"
+  elif [ -n "$old_page" ]; then
+    target=$old_page
+  else
+    target=$PAGE
+    [ -f "$target" ] || do_render "$target"
+  fi
+  open_args=("$target")
   [ "$reopen" = 0 ] || open_args+=(--reopen)
   opened=$(lavish-axi "${open_args[@]}" 2>&1) \
     || die "Lavish did not open the page: $(printf '%s\n' "$opened" | head -3 | tr '\n' ' ')"
@@ -307,7 +369,14 @@ cmd_arm() {
     link=$(lavish-sys url "$link" 2>/dev/null || printf '%s' "$link")
   fi
   [ -z "$link" ] || printf 'link: %s\n' "$link"
-  FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-procevent-lavish.sh" arm "$PAGE"
+  record_armed "$target" "$link"
+  log_event --arg event arm --arg page "$target" --arg fresh "$fresh" --arg replaced "$old_page"
+  if [ "$fresh" = 1 ] && [ -n "$old_page" ]; then
+    printf 'replaced: %s %s\n' "$old_page" "$old_link"
+    printf 'note for firstmate: tell the captain a new page replaced the old one (new link: %s, old link: %s); the old page is unchanged and its link keeps working until he leaves it\n' \
+      "${link:-none}" "${old_link:-none}"
+  fi
+  FM_HOME="$FM_HOME" "$PROCEVENT_LAVISH" arm "$target"
 }
 
 # The owning home of a call: "local", a local second mate, or a remote one.
@@ -434,9 +503,14 @@ route_text() {  # <kind> <answer> <note>
   esac
 }
 
-# Rebuild the page best effort: a failed rebuild is a warning, never a failed
-# apply. bin/fm-captain-hold.sh's mutation hook is the same policy.
+# Rebuild an unarmed page best effort: a failed rebuild is a warning, never a
+# failed apply. bin/fm-captain-hold.sh's mutation hook is the same policy.
 render_after_apply() {
+  # An armed page is the one the captain has open; rewriting it reloads it under him.
+  if armed_page; then
+    log_event --arg event render-skipped --arg reason armed --arg page "$ARMED_PAGE"
+    return 0
+  fi
   if ( do_render 2>"$WORK/apply-render.err" ); then
     [ -s "$WORK/apply-render.err" ] && cat "$WORK/apply-render.err" >&2
   else

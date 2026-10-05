@@ -65,9 +65,10 @@ Trusted external process-event adapters intentionally expose no answer operation
 ## The open-calls page
 
 `bin/fm-calls-page.sh` generates the captain's open-calls page from these held tasks across this home and its second mates, so an answered call leaves the page whichever channel answered it; its header owns selection, grouping, the `call-options:` body block, and how a saved answer is recorded.
-Every successful `hold`, `answer`, `answers`, and `reconcile` mutation rebuilds an existing page best effort, and `bin/fm-send.sh --resolve-key` rebuilds it when it closes a second mate's `captain-hold-<task>-<n>` key.
+Every successful `hold`, `answer`, `answers`, and `reconcile` mutation rebuilds an existing unarmed page best effort, and `bin/fm-send.sh --resolve-key` does the same when it closes a second mate's `captain-hold-<task>-<n>` key.
+An armed page, the one the captain has open, is never rewritten by any of these or by `apply`, because Lavish reloads a changed page under him; only `bin/fm-calls-page.sh arm --new` builds a fresh page, as a new file and board, and prints the note firstmate relays so he is told a new page replaced the old one.
 A page answer is applied through `bin/fm-calls-page.sh apply` rather than the bound keyed-answer path, because it also parks calls and reaches remote homes; its cards tag prompts `call-answer`, never `choice`, so the two paths cannot both apply one save.
-`tests/fm-calls-page.test.sh` pins selection, grouping, answer mapping, and the rebuild hook.
+`tests/fm-calls-page.test.sh` pins selection, grouping, answer mapping, the rebuild hook, and the armed-page rule.
 
 ## Reconcile: re-check reality, never a blind close
 
