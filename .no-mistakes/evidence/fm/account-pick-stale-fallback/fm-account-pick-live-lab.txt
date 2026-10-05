@@ -1,0 +1,90 @@
+captured scenario stdout/stderr/logs follow
+
+===== s0_incident =====
+-- stdout --
+account=account-3
+config_dir=/tmp/apick-lab.wX5t9E/s0_incident/account-3
+reason=stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings
+-- stderr --
+warning: fm-account-pick.sh: stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings
+-- log (last row) --
+{"stale_fallback":true,"chosen":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s0_incident/account-3","fallback":true,"refused":false,"reason":"stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings","ts":"2026-10-03T01:20:00Z","epoch":1790990400,"task":"t-1","five_hour_max":85,"weekly_max":98,"max_age_s":900,"snapshot":"/tmp/apick-lab.wX5t9E/s0_incident/usage-snapshot.json","reserve_file":null,"accounts":[{"label":"account-1","config_dir":"/tmp/apick-lab.wX5t9E/s0_incident/account-1","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":95,"weekly_resets_at":"2026-10-07T01:20:00.123456+00:00","hours_to_weekly_reset":96,"age_s":1200,"score":null},{"label":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s0_incident/account-3","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":40,"weekly_resets_at":"2026-10-04T01:20:00.123456+00:00","hours_to_weekly_reset":24,"age_s":1200,"score":null}]}
+
+===== s1 =====
+-- stdout --
+account=account-3
+config_dir=/tmp/apick-lab.wX5t9E/s1/account-3
+reason=stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings
+-- stderr --
+warning: fm-account-pick.sh: stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings
+-- log (last row) --
+{"stale_fallback":true,"chosen":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s1/account-3","fallback":true,"refused":false,"reason":"stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings","ts":"2026-10-03T01:20:00Z","epoch":1790990400,"task":"t-1","five_hour_max":85,"weekly_max":98,"max_age_s":900,"snapshot":"/tmp/apick-lab.wX5t9E/s1/usage-snapshot.json","reserve_file":null,"accounts":[{"label":"account-1","config_dir":"/tmp/apick-lab.wX5t9E/s1/account-1","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":50,"weekly_resets_at":"2026-10-07T01:20:00.123456+00:00","hours_to_weekly_reset":96,"age_s":1200,"score":null},{"label":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s1/account-3","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":24,"weekly_resets_at":"2026-10-04T01:20:00.123456+00:00","hours_to_weekly_reset":24,"age_s":1200,"score":null}]}
+
+===== s2 =====
+-- stdout --
+account=account-1
+config_dir=/tmp/apick-lab.wX5t9E/s2/account-1
+reason=stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); kept the parent account
+-- stderr --
+warning: fm-account-pick.sh: stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); kept the parent account
+-- log (last row) --
+{"stale_fallback":true,"chosen":"account-1","config_dir":"/tmp/apick-lab.wX5t9E/s2/account-1","fallback":true,"refused":false,"reason":"stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); kept the parent account","ts":"2026-10-03T01:20:00Z","epoch":1790990400,"task":"t-1","five_hour_max":85,"weekly_max":98,"max_age_s":900,"snapshot":"/tmp/apick-lab.wX5t9E/s2/usage-snapshot.json","reserve_file":null,"accounts":[{"label":"account-1","config_dir":"/tmp/apick-lab.wX5t9E/s2/account-1","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":50,"weekly_resets_at":"2026-10-07T01:20:00.123456+00:00","hours_to_weekly_reset":96,"age_s":1200,"score":null},{"label":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s2/account-3","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":24,"weekly_resets_at":"2026-10-04T01:20:00.123456+00:00","hours_to_weekly_reset":24,"age_s":1200,"score":null}]}
+
+===== s3 =====
+-- stdout --
+account=inherited
+config_dir=/tmp/apick-lab.wX5t9E/s3/other-store
+reason=stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); kept the parent account
+-- stderr --
+warning: fm-account-pick.sh: stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); kept the parent account
+-- log (last row) --
+{"stale_fallback":true,"chosen":"inherited","config_dir":"/tmp/apick-lab.wX5t9E/s3/other-store","fallback":true,"refused":false,"reason":"stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); kept the parent account","ts":"2026-10-03T01:20:00Z","epoch":1790990400,"task":"t-1","five_hour_max":85,"weekly_max":98,"max_age_s":900,"snapshot":"/tmp/apick-lab.wX5t9E/s3/usage-snapshot.json","reserve_file":null,"accounts":[{"label":"account-1","config_dir":"/tmp/apick-lab.wX5t9E/s3/account-1","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":50,"weekly_resets_at":"2026-10-07T01:20:00.123456+00:00","hours_to_weekly_reset":96,"age_s":1200,"score":null},{"label":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s3/account-3","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":24,"weekly_resets_at":"2026-10-04T01:20:00.123456+00:00","hours_to_weekly_reset":24,"age_s":1200,"score":null}]}
+
+===== s4 =====
+-- stdout --
+account=account-1
+config_dir=/tmp/apick-lab.wX5t9E/s4/account-1
+reason=account-1: 50% weekly left, resets in 96h (0.52%/h), 5h 10%; others: account-3 unknown-stale
+-- stderr --
+-- log (last row) --
+{"stale_fallback":false,"chosen":"account-1","config_dir":"/tmp/apick-lab.wX5t9E/s4/account-1","fallback":false,"refused":false,"reason":"account-1: 50% weekly left, resets in 96h (0.52%/h), 5h 10%; others: account-3 unknown-stale","ts":"2026-10-03T01:20:00Z","epoch":1790990400,"task":"t-1","five_hour_max":85,"weekly_max":98,"max_age_s":900,"snapshot":"/tmp/apick-lab.wX5t9E/s4/usage-snapshot.json","reserve_file":null,"accounts":[{"label":"account-1","config_dir":"/tmp/apick-lab.wX5t9E/s4/account-1","signin":true,"status":"eligible","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":50,"weekly_resets_at":"2026-10-07T01:20:00.123456+00:00","hours_to_weekly_reset":96,"age_s":30,"score":0.520833},{"label":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s4/account-3","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":24,"weekly_resets_at":"2026-10-04T01:20:00.123456+00:00","hours_to_weekly_reset":24,"age_s":1200,"score":null}]}
+
+===== s5 =====
+-- stdout --
+account=inherited
+config_dir=/tmp/apick-lab.wX5t9E/s5/inherited
+reason=fallback: no eligible account (account-1 excluded-5h, account-3 unknown-stale); kept the current account
+-- stderr --
+-- log (last row) --
+{"stale_fallback":false,"chosen":"inherited","config_dir":"/tmp/apick-lab.wX5t9E/s5/inherited","fallback":true,"refused":false,"reason":"fallback: no eligible account (account-1 excluded-5h, account-3 unknown-stale); kept the current account","ts":"2026-10-03T01:20:00Z","epoch":1790990400,"task":"t-1","five_hour_max":85,"weekly_max":98,"max_age_s":900,"snapshot":"/tmp/apick-lab.wX5t9E/s5/usage-snapshot.json","reserve_file":null,"accounts":[{"label":"account-1","config_dir":"/tmp/apick-lab.wX5t9E/s5/account-1","signin":true,"status":"excluded-5h","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":90,"weekly_pct":50,"weekly_resets_at":"2026-10-07T01:20:00.123456+00:00","hours_to_weekly_reset":96,"age_s":30,"score":null},{"label":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s5/account-3","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":24,"weekly_resets_at":"2026-10-04T01:20:00.123456+00:00","hours_to_weekly_reset":24,"age_s":1200,"score":null}]}
+
+===== s6 =====
+-- stdout --
+account=account-3
+config_dir=/tmp/apick-lab.wX5t9E/s6/account-3
+reason=stale-fallback: the usage snapshot of every usable account is older than 900s (account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings
+-- stderr --
+warning: fm-account-pick.sh: stale-fallback: the usage snapshot of every usable account is older than 900s (account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings
+-- log (last row) --
+{"stale_fallback":true,"chosen":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s6/account-3","fallback":true,"refused":false,"reason":"stale-fallback: the usage snapshot of every usable account is older than 900s (account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings","ts":"2026-10-03T01:20:00Z","epoch":1790990400,"task":"t-1","five_hour_max":85,"weekly_max":98,"max_age_s":900,"snapshot":"/tmp/apick-lab.wX5t9E/s6/usage-snapshot.json","reserve_file":"/tmp/apick-lab.wX5t9E/s6/account-reserve","accounts":[{"label":"account-1","config_dir":"/tmp/apick-lab.wX5t9E/s6/account-1","signin":true,"status":"excluded-reserve","reserved":true,"reserve_until":1790997600,"reserve_until_local":"2026-10-02 23:20 EDT","reserve_source":"file","five_hour_pct":10,"weekly_pct":24,"weekly_resets_at":"2026-10-04T01:20:00.123456+00:00","hours_to_weekly_reset":24,"age_s":1200,"score":null},{"label":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s6/account-3","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":50,"weekly_resets_at":"2026-10-07T01:20:00.123456+00:00","hours_to_weekly_reset":96,"age_s":1200,"score":null}]}
+
+===== s7 =====
+-- stdout --
+account=account-3
+config_dir=/tmp/apick-lab.wX5t9E/s7/account-3
+reason=stale-fallback: the usage snapshot of every usable account is older than 900s (account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings
+-- stderr --
+warning: fm-account-pick.sh: stale-fallback: the usage snapshot of every usable account is older than 900s (account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings
+-- log (last row) --
+{"stale_fallback":true,"chosen":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s7/account-3","fallback":true,"refused":false,"reason":"stale-fallback: the usage snapshot of every usable account is older than 900s (account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings","ts":"2026-10-03T01:20:00Z","epoch":1790990400,"task":"t-1","five_hour_max":85,"weekly_max":98,"max_age_s":900,"snapshot":"/tmp/apick-lab.wX5t9E/s7/usage-snapshot.json","reserve_file":null,"accounts":[{"label":"account-1","config_dir":"/tmp/apick-lab.wX5t9E/s7/account-1","signin":false,"status":"excluded-signin","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":24,"weekly_resets_at":"2026-10-04T01:20:00.123456+00:00","hours_to_weekly_reset":24,"age_s":1200,"score":null},{"label":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s7/account-3","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":50,"weekly_resets_at":"2026-10-07T01:20:00.123456+00:00","hours_to_weekly_reset":96,"age_s":1200,"score":null}]}
+
+===== s8 =====
+-- stdout --
+account=account-3
+config_dir=/tmp/apick-lab.wX5t9E/s8/account-3
+reason=stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings
+-- stderr --
+warning: fm-account-pick.sh: /tmp/apick-lab.wX5t9E/s8/account-reserve line 1 is not '<account number or label> <until epoch>' for a configured account; it reserves nothing
+warning: fm-account-pick.sh: stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings
+-- log (last row) --
+{"stale_fallback":true,"chosen":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s8/account-3","fallback":true,"refused":false,"reason":"stale-fallback: the usage snapshot of every usable account is older than 900s (account-1 unknown-stale, account-3 unknown-stale); no parent account is known, so took account-3 by its stale readings","ts":"2026-10-03T01:20:00Z","epoch":1790990400,"task":"t-1","five_hour_max":85,"weekly_max":98,"max_age_s":900,"snapshot":"/tmp/apick-lab.wX5t9E/s8/usage-snapshot.json","reserve_file":"/tmp/apick-lab.wX5t9E/s8/account-reserve","accounts":[{"label":"account-1","config_dir":"/tmp/apick-lab.wX5t9E/s8/account-1","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":50,"weekly_resets_at":"2026-10-07T01:20:00.123456+00:00","hours_to_weekly_reset":96,"age_s":1200,"score":null},{"label":"account-3","config_dir":"/tmp/apick-lab.wX5t9E/s8/account-3","signin":true,"status":"unknown-stale","reserved":false,"reserve_until":null,"reserve_until_local":null,"reserve_source":null,"five_hour_pct":10,"weekly_pct":24,"weekly_resets_at":"2026-10-04T01:20:00.123456+00:00","hours_to_weekly_reset":24,"age_s":1200,"score":null}]}

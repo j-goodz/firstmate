@@ -1,0 +1,32 @@
+ok - absent config keeps today's behavior: no pick, no log
+ok - at equal remaining weekly, the account whose allowance expires sooner is spent first
+ok - ranking is remaining weekly percent divided by hours to weekly reset
+ok - an account without 5-hour headroom is excluded
+ok - an account with its weekly allowance spent is excluded
+ok - a reading older than the age limit is treated as unknown
+ok - a reading whose outcome is not ok is treated as unknown
+ok - an account without a usable sign-in is excluded
+ok - an optional per-account sign-in file stands in for the credential store
+ok - ties break on lower 5-hour use
+ok - when every account is excluded or unknown, the current account is kept and logged
+ok - each pick appends one JSONL line with both accounts' numbers, age, choice, and reason
+ok - a malformed config is refused rather than silently ignored
+ok - --check validates without picking
+ok - a reserve window keeps its account out of weekday-morning picks and logs when it ends
+ok - a reserve window starts at its start time, ends before its end time, and skips weekends
+ok - a reserve window follows Toronto local time across the daylight-saving change
+ok - an overnight reserve window belongs to the weekday it opens on
+ok - a reserve file line holds an account out until its epoch and no longer
+ok - a missing reserve file or unusable lines in it reserve nothing and do not refuse
+ok - when a window and a file line both reserve an account, the later end wins
+ok - a reserved account is never used as the fallback; the pick refuses instead
+ok - with no eligible account and a reserved current account, the first signed-in unreserved account is used
+ok - no eligible account is held idle, the supervisor's included, and a full 5-hour window moves work over
+ok - reserve lines are validated with the rest of the config
+ok - a configured reserve that cannot be evaluated refuses rather than falling back
+ok - stale snapshot falls back to parent account
+ok - fresh snapshot unchanged by stale fallback
+ok - stale fallback with unknown parent chooses the best stale account, never the machine default
+ok - stale fallback with unconfigured parent keeps its store
+ok - stale and five hour excluded is not stale fallback
+# all fm-account-pick tests passed
