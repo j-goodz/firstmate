@@ -100,6 +100,13 @@ is_uint() {
   return 0
 }
 
+is_key() {
+  case "${1:-}" in
+    [A-Za-z0-9]*) case "$1" in *[!A-Za-z0-9._-]*) return 1 ;; esac; return 0 ;;
+  esac
+  return 1
+}
+
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 log_line() {  # <json>
@@ -114,6 +121,7 @@ config_entry() {
     case "$line" in '' | '#'* | ' '*'#'*) continue ;; esac
     [ "$(printf '%s' "$line" | tr -cd '|' | wc -c)" -ge 3 ] || continue
     k="${line%%|*}"
+    is_key "$k" || continue
     if [ "$k" = "$1" ]; then
       printf '%s\n' "$line"
       return 0
@@ -129,6 +137,7 @@ config_keys() {
     case "$line" in '' | '#'*) continue ;; esac
     [ "$(printf '%s' "$line" | tr -cd '|' | wc -c)" -ge 3 ] || continue
     k="${line%%|*}"
+    is_key "$k" || continue
     case "$seen" in *" $k "*) continue ;; esac
     seen="$seen$k "
     printf '%s\n' "$k"
@@ -172,6 +181,7 @@ cmd_run() {
   local key=${1:-} entry src format command sha status_line base tier avail cores load1 lpc limit floor
   local daily wt logfile idsfile rcfile secs slot_wait t0 rc outer reason json run_inner
   [ -n "$key" ] || bad_usage "run needs a KEY"
+  is_key "$key" || bad_usage "invalid repo key: $key"
   entry=$(config_entry "$key") || { say "$key is not configured on this machine ($CONFIG_FILE)"; exit 10; }
   IFS='|' read -r _ src format command <<< "$entry"
   git -C "$src" rev-parse --is-inside-work-tree > /dev/null 2>&1 || { say "$key: $src is not a git work tree"; exit 10; }
@@ -207,11 +217,12 @@ cmd_run() {
   sha=$(git -C "$src" rev-parse --verify --quiet "${FM_SUITE_DAILY_REF:-origin/main}^{commit}") || skip no-ref
 
   daily="$STATE_DIR/daily/$key"
-  wt="$daily/wt"
   logfile="$daily/last-run.log"
   idsfile="$daily/ids"
   rcfile="$daily/rc"
   mkdir -p "$daily"
+  wt=$(mktemp -d "$daily/wt.XXXXXX") || skip no-checkout "$sha"
+  # shellcheck disable=SC2329 # Registered by the EXIT trap below.
   drop_checkout() {
     git -C "$src" worktree remove --force "$wt" > /dev/null 2>&1
     rm -rf "$wt"
@@ -219,7 +230,6 @@ cmd_run() {
   }
   trap 'drop_checkout' EXIT
   trap 'exit 143' INT TERM
-  drop_checkout
   git -C "$src" worktree add --detach --quiet "$wt" "$sha" > /dev/null 2>&1 || skip no-checkout "$sha"
 
   secs="${FM_SUITE_DAILY_TIMEOUT_SECS:-7200}"
@@ -278,10 +288,10 @@ alert_for() {
 
 cmd_dispatch() {
   local -a repos=()
-  local dry=0 place_cmd place_json candidates ssh_cmd repo machine mate root out rc result tried status reason sha failures alerted line
+  local dry=0 place_cmd place_json candidates ssh_cmd repo machine mate root out rc result tried status reason sha failures alerted line remote_cmd
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --repo) [ "$#" -ge 2 ] || bad_usage "--repo needs a KEY"; repos+=("$2"); shift 2 ;;
+      --repo) [ "$#" -ge 2 ] || bad_usage "--repo needs a KEY"; is_key "$2" || bad_usage "invalid repo key: $2"; repos+=("$2"); shift 2 ;;
       --dry-run) dry=1; shift ;;
       *) bad_usage "unknown dispatch option: $1" ;;
     esac
@@ -319,7 +329,8 @@ cmd_dispatch() {
         out=$("$SCRIPT_DIR/fm-suite-daily.sh" run "$repo" 2> /dev/null < /dev/null)
         rc=$?
       else
-        out=$("$ssh_cmd" -o BatchMode=yes -o ConnectTimeout=5 "$cand" "$root/bin/fm-suite-daily.sh run $repo" 2> /dev/null < /dev/null)
+        printf -v remote_cmd '%q/bin/fm-suite-daily.sh run %q' "$root" "$repo"
+        out=$("$ssh_cmd" -o BatchMode=yes -o ConnectTimeout=5 "$cand" "$remote_cmd" 2> /dev/null < /dev/null)
         rc=$?
       fi
       line=$(printf '%s\n' "$out" | grep '^RESULT ' | tail -n1)

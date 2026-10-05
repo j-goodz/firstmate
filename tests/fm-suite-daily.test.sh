@@ -70,7 +70,8 @@ test_a_passing_suite_is_logged_and_the_checkout_removed() {
     assert_json "$RESULT" ".status == \"pass\" and .key == \"proj\" and .failures == 0 and .sha == \"$SHA\"" "RESULT line"
     assert_equals 1 "$(wc -l < "$FM_SUITE_DAILY_LOG" | tr -d ' ')" "one log line"
     assert_json "$(cat "$FM_SUITE_DAILY_LOG")" '.event == "daily-run" and .status == "pass" and (.host | length) > 0' "log line"
-    assert_absent "$FM_SUITE_STATE_DIR/daily/proj/wt" "the checkout must be removed"
+    local -a leftover=("$FM_SUITE_STATE_DIR"/daily/proj/wt.*)
+    assert_equals "$FM_SUITE_STATE_DIR/daily/proj/wt.*" "${leftover[0]}" "the checkout must be removed"
     assert_equals 1 "$(git -C "$SRC" worktree list | wc -l | tr -d ' ')" "no worktree left in the clone"
     pass "a passing suite is logged and its checkout removed"
 }
@@ -178,12 +179,54 @@ test_the_suite_runs_in_a_detached_checkout() {
     new_case where fm-test 'pwd > "$FM_DAILY_SRC/../where"; echo "$FM_DAILY_SRC" > "$FM_DAILY_SRC/../src-seen"'
     daily_run proj
     case "$(cat "$CASE/where")" in
-        */daily/proj/wt) ;;
-        *) fail "the suite ran in $(cat "$CASE/where"), expected a daily/proj/wt checkout" ;;
+        */daily/proj/wt.*) ;;
+        *) fail "the suite ran in $(cat "$CASE/where"), expected a daily/proj/wt.* checkout" ;;
     esac
     assert_not_equals "$SRC" "$(cat "$CASE/where")" "the suite must not run in the clone itself"
     assert_equals "$SRC" "$(cat "$CASE/src-seen")" "FM_DAILY_SRC must name the clone"
     pass "the suite runs in a detached checkout, with FM_DAILY_SRC naming the clone"
+}
+
+test_two_overlapping_runs_of_one_key_do_not_collide() {
+    local p1 p2 rc1 rc2
+    new_case overlap fm-test 'sleep 1; echo "FM_TEST_END 2026-10-05T00:00:00Z tests/a.test.sh exit=0 duration_ms=1 gate_skip=false"'
+    export FM_SUITE_SLOTS=0
+    "$DAILY" run proj > "$CASE/out1" 2> "$CASE/err1" &
+    p1=$!
+    "$DAILY" run proj > "$CASE/out2" 2> "$CASE/err2" &
+    p2=$!
+    wait "$p1"
+    rc1=$?
+    wait "$p2"
+    rc2=$?
+    expect_code 0 "$rc1" "the first overlapping run"
+    expect_code 0 "$rc2" "the second overlapping run"
+    assert_json "$(grep '^RESULT ' "$CASE/out1" | tail -n1 | sed 's/^RESULT //')" '.status == "pass"' "the first result"
+    assert_json "$(grep '^RESULT ' "$CASE/out2" | tail -n1 | sed 's/^RESULT //')" '.status == "pass"' "the second result"
+    assert_equals 1 "$(git -C "$SRC" worktree list | wc -l | tr -d ' ')" "no worktree left in the clone"
+    pass "two overlapping runs of one key both pass and leave no checkout"
+}
+
+test_run_refuses_an_invalid_repo_key() {
+    new_case badkey fm-test 'true'
+    "$DAILY" run 'a;touch x' > /dev/null 2>&1
+    expect_code 2 "$?" "a semicolon in a run key"
+    "$DAILY" run 'a b' > /dev/null 2>&1
+    expect_code 2 "$?" "a space in a run key"
+    "$DAILY" run '-a' > /dev/null 2>&1
+    expect_code 2 "$?" "a leading dash in a run key"
+    assert_absent "$FM_SUITE_DAILY_LOG" "nothing may be logged for an invalid key"
+    pass "run refuses a key that is not a plain repo name"
+}
+
+test_a_config_line_with_an_invalid_key_is_ignored() {
+    new_case badconfig fm-test 'echo "FM_TEST_END 2026-10-05T00:00:00Z tests/a.test.sh exit=0 duration_ms=1 gate_skip=false"'
+    printf 'a;touch x|%s|fm-test|bash suite.sh\nproj|%s|fm-test|bash suite.sh\n' "$SRC" "$SRC" > "$CASE/config"
+    daily_run proj
+    expect_code 0 "$RC" "the valid line still runs"
+    assert_json "$RESULT" '.status == "pass"' "the valid repo passed"
+    assert_equals 1 "$(wc -l < "$FM_SUITE_DAILY_LOG" | tr -d ' ')" "only the valid key is logged"
+    pass "a config line whose key is not a plain repo name is ignored"
 }
 
 test_status_reads_the_last_line_per_key() {
@@ -251,6 +294,9 @@ test_a_machine_without_suite_slots_runs_only_when_nearly_idle
 test_the_suite_is_time_bounded
 test_a_busy_slot_skips_the_run
 test_the_suite_runs_in_a_detached_checkout
+test_two_overlapping_runs_of_one_key_do_not_collide
+test_run_refuses_an_invalid_repo_key
+test_a_config_line_with_an_invalid_key_is_ignored
 test_status_reads_the_last_line_per_key
 test_install_writes_idempotent_units
 test_help_and_missing_subcommand

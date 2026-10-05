@@ -216,6 +216,25 @@ test_dispatch_needs_a_repo() {
     pass "dispatch without any repo exits 2"
 }
 
+test_dispatch_refuses_an_invalid_repo_key() {
+    new_case badkey
+    "$DAILY" dispatch --repo 'a;touch x' > /dev/null 2>&1
+    expect_code 2 "$?" "a semicolon in a --repo key"
+    assert_absent "$CASE/calls" "no ssh for an invalid key"
+    pass "--repo refuses a key that is not a plain repo name"
+}
+
+test_a_config_line_with_an_invalid_key_is_ignored() {
+    local out
+    new_case badconfig
+    printf 'a;touch x|/nonexistent|none|true\na|/nonexistent|none|true\n' > "$CASE/config"
+    out=$("$DAILY" dispatch --dry-run)
+    expect_code 0 "$?" "a dry run with a bad config line"
+    assert_contains "$out" "PLAN a -> " "the valid key"
+    assert_not_contains "$out" "touch" "the invalid config key is ignored"
+    pass "a config line whose key is not a plain repo name is ignored"
+}
+
 test_dispatch_log_lines_are_documented_json() {
     new_case logshape
     reply swift 0 pass
@@ -236,4 +255,6 @@ test_every_machine_skipping_is_logged_and_exits_zero
 test_unusable_placement_falls_back_to_this_machine
 test_dry_run_plans_without_running
 test_dispatch_needs_a_repo
+test_dispatch_refuses_an_invalid_repo_key
+test_a_config_line_with_an_invalid_key_is_ignored
 test_dispatch_log_lines_are_documented_json
