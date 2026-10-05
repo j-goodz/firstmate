@@ -92,9 +92,10 @@ build_snapshot() {
   jq -Rn '
     [inputs | split("|")] as $r
     | {result:{snapshot:{
+        focused_pane_id: ([$r[] | select(.[5]=="1") | .[0]][0] // null),
         panes: [$r[] | {pane_id:.[0], tab_id:(.[0]|sub(":p";":t")), workspace_id:(.[0]|split(":")[0]),
                         agent:(if .[3]=="" then null else .[3] end), agent_status:.[4],
-                        focused:(.[5]=="1"), cwd:.[6], foreground_cwd:.[6],
+                        cwd:.[6], foreground_cwd:.[6],
                         terminal_id:("term-"+.[0]), revision:1}],
         tabs: [$r[] | {tab_id:(.[0]|sub(":p";":t")), label:.[1]}],
         workspaces: [$r[] | {workspace_id:(.[0]|split(":")[0]), label:.[2]}]}}}' < "$ROWS"
@@ -233,6 +234,7 @@ assert_equals "$H1 done-task exit" "$(cat "$CONTROL_LOG")" "the exit goes throug
 [ ! -s "$CLOSE_LOG" ] || fail "an owned lane's pane was closed directly instead of through its home"
 assert_contains "$(tail -n 1 "$H1/state/done-task.status")" "note [at=" "the owning home is told why the agent stopped"
 assert_contains "$(tail -n 1 "$H1/state/done-task.status")" "idle-session-reaper" "the note names the reaper"
+assert_contains "$(tail -n 1 "$H1/state/done-task.status")" "relaunch --note" "the relaunch suggestion includes the required --note argument"
 pass "a finished idle owned lane is exited through its home and the home is told"
 
 # --- 7b. an agent already stopped is not stopped again ----------------------
@@ -375,6 +377,22 @@ assert_contains "$(cat "$TMP_ROOT/systemctl.log")" "enable --now fm-idle-session
 recorded_homes=$(printf '%s\n' "$service" | sed -n 's/^Environment="FM_IDLE_REAP_HOMES=\(.*\)"$/\1/p')
 assert_equals "$H1:$H2" "$recorded_homes" "the unit records the discovered homes so the hourly run does not rely on HOME discovery"
 pass "install-timer writes and enables an hourly one-shot timer"
+
+# --- 14a. install-timer refuses when discovery finds no home ------------------
+# A unit installed with no homes would hourly re-discover under its own $HOME
+# and silently close nothing; refuse instead of reporting success.
+EMPTY_INSTALL_HOME="$TMP_ROOT/empty-install-home"
+mkdir -p "$EMPTY_INSTALL_HOME"
+EMPTY_UNIT_DIR="$TMP_ROOT/systemd-empty"
+if PATH="$FAKEBIN:$PATH" HOME="$EMPTY_INSTALL_HOME" FM_IDLE_REAP_SYSTEMD_DIR="$EMPTY_UNIT_DIR" \
+    env -u FM_IDLE_REAP_HOMES bash "$ROOT/bin/fm-idle-session-reap.sh" install-timer \
+    > "$TMP_ROOT/install-empty.out" 2>&1; then
+  fail "install-timer installed a timer with no Firstmate home discovered"
+fi
+[ ! -e "$EMPTY_UNIT_DIR/fm-idle-session-reap.timer" ] \
+  || fail "install-timer wrote a timer even though no Firstmate home was discovered"
+assert_contains "$(cat "$TMP_ROOT/install-empty.out")" "no Firstmate home" "install-timer explains why it refused"
+pass "install-timer refuses when discovery finds no Firstmate home"
 
 # --- 14b. a spinner frame is not activity -----------------------------------
 # A tool left in a running state animates a spinner forever, so the screen

@@ -242,8 +242,10 @@ fm_idle_reap_panes() {  # <session>
     .result.snapshot as $s
     | (($s.tabs // []) | map({(.tab_id): (.label // "")}) | add // {}) as $t
     | (($s.workspaces // []) | map({(.workspace_id): (.label // "")}) | add // {}) as $w
+    | ($s.focused_pane_id // "") as $fp
     | ($s.panes // [])[]
-    | [.pane_id, (.agent // ""), (.agent_status // ""), (if .focused then "1" else "0" end),
+    | [.pane_id, (.agent // ""), (.agent_status // ""),
+       (if (.focused == true) or ($fp != "" and .pane_id == $fp) then "1" else "0" end),
        (.foreground_cwd // .cwd // ""), ($t[.tab_id] // ""), ($w[.workspace_id] // "")]
     | map(tostring | gsub("[\u001f\n]"; " "))
     | join("\u001f")'
@@ -379,7 +381,7 @@ fm_idle_reap_owned() {  # <home> <task>
     fm_idle_reap_log_pane failed control-exit-failed "$idle" "rc=$rc $(printf '%s' "$out" | tail -n 1)"
     return 0
   fi
-  printf 'note [at=%s]: idle-session-reaper stopped this idle finished agent after %sm with no turn (%s); the local copy and branch are untouched; relaunch it with fm-control.sh %s relaunch if more work is needed\n' \
+  printf 'note [at=%s]: idle-session-reaper stopped this idle finished agent after %sm with no turn (%s); the local copy and branch are untouched; relaunch it with fm-control.sh %s relaunch --note "<what to do next>" if more work is needed\n' \
     "$NOW" "$((idle / 60))" "$state" "$id" >> "$home/state/$id.status" 2>/dev/null || true
   fm_idle_reap_log_pane exited finished-idle "$idle" "$crew"
 }
@@ -566,7 +568,11 @@ fm_idle_reap_install_timer() {
     [ -n "$home" ] || continue
     homes=${homes:+$homes:}$home
   done < <(fm_idle_reap_homes)
-  [ -z "$homes" ] || env_homes="Environment=\"FM_IDLE_REAP_HOMES=$homes\""
+  if [ -z "$homes" ]; then
+    echo "error: install-timer discovered no Firstmate home; refusing to install a timer that would find nothing (run it from a Firstmate account or add homes with FM_IDLE_REAP_HOMES)" >&2
+    return 1
+  fi
+  env_homes="Environment=\"FM_IDLE_REAP_HOMES=$homes\""
   mkdir -p "$dir" || return 1
   cat > "$dir/$FM_IDLE_REAP_UNIT.service" <<EOF
 [Unit]
