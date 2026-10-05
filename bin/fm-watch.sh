@@ -2904,8 +2904,9 @@ EOF
         fi
         # A busy pane normally means real work resumed, so stale pause bookkeeping
         # is cleared - but not in the same poll the declared-pause cadence just
-        # recorded it, or the re-surface throttle it depends on would be erased and
-        # the pause would re-surface every poll instead of once per long cadence.
+        # recorded it, or that bookkeeping would be erased. The declaration-scoped
+        # re-surface throttle survives either way (clear_pause_state's
+        # keep-throttle), which is what holds the pause to its long cadence.
         if [ "$paused_bound" -ne 0 ] && [ -e "$pf" ] && { [ "$n" -ge 2 ] || ! status_is_paused_or_captain_held "$(last_status_line "$STATE/$(window_to_task "$w" "$STATE").status")"; }; then
           clear_pause_tracking "$key" keep-throttle
         fi
