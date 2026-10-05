@@ -73,13 +73,14 @@
 # apply    Apply each open-call-answer.v1 item in a captured Lavish result (read
 #          through bin/fm-procevent-lavish.sh read; the last save per call
 #          wins) to the call's owning home through bin/fm-captain-hold.sh:
-#            option or text  `answer <task> --decision-file <captain's words>`,
+#            option          `answer <task> --decision-file <captain's words>`,
 #                            with --release when the held task is a work item
 #                            rather than a call-only task (kind captain);
 #            later           `hold <task> --reason <parked note> --until <today+7>`;
 #            not-needed      answer "Not needed" and close (never --release);
-#            talk            with the captain's words, re-`hold` the call with
-#                            those words in its reason so it stays open; with no
+#            text or talk    typed words with no option picked are never a
+#                            decision: with the captain's words, re-`hold` the
+#                            call with those words in its reason so it stays open; with no
 #                            words, record nothing. Either way it is printed as
 #                            `talk:` for firstmate to raise in chat.
 #          Every recorded answer and every talk prints one
@@ -478,6 +479,15 @@ cmd_apply() {
       printf 'skipped: %s/%s (no registered home by that name)\n' "$home" "$call"
       log_event --arg event apply --arg home "$home" --arg call "$call" --arg outcome skipped-unknown-home
       continue
+    fi
+    # Typed words with no option picked are a reply to raise, never a decision.
+    if [ "$kind" = text ]; then
+      [ -n "$note" ] || note=$answer
+      if [ -z "$note" ]; then
+        printf 'skipped: %s/%s (the save carried no answer)\n' "$home" "$call"
+        continue
+      fi
+      kind=talk
     fi
     if [ "$kind" = talk ]; then
       if [ -n "$note" ]; then

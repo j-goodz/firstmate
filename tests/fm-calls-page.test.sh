@@ -354,9 +354,9 @@ assert_not_contains "$(grep -F 'HOLD [answer] [a1]' <<<"$LOG")" "--release" "a c
 assert_contains "$LOG" "DECISION Answer: Switch to Solaar" "the decision records the chosen option"
 assert_contains "$LOG" "and remove Logi" "the decision keeps the captain's own words"
 # A text answer on a held work item releases the hold so the work resumes.
-assert_contains "$LOG" "HOLD [answer] [w1] [--decision-file]" "a text answer records through answer"
-assert_contains "$(grep -F 'HOLD [answer] [w1]' <<<"$LOG")" "[--release]" "an answer on held work releases it"
-assert_contains "$LOG" "DECISION Answer: Build it narrower" "a text answer records the captain's words"
+assert_not_contains "$LOG" "HOLD [answer] [w1]" "typed words with no option picked never close or release the call"
+assert_contains "$(grep -F 'HOLD [hold] [w1]' <<<"$LOG")" "Build it narrower" "typed words re-hold the call with the captain's words"
+assert_contains "$out" "route: local/w1 Build it narrower" "typed words are routed to firstmate"
 # Later parks the call for one week.
 assert_contains "$LOG" "HOLD [hold] [e1] [--reason]" "Later re-holds the call"
 assert_contains "$(grep -F 'HOLD [hold] [e1]' <<<"$LOG")" "[--until] [2026-10-11]" "Later parks it until today plus seven days"
@@ -426,6 +426,48 @@ FM_TEST_SEND_FAIL=0 run_calls "$SD" apply "$SD/result.txt" >"$SD/out3" 2>"$SD/er
 send_count=$(grep -c -F 'Call r1: Not needed' "$SD/calls.log")
 assert_equals "2" "$send_count" "a delivered answer is not sent a third time"
 pass "a second-mate answer is delivered without FM_HOME and retried after a failed send"
+
+# --- apply: typed text with no option picked never closes a call (state/calls-page.jsonl, 2026-10-05 15:21:41Z) ---
+
+TX=$(make_home textonly)
+cat > "$TX/data/backlog.md" <<'EOF'
+# Backlog
+
+## Queued
+- [ ] twitter-follow-execute - Run the follow cleanup (repo: nexus) (kind: captain) (since 2026-10-02) (hold: Start the follow cleanup) (hold-kind: captain)
+  Captain hold set: 2026-10-02T10:00:00Z
+EOF
+add_remote_mate "$TX"
+sed -i 's/^- \[ \] r1 - Buzz calendar shape/- [ ] intake-agent-build - Build the intake agent/' "$TX/remote-swiftmate/backlog.md"
+sed -i 's/captain-hold-r1-1/captain-hold-intake-agent-build-1/' "$TX/state/swiftmate.status"
+write_fm_on_stub "$TX"
+write_captain_stub "$TX"
+write_fm_send_stub "$TX"
+# The two real apply lines that closed live work.
+cat > "$TX/real-lines.jsonl" <<'EOF'
+{"at":"2026-10-05T15:21:41Z","event":"apply","home":"swiftmate","call":"intake-agent-build","kind":"text","outcome":"applied"}
+{"at":"2026-10-05T15:21:41Z","event":"apply","home":"local","call":"twitter-follow-execute","kind":"text","outcome":"applied"}
+EOF
+run_calls "$TX" render >/dev/null 2>&1
+{
+  printf 'session:\n  file: /tmp/calls.html\n  status: feedback\nprompts[2]{uid,prompt,selector,tag,text}:\n'
+  n=0
+  while IFS= read -r line; do
+    n=$((n + 1))
+    h=$(jq -r .home <<<"$line"); c=$(jq -r .call <<<"$line"); k=$(jq -r .kind <<<"$line")
+    printf '  "%s","Call %s: text\\n\\nContext data:\\n{\\n  \\"schema\\": \\"open-call-answer.v1\\",\\n  \\"call\\": \\"%s\\",\\n  \\"home\\": \\"%s\\",\\n  \\"kind\\": \\"%s\\",\\n  \\"answer\\": \\"\\",\\n  \\"note\\": \\"why are you asking me this\\"\\n}","form",call-answer,"%s"\n' "$n" "$c" "$c" "$h" "$k" "$c"
+  done < "$TX/real-lines.jsonl"
+} > "$TX/result.txt"
+txout=$(FM_CALLS_PAGE_CAPTAIN_HOLD="$TX/captain-stub.sh" FM_TEST_REAL_CAPTAIN="$ROOT/bin/fm-captain-hold.sh" run_calls "$TX" apply "$TX/result.txt" 2>/dev/null)
+TXLOG=$(cat "$TX/calls.log" 2>/dev/null)
+assert_not_contains "$TXLOG" "HOLD [answer]" "a local text-only save never records an answer"
+assert_not_contains "$TXLOG" "answers" "a second-mate text-only save never records an answer"
+assert_contains "$TXLOG" "HOLD [hold] [twitter-follow-execute]" "the local call stays held with the captain's words"
+assert_contains "$TXLOG" "ON swiftmate fm-captain-hold.sh [hold] [intake-agent-build]" "the second-mate call stays held with the captain's words"
+assert_contains "$txout" "route: local/twitter-follow-execute why are you asking me this" "the local words are raised to firstmate"
+assert_contains "$txout" "route: swiftmate/intake-agent-build why are you asking me this" "the second-mate words are raised to firstmate"
+assert_not_contains "$txout" "applied: local/twitter-follow-execute text" "a text-only save is not reported as an applied answer"
+pass "typed text with no option picked is raised, never recorded as a decision"
 
 # --- apply: talk with no words records nothing and still routes ------------------
 
