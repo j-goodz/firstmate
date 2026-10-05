@@ -135,7 +135,9 @@ fm_idle_reap_fingerprint() {  # <session> <pane>
 # quarter-circle set) removed: a tool left in a running state animates a
 # spinner forever, and that frame change is not activity.
 fm_idle_reap_screen_digest() {
-  perl -CSD -pe 's/[\x{2800}-\x{28FF}\x{25D0}-\x{25D3}]//g' | cksum | awk '{print $1 "-" $2}'
+  local text
+  text=$(perl -CSD -pe 's/[\x{2800}-\x{28FF}\x{25D0}-\x{25D3}]//g') || return 1
+  printf '%s' "$text" | cksum | awk '{print $1 "-" $2}'
 }
 
 fm_idle_reap_composer_state() {  # <session> <pane>

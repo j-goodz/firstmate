@@ -115,7 +115,10 @@ fm_idle_reap_snapshot() {
   build_snapshot
 }
 # shellcheck disable=SC2329
-fm_idle_reap_fingerprint() { cat "$FIX/fp-${2//:/_}" 2>/dev/null || printf 'fp-%s' "$2"; }
+fm_idle_reap_fingerprint() {
+  [ ! -e "$FIX/fp-fail-${2//:/_}" ] || return 1
+  cat "$FIX/fp-${2//:/_}" 2>/dev/null || printf 'fp-%s' "$2"
+}
 # shellcheck disable=SC2329
 fm_idle_reap_composer_state() { cat "$FIX/composer-${2//:/_}" 2>/dev/null || printf 'empty'; }
 # shellcheck disable=SC2329
@@ -339,10 +342,9 @@ pass "dry run reports decisions and changes nothing"
 
 # --- 12. log shape and run summary -------------------------------------------
 jq -e . "$FM_IDLE_REAP_LOG" >/dev/null || fail "the log is not valid JSONL"
-summary=$(jq -c 'select(.event=="run")' "$FM_IDLE_REAP_LOG" | tail -n 1)
-assert_contains "$summary" '"mode":"dry-run"' "the summary records the mode"
-assert_contains "$summary" '"acted":2' "the summary counts the decisions that act"
-assert_contains "$summary" '"duration_ms":' "the summary records the run time"
+assert_equals "dry-run" "$(jq -r 'select(.event=="run") | .mode' "$FM_IDLE_REAP_LOG" | tail -n 1)" "the summary records the mode"
+assert_equals 2 "$(jq -r 'select(.event=="run") | .acted' "$FM_IDLE_REAP_LOG" | tail -n 1)" "the summary counts the decisions that act"
+assert_equals "number" "$(jq -r 'select(.event=="run") | .duration_ms | type' "$FM_IDLE_REAP_LOG" | tail -n 1)" "the summary records the run time"
 [ "$(jq -s '[.[] | select(.event=="pane") | select((.ts and .host and .session and .pane and .action and .reason) | not)] | length' "$FM_IDLE_REAP_LOG")" = 0 ] \
   || fail "a pane line is missing a required field"
 pass "every decision is one JSON line with a reason, plus a run summary"
@@ -358,7 +360,24 @@ assert_equals overlap "$(jq -r 'select(.event=="run") | .result' "$FM_IDLE_REAP_
 pass "an overlapping run is logged and skipped"
 
 # --- 14. hourly timer install ------------------------------------------------
+# unit_directive <file> <section> <key> -> every value after '=' for <key> in
+# that section, empty when absent. Parses the unit into its directives so the
+# assertions check systemd's meaning rather than a raw substring of the file.
+unit_directive() {
+  awk -v sec="$2" -v key="$3" '
+    /^\[/ { s=$0; gsub(/[][]/, "", s); next }
+    s == sec {
+      n=index($0, "=")
+      if (n > 0 && substr($0, 1, n-1) == key) print substr($0, n+1)
+    }' "$1"
+}
+# unit_env <file> <section> <var> -> value of Environment="<var>=..."
+unit_env() {
+  unit_directive "$1" "$2" Environment | sed -n "s/^\"$3=\(.*\)\"\$/\1/p"
+}
 UNIT_DIR="$TMP_ROOT/systemd-user"
+TIMER_UNIT="$UNIT_DIR/fm-idle-session-reap.timer"
+SERVICE_UNIT="$UNIT_DIR/fm-idle-session-reap.service"
 FAKEBIN=$(fm_fakebin "$TMP_ROOT")
 cat > "$FAKEBIN/systemctl" <<SH
 #!/usr/bin/env bash
@@ -367,15 +386,13 @@ SH
 chmod +x "$FAKEBIN/systemctl"
 PATH="$FAKEBIN:$PATH" HOME="$TMP_ROOT" FM_IDLE_REAP_SYSTEMD_DIR="$UNIT_DIR" bash "$ROOT/bin/fm-idle-session-reap.sh" install-timer \
   > "$TMP_ROOT/install.out" 2>&1 || fail "install-timer failed: $(cat "$TMP_ROOT/install.out")"
-timer=$(cat "$UNIT_DIR/fm-idle-session-reap.timer")
-service=$(cat "$UNIT_DIR/fm-idle-session-reap.service")
-assert_contains "$timer" "OnCalendar=hourly" "the timer fires hourly"
-assert_contains "$service" "ExecStart=$ROOT/bin/fm-idle-session-reap.sh --apply" "the service runs this script in apply mode"
-assert_contains "$service" "Type=oneshot" "one attempt per run"
-assert_not_contains "$service" "Restart=" "no retry loop"
-assert_contains "$(cat "$TMP_ROOT/systemctl.log")" "enable --now fm-idle-session-reap.timer" "the timer is enabled"
-recorded_homes=$(printf '%s\n' "$service" | sed -n 's/^Environment="FM_IDLE_REAP_HOMES=\(.*\)"$/\1/p')
-assert_equals "$H1:$H2" "$recorded_homes" "the unit records the discovered homes so the hourly run does not rely on HOME discovery"
+assert_equals "hourly" "$(unit_directive "$TIMER_UNIT" Timer OnCalendar)" "the timer fires hourly"
+assert_equals "$ROOT/bin/fm-idle-session-reap.sh --apply" "$(unit_directive "$SERVICE_UNIT" Service ExecStart)" "the service runs this script in apply mode"
+assert_equals "oneshot" "$(unit_directive "$SERVICE_UNIT" Service Type)" "one attempt per run"
+assert_equals "" "$(unit_directive "$SERVICE_UNIT" Service Restart)" "no retry loop"
+grep -Fxq -- "--user enable --now fm-idle-session-reap.timer" "$TMP_ROOT/systemctl.log" \
+  || fail "the timer is not enabled"
+assert_equals "$H1:$H2" "$(unit_env "$SERVICE_UNIT" Service FM_IDLE_REAP_HOMES)" "the unit records the discovered homes so the hourly run does not rely on HOME discovery"
 pass "install-timer writes and enables an hourly one-shot timer"
 
 # --- 14a. install-timer refuses when discovery finds no home ------------------
@@ -404,6 +421,29 @@ d3=$(printf '  ┃  ⠧ timeout 180 ssh other\n  done\n' | fm_idle_reap_screen_d
 assert_equals "$d1" "$d2" "a spinner frame change leaves the digest unchanged"
 assert_not_equals "$d1" "$d3" "a real text change changes the digest"
 pass "a spinner frame is not counted as screen activity"
+
+# --- 14c. a screen that cannot be digested fails closed ----------------------
+# A missing digest tool must not turn every pane into the same constant
+# fingerprint, which would make an actively running pane look unchanged. The
+# digest returns failure and produces no fingerprint.
+NO_PERL_BIN="$TMP_ROOT/no-perl-bin"
+mkdir -p "$NO_PERL_BIN"
+printf '#!/usr/bin/env bash\nexit 127\n' > "$NO_PERL_BIN/perl"
+chmod +x "$NO_PERL_BIN/perl"
+digest_out=$(printf 'real screen text\n' | PATH="$NO_PERL_BIN:$PATH" fm_idle_reap_screen_digest) && digest_rc=0 || digest_rc=$?
+[ "$digest_rc" -ne 0 ] || fail "the screen digest succeeded with a failing perl"
+[ -z "$digest_out" ] || fail "a failed screen digest returned a fingerprint: '$digest_out'"
+pass "a screen that cannot be digested yields no fingerprint"
+
+# --- 14d. an unreadable screen is never treated as idle ----------------------
+reset_run
+touch "$FIX/fp-fail-w1_p2"
+row "w1:p2|fm-gone-task|└ gone-task · p:x|opencode|idle|0|$TMP_ROOT/wt-clean"
+FM_IDLE_REAP_NOW=$((NOW - 3600)) run_reap --apply
+FM_IDLE_REAP_NOW=$NOW run_reap --apply
+assert_equals "skipped screen-unreadable" "$(last_decision w1:p2)" "a pane whose screen cannot be read is kept"
+[ ! -s "$CLOSE_LOG" ] || fail "a pane with an unreadable screen was closed"
+pass "an unreadable screen fails closed and the ownerless pane is kept"
 
 # --- 15. help ----------------------------------------------------------------
 bash "$ROOT/bin/fm-idle-session-reap.sh" --help > "$TMP_ROOT/help.out" 2>&1 || fail "--help failed"
