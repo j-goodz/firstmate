@@ -1,0 +1,6 @@
+=== capacity: one slot per six logical CPUs ===
+cpus=12  capacity=2
+cpus=8   capacity=1
+cpus=4   capacity=0
+cpus=24  capacity=4
+cpus=5   capacity=0

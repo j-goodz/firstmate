@@ -1,0 +1,16 @@
+=== a freshly scaffolded ship brief carries the standard test method ===
+# Test method (the standard method)
+The standard is docs/test-capacity-standard.md in the firstmate repo; this is the standard method, and a per-task exception applies only when this brief's Firstmate spec says so.
+1. While working, run only the tests your change affects: in the firstmate repo `/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084/bin/fm-test-run.sh --changed`, in the nexus repo `NEXUS_GATE_SCOPE=1 ./run-tests.sh`, in any other repo the test files that name the modules you changed.
+2. When a failing test looks unrelated to your change, run that one test file on main (a detached checkout of `origin/main` under your scratch directory) and compare. Never run a whole suite on main.
+3. Do not run a whole suite yourself. The broader run happens once per change, in the no-mistakes test step or your delivery mode's single validation run.
+   A whole-suite run that must happen goes through `/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084/bin/fm-suite-slot.sh run --key <repo> -- <command>`, which waits for a free slot on this machine and refuses on a machine with none.
+
+# Project memory
+If `AGENTS.md` or `CLAUDE.md` already exists, or if this task produced durable project-intrinsic knowledge, run `/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084/bin/fm-ensure-agents-md.sh .` in the worktree.
+Record only project knowledge useful to almost every future session.
+For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
+If you touch a project `AGENTS.md`, follow `/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084/bin/fm-ensure-agents-md.sh`'s self-governance contract in the same pass.
+Keep it proportionate: skip `AGENTS.md` edits for trivial tasks that produced no durable project knowledge.
+
+# Definition of done

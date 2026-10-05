@@ -1,0 +1,34 @@
+=== heavy placement, real local probe + one registered unreachable host ===
+PLACE homelab mate=self verdict=ok class=heavy
+machine=homelab mate=self verdict=ok reason=ok load_per_core=0.46 cores=12 load1=5.51 temp=unknown tier=unknown slots_free=2 slots_cap=2 avail_mb=5992 home=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084 root=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084
+heavy_rc=0
+
+=== same, --json ===
+{
+  "class": "heavy",
+  "place": {
+    "machine": "homelab",
+    "mate": "self",
+    "verdict": "ok",
+    "home": "/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084"
+  },
+  "machines": [
+    {
+      "machine": "homelab",
+      "verdict": "ok",
+      "reason": "ok",
+      "slots_free": 2,
+      "slots_cap": 2
+    }
+  ]
+}
+
+=== light class, same registry ===
+PLACE homelab mate=self verdict=ok class=light
+machine=homelab mate=self verdict=ok reason=ok load_per_core=0.46 cores=12 load1=5.47 temp=unknown tier=unknown slots_free=2 slots_cap=2 avail_mb=5967 home=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084 root=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084
+light_rc=0
+
+=== nothing qualifies: local forced heat-hold, remote unreachable ===
+PLACE none class=heavy reason=heat-hold
+machine=homelab mate=self verdict=no reason=heat-hold load_per_core=0.01 cores=12 load1=0.1 temp=95 tier=hold slots_free=2 slots_cap=2 avail_mb=4000 home=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084 root=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084
+none_rc=1

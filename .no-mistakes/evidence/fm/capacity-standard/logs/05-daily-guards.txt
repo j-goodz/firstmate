@@ -1,0 +1,16 @@
+=== heat-hold guard (fixture sensor 90C, hold_c=88) skips with exit 11 ===
+RESULT {"ts":"2026-10-05T09:31:05Z","event":"daily-run","host":"homelab","key":"demo","sha":"","status":"skipped","reason":"heat-hold","rc":null,"failures":0,"failed_ids":[],"duration_s":0}
+heat_hold_rc=11
+
+=== memory-pressure guard skips with exit 11 ===
+RESULT {"ts":"2026-10-05T09:31:05Z","event":"daily-run","host":"homelab","key":"demo","sha":"","status":"skipped","reason":"memory-pressure","rc":null,"failures":0,"failed_ids":[],"duration_s":0}
+mem_rc=11
+
+=== load-busy guard (max load per core 0) skips with exit 11 ===
+RESULT {"ts":"2026-10-05T09:31:05Z","event":"daily-run","host":"homelab","key":"demo","sha":"","status":"skipped","reason":"load-busy","rc":null,"failures":0,"failed_ids":[],"duration_s":0}
+load_rc=11
+
+=== reasons logged ===
+{"key":"demo","status":"skipped","reason":"heat-hold"}
+{"key":"demo","status":"skipped","reason":"memory-pressure"}
+{"key":"demo","status":"skipped","reason":"load-busy"}

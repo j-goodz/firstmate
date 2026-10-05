@@ -1,0 +1,13 @@
+=== two registered laptops unreachable + local: they are listed and ranked ===
+PLACE homelab mate=self verdict=ok class=heavy
+machine=homelab mate=self verdict=ok reason=ok load_per_core=0.53 cores=12 load1=6.39 temp=unknown tier=unknown slots_free=2 slots_cap=2 avail_mb=6109 home=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084 root=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084
+machine=zentop mate=zentopmate verdict=no reason=slots-unknown load_per_core=0.00 cores=24 load1=0.08 temp=unknown tier=unknown slots_free=unknown slots_cap=unknown avail_mb=unknown home=/srv/fm root=/srv/fm
+machine=swift mate=swiftmate verdict=no reason=slots-unknown load_per_core=0.28 cores=8 load1=2.21 temp=unknown tier=unknown slots_free=unknown slots_cap=unknown avail_mb=unknown home=/srv/fm root=/srv/fm
+rc=0
+
+=== heavy: local busy (free=0) still chosen over no-verdict laptops ===
+PLACE homelab mate=self verdict=busy class=heavy
+machine=homelab mate=self verdict=busy reason=no-free-slot load_per_core=0.01 cores=12 load1=0.1 temp=55 tier=cool slots_free=0 slots_cap=2 avail_mb=4000 home=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084 root=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084
+machine=zentop mate=zentopmate verdict=no reason=slots-unknown load_per_core=0.00 cores=24 load1=0.08 temp=unknown tier=unknown slots_free=unknown slots_cap=unknown avail_mb=unknown home=/srv/fm root=/srv/fm
+machine=swift mate=swiftmate verdict=no reason=slots-unknown load_per_core=0.28 cores=8 load1=2.21 temp=unknown tier=unknown slots_free=unknown slots_cap=unknown avail_mb=unknown home=/srv/fm root=/srv/fm
+rc=0

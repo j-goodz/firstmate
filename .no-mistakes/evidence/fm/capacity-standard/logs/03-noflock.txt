@@ -1,0 +1,11 @@
+=== host without flock: run executes ungated, status holds nothing ===
+--- run a command that exits 3 ---
+fm-suite-slot: no slot gate on this host (flock not found); running ungated
+command-ran
+run_rc=3
+--- status with a slot.0.lock file present ---
+capacity=2 base=2 temp=unknown tier=unknown held=0 free=2 avail_mb=6077
+slot=0 free
+slot=1 free
+--- capacity still prints ---
+2

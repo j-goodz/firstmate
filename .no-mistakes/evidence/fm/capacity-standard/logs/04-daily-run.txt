@@ -1,0 +1,30 @@
+=== daily run of a configured repo: detached checkout of origin/main, logged pass ===
+origin/main sha=9ac21ce1b39bf40846f32f0c38168cf1a87a0c01
+suite-ok
+SRC=/home/justin/.cache/tmp/opencode/fm-cap-test/daily/work
+RESULT {"ts":"2026-10-05T09:30:56Z","event":"daily-run","host":"homelab","key":"demo","sha":"9ac21ce1b39bf40846f32f0c38168cf1a87a0c01","status":"pass","reason":"","rc":0,"failures":0,"failed_ids":[],"duration_s":0}
+run_rc=0
+--- jsonl log ---
+{"ts":"2026-10-05T09:30:56Z","event":"daily-run","host":"homelab","key":"demo","sha":"9ac21ce1b39bf40846f32f0c38168cf1a87a0c01","status":"pass","reason":"","rc":0,"failures":0,"failed_ids":[],"duration_s":0}
+--- leftover worktrees under state (should be none) ---
+/home/justin/.cache/tmp/opencode/fm-cap-test/daily/work 9ac21ce [main]
+--- state dir tree ---
+/home/justin/.cache/tmp/opencode/fm-cap-test/daily/state
+/home/justin/.cache/tmp/opencode/fm-cap-test/daily/state/daily
+/home/justin/.cache/tmp/opencode/fm-cap-test/daily/state/daily/demo
+/home/justin/.cache/tmp/opencode/fm-cap-test/daily/state/daily/demo/last-run.log
+/home/justin/.cache/tmp/opencode/fm-cap-test/daily/state/daily/demo/run.lock
+/home/justin/.cache/tmp/opencode/fm-cap-test/daily/state/events.jsonl
+/home/justin/.cache/tmp/opencode/fm-cap-test/daily/state/slot.0.lock
+
+=== unconfigured key exits 10 and logs nothing to a fresh log ===
+fm-suite-daily: nope is not configured on this machine (/home/justin/.cache/tmp/opencode/fm-cap-test/daily/config)
+unconfigured_rc=10
+
+=== heat-hold guard skips the run with exit 11 ===
+suite-ok
+SRC=/home/justin/.cache/tmp/opencode/fm-cap-test/daily/work
+RESULT {"ts":"2026-10-05T09:30:57Z","event":"daily-run","host":"homelab","key":"demo","sha":"9ac21ce1b39bf40846f32f0c38168cf1a87a0c01","status":"pass","reason":"","rc":0,"failures":0,"failed_ids":[],"duration_s":0}
+heat_hold_rc=0
+--- jsonl log after two attempts ---
+{"ts":"2026-10-05T09:30:57Z","event":"daily-run","host":"homelab","key":"demo","sha":"9ac21ce1b39bf40846f32f0c38168cf1a87a0c01","status":"pass","reason":"","rc":0,"failures":0,"failed_ids":[],"duration_s":0}

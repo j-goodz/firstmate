@@ -1,0 +1,5 @@
+=== a machine with zero slots refuses a whole-suite run at once (exit 75) ===
+fm-suite-slot: no full-suite slot on this machine (base capacity 0); place the work on another machine with bin/fm-place.sh
+refuse_rc=75
+--- events ---
+{"ts":"2026-10-05T09:32:11Z","event":"refuse","key":"firstmate","task":"","slot":null,"capacity":0,"waited_ms":0,"duration_ms":0,"exit":null,"cmd":"echo SHOULD-NOT-RUN","host":"homelab"}

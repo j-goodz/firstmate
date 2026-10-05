@@ -1,0 +1,5 @@
+=== dispatch places the repo and the placed machine runs it (status pass) ===
+dispatch_rc=0
+--- dispatch log ---
+{"ts":"2026-10-05T09:31:28Z","event":"daily-run","host":"homelab","key":"demo","sha":"9ac21ce1b39bf40846f32f0c38168cf1a87a0c01","status":"pass","reason":"","rc":0,"failures":0,"failed_ids":[],"duration_s":1}
+{"ts":"2026-10-05T09:31:28Z","event":"dispatch","host":"homelab","key":"demo","machine":"homelab","status":"pass","reason":"","sha":"9ac21ce1b39bf40846f32f0c38168cf1a87a0c01","failures":0,"tried":["homelab"],"alerted":false}

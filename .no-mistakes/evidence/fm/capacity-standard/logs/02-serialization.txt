@@ -1,0 +1,14 @@
+=== one slot: first run holds it, second waits then exits 75 ===
+first-start
+--- status while held ---
+capacity=1 base=1 temp=unknown tier=unknown held=1 free=0 avail_mb=unknown
+slot=0 held pid=3962416 key=demo task=- since=1791192632 cmd=bash -c echo first-start; sleep 2; echo first-end
+fm-suite-slot: waiting for a suite slot (key=demo2, capacity=1, tier=unknown)
+fm-suite-slot: timed out waiting for a suite slot (key=demo2, capacity=1, tier=unknown)
+first-end
+second_rc=75 first_rc=0
+=== events ===
+{"ts":"2026-10-05T09:30:32Z","event":"acquire","key":"demo","task":"","slot":0,"capacity":1,"waited_ms":19,"duration_ms":0,"exit":null,"cmd":"bash -c echo first-start; sleep 2; echo first-end","host":"homelab"}
+{"ts":"2026-10-05T09:30:33Z","event":"wait","key":"demo2","task":"","slot":null,"capacity":1,"waited_ms":0,"duration_ms":0,"exit":null,"cmd":"bash -c echo second-ran; exit 7","host":"homelab"}
+{"ts":"2026-10-05T09:30:34Z","event":"timeout","key":"demo2","task":"","slot":null,"capacity":1,"waited_ms":705,"duration_ms":0,"exit":null,"cmd":"bash -c echo second-ran; exit 7","host":"homelab"}
+{"ts":"2026-10-05T09:30:34Z","event":"release","key":"demo","task":"","slot":0,"capacity":1,"waited_ms":19,"duration_ms":2043,"exit":0,"cmd":"bash -c echo first-start; sleep 2; echo first-end","host":"homelab"}

@@ -1,0 +1,13 @@
+=== install --print: timer fires 03:30 America/Toronto, runs dispatch ===
+ExecStart=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45HK54FHSQNG3SKBKS6R084/bin/fm-suite-daily.sh dispatch
+OnCalendar=*-*-* 03:30:00 America/Toronto
+RandomizedDelaySec=900
+Persistent=false
+
+=== install writes both units into a disposable unit dir (no systemd touched) ===
+installed fm-suite-daily.timer (03:30 America/Toronto)
+fm-suite-daily.service
+fm-suite-daily.timer
+
+=== status reads the last result per repo from the log ===
+key=demo status=pass sha=9ac21ce ts=2026-10-05T09:31:28Z host=homelab failures=0
