@@ -220,6 +220,23 @@ test_leaked_child_does_not_keep_the_slot() {
     pass "the lock descriptor is not inherited by the command"
 }
 
+test_host_without_flock_runs_ungated_and_status_prints() {
+    local sans rc first
+    new_case noflock 1
+    sans=$(fm_test_base_path_sans "$PATH" flock)
+    mkdir -p "$FM_SUITE_STATE_DIR"
+    : > "$FM_SUITE_STATE_DIR/slot.0.lock"
+    PATH="$sans" "$SLOT" run --wait-secs 1 --poll-secs 0.2 -- sh -c 'exit 3' > "$CASE/out" 2> "$CASE/err"
+    rc=$?
+    expect_code 3 "$rc" "a host without flock must run the command and return its status"
+    assert_equals "" "$(cat "$CASE/out")" "the command output still passes through"
+    assert_contains "$(cat "$CASE/err")" "running ungated" "the no-flock warning"
+    first=$(PATH="$sans" "$SLOT" status | sed -n '1p')
+    assert_contains "$first" "capacity=1" "status still prints its first line"
+    assert_contains "$first" "held=0" "a lock file is not counted held when flock is missing"
+    pass "a host without flock runs ungated and status still prints"
+}
+
 test_run_passes_output_input_and_exit_code_through
 test_second_run_waits_for_the_first
 test_wait_secs_bounds_the_wait
@@ -231,3 +248,4 @@ test_sigterm_reaches_the_command
 test_heat_hold_waits_then_clears
 test_memory_pressure_waits_then_clears
 test_leaked_child_does_not_keep_the_slot
+test_host_without_flock_runs_ungated_and_status_prints

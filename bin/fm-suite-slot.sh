@@ -63,6 +63,11 @@
 # leaked background process cannot keep the slot held; killing `run` with
 # SIGKILL frees the slot. SIGTERM and SIGINT are forwarded to CMD.
 #
+# flock is required to hold a slot. On a host where it is missing (stock macOS,
+# which this repo supports) there is no machine-wide gate: `run` prints a
+# one-line warning and executes CMD ungated with CMD's own status, and `status`
+# never reports a slot held. capacity and status still print.
+#
 # Event log: one JSON object per line appended to events.jsonl in the state
 # directory (best effort, rotated to events.jsonl.1 past 5 MiB). Events are
 # wait, acquire, release, refuse and timeout, with ts, key, task, slot,
@@ -167,10 +172,13 @@ compute() {
   if [ -n "$AVAIL" ] && [ "$AVAIL" -lt "$FLOOR" ]; then PRESSURE=1; fi
 }
 
+have_flock() { command -v flock > /dev/null 2>&1; }
+
 # slot_held <i>: success when a live process holds the slot lock.
 slot_held() {
   local f="$STATE_DIR/slot.$1.lock" fd
   [ -e "$f" ] || return 1
+  have_flock || return 1
   exec {fd}< "$f" || return 1
   if flock -n "$fd"; then
     exec {fd}<&-
@@ -265,6 +273,10 @@ cmd_run() {
   case "$poll_secs" in '' | *[!0-9.]*) bad_usage "--poll-secs must be a number" ;; esac
 
   if [ "${FM_SUITE_SLOT_HELD:-}" = 1 ]; then exec "$@"; fi
+  if ! have_flock; then
+    say "no slot gate on this host (flock not found); running ungated"
+    exec "$@"
+  fi
 
   mkdir -p "$STATE_DIR" || { say "cannot create $STATE_DIR"; exit 75; }
   compute
