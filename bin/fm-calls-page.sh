@@ -80,22 +80,22 @@
 #            not-needed      answer "Not needed" and close (never --release);
 #            text or talk    typed words with no option picked are never a
 #                            decision: with the captain's words, re-`hold` the
-#                            call with those words in its reason so it stays open; with no
-#                            words, record nothing. Either way it is printed as
-#                            `talk:` for firstmate to raise in chat.
+#                            call with those words in its reason so it stays
+#                            open; with no words, record nothing. Either way it
+#                            is printed as `talk:` for firstmate to raise in chat.
 #          Every recorded answer and every talk prints one
 #          `route: <home>/<task> <answer>` line so firstmate acts on it; an
-#          option, text, Later, or Not needed answer for a call held in a second
+#          option, Later, or Not needed answer for a call held in a second
 #          mate home is also sent to `fm-<home>` through bin/fm-send.sh, so its
 #          home files any follow-up work the decision authorizes (best effort).
 #          A second mate's remote calls go through `fm-on.sh` to its own
 #          fm-captain-hold.sh (`answers` keyed intake on stdin, or `hold`); the
 #          keyed intake shortens each field to 512 characters. An item whose
 #          call is no longer open is reported `skipped:` and records nothing, so
-#          an answer already given in chat is never applied twice. A second-mate send
-#          that failed is kept in state/calls-page-undelivered.tsv and retried at
-#          the start of the next apply. The reserved
-#          value `reconcile` is reported `refused:` and never applied. Then the
+#          an answer already given in chat is never applied twice. A second-mate
+#          send that failed is kept in state/calls-page-undelivered.tsv and
+#          retried at the start of the next apply. The reserved value
+#          `reconcile` is reported `refused:` and never applied. Then the
 #          page is re-rendered best effort (a failed rebuild is a warning, never
 #          a failed apply). Exit 1 only when a recording command failed.
 #
