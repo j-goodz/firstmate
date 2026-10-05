@@ -277,9 +277,9 @@
 #     live remote secondmate worker are out of scope. Best effort: a sweep
 #     failure never blocks this teardown.
 #   Adoption check - bin/fm-fanout-check.sh reads this ship task's FreeLLMAPI fan-out run ids
-#     (status log and PR body), reports whether the units ledger holds check_passed rows for
-#     them and appends the result to data/fanout-adoption.jsonl. A recorded check, never a gate:
-#     best effort, a failure or a lane with no run ids only prints a warning.
+#     (status log and PR body), reports how many of their units free models wrote and appends
+#     the result to data/fanout-adoption.jsonl. A recorded check, never a gate: best effort,
+#     a failure or a lane with no run ids only prints a warning.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

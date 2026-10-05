@@ -154,52 +154,8 @@ test_no_runs() {
   pass "fm-fanout-check.sh: no-runs case"
 }
 
-test_body_file() {
-  # Test 1: run id only via --body-file
-  local tmp_root
-  tmp_root=$(fm_test_tmproot fm-fanout-check)
-  local state_dir="$tmp_root/state"
-  local data_dir="$tmp_root/data"
-  local ledger_file="$tmp_root/units.jsonl"
-  local adoption_file="$data_dir/fanout-adoption.jsonl"
-  mkdir -p "$state_dir" "$data_dir"
-  local task_id="task-body-1"
-  local run_id="fr-20261005T010203Z-abc123"
-  local body_file="$tmp_root/body.txt"
-  echo "This is a PR description with run id ${run_id} inside." > "$body_file"
-  printf '{"run_id":"%s","label":"step1","outcome":"check_passed"}\n' "$run_id" > "$ledger_file"
-
-  local out errfile="$tmp_root/stderr.txt"
-  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" --body-file "$body_file" 2>"$errfile")
-  local rc=$?
-  expect_code 0 $rc "exit code for body-file"
-  assert_equals "fanout-check: $task_id free_written=yes verdict=yes units=1 paid_step_ups=0 runs=$run_id" "$out" "stdout body-file"
-  assert_equals "" "$(cat "$errfile")" "stderr empty body-file"
-
-  # Test 2: run id in both status file and body file, counted once
-  local tmp_root2
-  tmp_root2=$(fm_test_tmproot fm-fanout-check)
-  local state_dir2="$tmp_root2/state"
-  local data_dir2="$tmp_root2/data"
-  local ledger_file2="$tmp_root2/units.jsonl"
-  mkdir -p "$state_dir2" "$data_dir2"
-  local task_id2="task-body-2"
-  local run_id2="fr-20261005T010203Z-def456"
-  echo "$run_id2" > "$state_dir2/${task_id2}.status"
-  local body_file2="$tmp_root2/body.txt"
-  echo "Run id: $run_id2" > "$body_file2"
-  printf '{"run_id":"%s","label":"step1","outcome":"check_passed"}\n' "$run_id2" > "$ledger_file2"
-
-  out=$(FM_HOME="$tmp_root2" FM_STATE_OVERRIDE="$state_dir2" FM_DATA_OVERRIDE="$data_dir2" FM_FANOUT_LEDGER="$ledger_file2" "$ROOT/bin/fm-fanout-check.sh" "$task_id2" --body-file "$body_file2" 2>"$errfile")
-  rc=$?
-  expect_code 0 $rc "exit code for body-file duplicate"
-  assert_equals "fanout-check: $task_id2 free_written=yes verdict=yes units=1 paid_step_ups=0 runs=$run_id2" "$out" "stdout body-file duplicate"
-
-  pass "fm-fanout-check.sh: body-file case"
-}
-
 test_multiple_ids_on_one_line() {
-  # Test 1: multiple run ids on one line in body file, with deduplication
+  # Test 1: multiple run ids on one line in the status file, with deduplication
   local tmp_root
   tmp_root=$(fm_test_tmproot fm-fanout-check)
   local state_dir="$tmp_root/state"
@@ -210,17 +166,16 @@ test_multiple_ids_on_one_line() {
   local task_id="task-multi-1"
   local run_id1="fr-20261005T010203Z-aaa111"
   local run_id2="fr-20261005T010203Z-bbb222"
-  local body_file="$tmp_root/body.txt"
-  echo "Fan-out runs: $run_id1, $run_id2 and $run_id1 again" > "$body_file"
+  echo "Fan-out runs: $run_id1, $run_id2 and $run_id1 again" > "$state_dir/${task_id}.status"
   printf '{"run_id":"%s","label":"step1","outcome":"check_passed"}\n' "$run_id2" > "$ledger_file"
   printf '{"run_id":"%s","label":"step2","outcome":"free_exhausted"}\n' "$run_id1" >> "$ledger_file"
 
   local out errfile="$tmp_root/stderr.txt"
-  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" --body-file "$body_file" 2>"$errfile")
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
   local rc=$?
-  expect_code 0 $rc "exit code for multi-ids body-file"
-  assert_equals "fanout-check: $task_id free_written=yes verdict=yes units=1 paid_step_ups=1 runs=$run_id1,$run_id2" "$out" "stdout multi-ids body-file"
-  assert_equals "" "$(cat "$errfile")" "stderr empty multi-ids body-file"
+  expect_code 0 $rc "exit code for multi-ids status file"
+  assert_equals "fanout-check: $task_id free_written=yes verdict=yes units=1 paid_step_ups=1 runs=$run_id1,$run_id2" "$out" "stdout multi-ids status file"
+  assert_equals "" "$(cat "$errfile")" "stderr empty multi-ids status file"
 
   # Test 2: two run ids on one line in status file, each with check_passed
   local tmp_root2
@@ -243,6 +198,41 @@ test_multiple_ids_on_one_line() {
   assert_equals "" "$(cat "$errfile")" "stderr empty multi-ids status"
 
   pass "fm-fanout-check.sh: multiple ids on one line case"
+}
+
+test_paid_step_up() {
+  # A unit free could not write (free_exhausted under the free run) that a paid model
+  # later passed (check_passed under the paid run) is a paid step-up, never free-written.
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local data_dir="$tmp_root/data"
+  local ledger_file="$tmp_root/units.jsonl"
+  local adoption_file="$data_dir/fanout-adoption.jsonl"
+  mkdir -p "$state_dir" "$data_dir"
+  local task_id="task-step-up-1"
+  local free_run="fr-20261005T010203Z-aaa111"
+  local paid_run="fr-20261005T010204Z-bbb222"
+  echo "$free_run $paid_run" > "$state_dir/${task_id}.status"
+  printf '{"run_id":"%s","label":"step1","outcome":"free_exhausted"}\n' "$free_run" > "$ledger_file"
+  printf '{"run_id":"%s","label":"step1","outcome":"check_passed"}\n' "$paid_run" >> "$ledger_file"
+
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
+  local rc=$?
+  expect_code 0 $rc "exit code for paid step-up"
+  assert_equals "fanout-check: $task_id free_written=no verdict=no units=0 paid_step_ups=1 runs=$free_run,$paid_run" "$out" "stdout paid step-up"
+  local stderr_content
+  stderr_content=$(cat "$errfile")
+  assert_contains "$stderr_content" "WARNING: fanout-check:" "stderr WARNING paid step-up"
+  local adoption_line
+  adoption_line=$(cat "$adoption_file")
+  assert_equals "false" "$(echo "$adoption_line" | jq -r '.free_written')" "adoption free_written false for paid step-up"
+  assert_equals "no" "$(echo "$adoption_line" | jq -r '.verdict')" "adoption verdict no for paid step-up"
+  assert_equals "0" "$(echo "$adoption_line" | jq -r '.units')" "adoption units zero for paid step-up"
+  assert_equals "1" "$(echo "$adoption_line" | jq -r '.paid_step_ups')" "adoption paid_step_ups one for paid step-up"
+
+  pass "fm-fanout-check.sh: paid step-up case"
 }
 
 test_malformed_ledger() {
@@ -438,8 +428,8 @@ test_yes
 test_no
 test_missing_ledger
 test_no_runs
-test_body_file
 test_multiple_ids_on_one_line
+test_paid_step_up
 test_malformed_ledger
 test_adoption_accumulates
 test_bad_usage

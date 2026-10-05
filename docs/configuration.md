@@ -437,8 +437,8 @@ The address selects the existing shared server; it does not authorize starting o
 
 Ship briefs name the FreeLLMAPI fan-out as the standard build method, and `bin/fm-brief.sh` renders that section.
 At ship teardown, `bin/fm-fanout-check.sh` reads the task's fan-out run ids from its status log and PR body.
-It reports whether the nexus units ledger (`~/.nexus/fanout-units.jsonl`, or `FM_FANOUT_LEDGER`) holds `check_passed` rows for those runs.
-It appends one JSON line per check to `data/fanout-adoption.jsonl` with the task, `free_written`, verdict (`yes`, `no`, `missing-ledger` or `no-runs`), unit count and paid step-ups.
+It reports how many units free models actually wrote: a unit whose label has a `free_exhausted` row was handed to a paid model, so its `check_passed` row counts as a paid step-up, not free-written.
+It appends one JSON line per check to `data/fanout-adoption.jsonl` with the task, `free_written`, verdict (`yes`, `no`, `missing-ledger` or `no-runs`), free-written unit count and paid step-ups.
 A lane with no run ids, or a missing ledger, prints a one-line warning and never blocks teardown.
 `FM_FANOUT_ENGINE` overrides the engine path the scaffold names (default `$HOME/nexus/scripts/free_direct_fanout.py`).
 The script header owns the exact contract.

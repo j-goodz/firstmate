@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # bin/fm-fanout-check.sh (adoption check for the FreeLLMAPI fan-out build method)
 #
-# Usage: bin/fm-fanout-check.sh <task-id> [--pr-url <url>] [--body-file <path>]
+# Usage: bin/fm-fanout-check.sh <task-id> [--pr-url <url>]
 #        bin/fm-fanout-check.sh --help      (prints usage, exit 0)
 #
 # Purpose: after a build lane lands, report whether its code was written by free models through
@@ -19,8 +19,7 @@
 # Run ids: strings matching the extended regex  fr-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}
 # Collect them, distinct, in first-seen order, from these sources:
 #   1. $STATE/<task-id>.status, if the file exists
-#   2. --body-file <path>, if given and readable
-#   3. when --pr-url is given and --body-file is not: the PR body from
+#   2. when --pr-url is given: the PR body from
 #      `gh pr view <url> --json body --jq .body`, hard-bounded by fm_run_timed
 #      (bin/fm-timeout-lib.sh); any failure, including gh missing or the bound
 #      expiring, is silently ignored and yields no ids)
@@ -33,9 +32,13 @@
 # Verdict, decided in this order:
 #   no-runs         no run id was found anywhere
 #   missing-ledger  run ids were found but the units ledger file does not exist or is unreadable
-#   yes             at least one unit has a check_passed row
-#   no              run ids found, ledger readable, but zero units have a check_passed row
-# units = number of distinct (run_id,label) pairs with outcome check_passed (0 for no-runs and missing-ledger)
+#   yes             at least one unit is free-written (see units)
+#   no              run ids found, ledger readable, but zero units are free-written
+# A label with a free_exhausted row is a unit free could not write; only such units may then be
+# handed to a paid model, and any check_passed row for that same label is that paid step-up's,
+# never a free-written unit.
+# units = number of distinct (run_id,label) pairs with outcome check_passed whose label has no
+#         free_exhausted row (0 for no-runs and missing-ledger)
 # paid_step_ups = number of distinct (run_id,label) pairs with outcome free_exhausted
 #                 (0 for no-runs and missing-ledger)
 #
@@ -72,7 +75,6 @@ UNITS_LEDGER="${FM_FANOUT_LEDGER:-$HOME/.nexus/fanout-units.jsonl}"
 # Parse arguments
 TASK_ID=""
 PR_URL=""
-BODY_FILE=""
 
 while (( "$#" )); do
   case "$1" in
@@ -87,14 +89,6 @@ while (( "$#" )); do
         exit 2
       fi
       PR_URL="$2"
-      shift 2
-      ;;
-    --body-file)
-      if [[ -z "${2:-}" ]]; then
-        echo "ERROR: --body-file requires an argument" >&2
-        exit 2
-      fi
-      BODY_FILE="$2"
       shift 2
       ;;
     -*)
@@ -133,18 +127,8 @@ if [[ -f "$status_file" ]]; then
   done < <(grep -oE 'fr-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}' "$status_file" || true)
 fi
 
-# 2. --body-file
-if [[ -n "$BODY_FILE" && -r "$BODY_FILE" ]]; then
-  while IFS= read -r id; do
-    if ! [[ " ${seen[*]:-} " == *" $id "* ]]; then
-      seen+=("$id")
-      run_ids+=("$id")
-    fi
-  done < <(grep -oE 'fr-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}' "$BODY_FILE" || true)
-fi
-
-# 3. --pr-url (only if --body-file not given)
-if [[ -n "$PR_URL" && -z "$BODY_FILE" ]]; then
+# 2. --pr-url
+if [[ -n "$PR_URL" ]]; then
   pr_body=$(fm_run_timed 20 gh pr view "$PR_URL" --json body --jq .body 2>/dev/null || true)
   if [[ -n "$pr_body" ]]; then
     while IFS= read -r id; do
@@ -181,7 +165,8 @@ else
           | {run_id, label, outcome}
         ' \
       | jq -s '
-          group_by(.run_id, .label)
+          (map(select(.outcome == "free_exhausted") | .label) | unique) as $paid_labels
+          | group_by(.run_id, .label)
           | map({
               run_id: .[0].run_id,
               label: .[0].label,
@@ -189,7 +174,7 @@ else
               has_free_exhausted: any(.outcome == "free_exhausted")
             })
           | {
-              units: (map(select(.has_check_passed)) | length),
+              units: (map(select(. as $g | $g.has_check_passed and (($paid_labels | index($g.label)) == null))) | length),
               paid_step_ups: (map(select(.has_free_exhausted)) | length)
             }
         ')
@@ -233,7 +218,7 @@ if [[ "$verdict" != "yes" ]]; then
       reason="the units ledger file is missing or unreadable"
       ;;
     no)
-      reason="run ids found but zero units have a check_passed row"
+      reason="run ids found but zero units are free-written"
       ;;
     *)
       reason="unknown verdict"
