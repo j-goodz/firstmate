@@ -398,7 +398,8 @@ try_send() {  # <home> <task> <text>
 }
 
 send_to_mate() {  # <home> <task> <text>
-  local home=$1 task=$2 text=$3
+  local home=$1 task=$2 text
+  text=$(printf '%s' "$3" | tr '\n\t\r' '   ')
   [ "$home" != local ] || return 0
   try_send "$home" "$task" "$text" || {
     printf '%s\t%s\t%s\n' "$home" "$task" "$text" >> "$UNDELIVERED"

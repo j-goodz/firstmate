@@ -427,6 +427,27 @@ send_count=$(grep -c -F 'Call r1: Not needed' "$SD/calls.log")
 assert_equals "2" "$send_count" "a delivered answer is not sent a third time"
 pass "a second-mate answer is delivered without FM_HOME and retried after a failed send"
 
+SM=$(make_home sendmulti)
+write_local_backlog "$SM"
+add_remote_mate "$SM"
+write_fm_on_stub "$SM"
+write_captain_stub "$SM"
+write_send_env_stub "$SM"
+run_calls "$SM" render >/dev/null 2>&1
+cat > "$SM/result.txt" <<'EOF'
+session:
+  file: /tmp/calls.html
+  status: feedback
+prompts[1]{uid,prompt,selector,tag,text}:
+  "1","Call r1: not needed\n\nContext data:\n{\n  \"schema\": \"open-call-answer.v1\",\n  \"call\": \"r1\",\n  \"home\": \"swiftmate\",\n  \"kind\": \"option\",\n  \"answer\": \"first line\\nsecond line\",\n  \"note\": \"\"\n}","form",call-answer,"Buzz calendar shape"
+EOF
+FM_TEST_SEND_FAIL=1 run_calls "$SM" apply "$SM/result.txt" >"$SM/out1" 2>"$SM/err1"
+printf '%s\n' 'resolved [key=captain-hold-r1-1]: answered: not needed' >> "$SM/state/swiftmate.status"
+FM_TEST_SEND_FAIL=0 run_calls "$SM" apply "$SM/result.txt" >"$SM/out2" 2>"$SM/err2"
+assert_equals "2" "$(grep -c -F 'SEND' "$SM/calls.log")" "a multi-line answer is one undelivered record, retried once"
+assert_contains "$(grep -F 'SEND' "$SM/calls.log" | tail -1)" "first line second line" "the retried multi-line answer arrives whole"
+pass "a multi-line second-mate answer survives the undelivered queue"
+
 # --- apply: typed text with no option picked never closes a call (state/calls-page.jsonl, 2026-10-05 15:21:41Z) ---
 
 TX=$(make_home textonly)
