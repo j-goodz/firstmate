@@ -3,6 +3,19 @@
 set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
+# Ranked free-model fixture: the check reads this to tell free-written units from paid
+# ones, so these tests never touch the operator's real ~/.nexus/free-coding-models.json.
+FM_FANOUT_MODELS_FIXTURE_ROOT=$(fm_test_tmproot fm-fanout-check-models)
+cat > "$FM_FANOUT_MODELS_FIXTURE_ROOT/free-coding-models.json" <<'JSON'
+{"models":[
+  {"model":"dots-studio/dots-3-note-preview:free"},
+  {"model":"openai/gpt-oss-120b"},
+  {"model":"kilo/cohere/north-mini-code:free"},
+  {"model":"codestral-2508"}
+]}
+JSON
+export FM_FANOUT_MODELS="$FM_FANOUT_MODELS_FIXTURE_ROOT/free-coding-models.json"
+
 test_yes() {
   local tmp_root
   tmp_root=$(fm_test_tmproot fm-fanout-check)
@@ -14,8 +27,8 @@ test_yes() {
   local task_id="task-yes-1"
   local run_id="fr-20261005T010203Z-abc123"
   echo "$run_id" > "$state_dir/${task_id}.status"
-  printf '{"run_id":"%s","label":"step1","outcome":"check_passed"}\n' "$run_id" > "$ledger_file"
-  printf '{"run_id":"%s","label":"step2","outcome":"check_passed"}\n' "$run_id" >> "$ledger_file"
+  printf '{"run_id":"%s","label":"step1","outcome":"check_passed","requested_model":"dots-studio/dots-3-note-preview:free"}\n' "$run_id" > "$ledger_file"
+  printf '{"run_id":"%s","label":"step2","outcome":"check_passed","requested_model":"openai/gpt-oss-120b"}\n' "$run_id" >> "$ledger_file"
   printf '{"run_id":"%s","label":"step3","outcome":"free_exhausted"}\n' "$run_id" >> "$ledger_file"
 
   local out errfile="$tmp_root/stderr.txt"
@@ -167,7 +180,7 @@ test_multiple_ids_on_one_line() {
   local run_id1="fr-20261005T010203Z-aaa111"
   local run_id2="fr-20261005T010203Z-bbb222"
   echo "Fan-out runs: $run_id1, $run_id2 and $run_id1 again" > "$state_dir/${task_id}.status"
-  printf '{"run_id":"%s","label":"step1","outcome":"check_passed"}\n' "$run_id2" > "$ledger_file"
+  printf '{"run_id":"%s","label":"step1","outcome":"check_passed","requested_model":"openai/gpt-oss-120b"}\n' "$run_id2" > "$ledger_file"
   printf '{"run_id":"%s","label":"step2","outcome":"free_exhausted"}\n' "$run_id1" >> "$ledger_file"
 
   local out errfile="$tmp_root/stderr.txt"
@@ -188,8 +201,8 @@ test_multiple_ids_on_one_line() {
   local run_id3="fr-20261005T010203Z-ccc333"
   local run_id4="fr-20261005T010203Z-ddd444"
   echo "$run_id3 $run_id4" > "$state_dir2/${task_id2}.status"
-  printf '{"run_id":"%s","label":"step1","outcome":"check_passed"}\n' "$run_id3" > "$ledger_file2"
-  printf '{"run_id":"%s","label":"step2","outcome":"check_passed"}\n' "$run_id4" >> "$ledger_file2"
+  printf '{"run_id":"%s","label":"step1","outcome":"check_passed","requested_model":"openai/gpt-oss-120b"}\n' "$run_id3" > "$ledger_file2"
+  printf '{"run_id":"%s","label":"step2","outcome":"check_passed","requested_model":"dots-studio/dots-3-note-preview:free"}\n' "$run_id4" >> "$ledger_file2"
 
   out=$(FM_HOME="$tmp_root2" FM_STATE_OVERRIDE="$state_dir2" FM_DATA_OVERRIDE="$data_dir2" FM_FANOUT_LEDGER="$ledger_file2" "$ROOT/bin/fm-fanout-check.sh" "$task_id2" 2>"$errfile")
   rc=$?
@@ -215,7 +228,7 @@ test_paid_step_up() {
   local paid_run="fr-20261005T010204Z-bbb222"
   echo "$free_run $paid_run" > "$state_dir/${task_id}.status"
   printf '{"run_id":"%s","label":"step1","outcome":"free_exhausted"}\n' "$free_run" > "$ledger_file"
-  printf '{"run_id":"%s","label":"step1","outcome":"check_passed"}\n' "$paid_run" >> "$ledger_file"
+  printf '{"run_id":"%s","label":"step1","outcome":"check_passed","requested_model":"paid-model-xyz"}\n' "$paid_run" >> "$ledger_file"
 
   local out errfile="$tmp_root/stderr.txt"
   out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
@@ -235,6 +248,64 @@ test_paid_step_up() {
   pass "fm-fanout-check.sh: paid step-up case"
 }
 
+test_paid_only_run() {
+  # review-3 forward: a run handed wholesale to a paid model (no prior free run) must not
+  # be recorded as free adoption, even though every unit emits check_passed.
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local data_dir="$tmp_root/data"
+  local ledger_file="$tmp_root/units.jsonl"
+  local adoption_file="$data_dir/fanout-adoption.jsonl"
+  mkdir -p "$state_dir" "$data_dir"
+  local task_id="task-paid-only-1"
+  local paid_run="fr-20261005T010203Z-aaa111"
+  echo "$paid_run" > "$state_dir/${task_id}.status"
+  printf '{"run_id":"%s","label":"step1","outcome":"check_passed","requested_model":"paid-model-xyz"}\n' "$paid_run" > "$ledger_file"
+  printf '{"run_id":"%s","label":"step2","outcome":"check_passed","requested_model":"paid-model-xyz"}\n' "$paid_run" >> "$ledger_file"
+
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
+  local rc=$?
+  expect_code 0 $rc "exit code for paid-only run"
+  assert_equals "fanout-check: $task_id free_written=no verdict=no units=0 paid_step_ups=0 runs=$paid_run" "$out" "stdout paid-only run"
+  local stderr_content
+  stderr_content=$(cat "$errfile")
+  assert_contains "$stderr_content" "WARNING: fanout-check:" "stderr WARNING paid-only run"
+  local adoption_line
+  adoption_line=$(cat "$adoption_file")
+  assert_equals "false" "$(echo "$adoption_line" | jq -r '.free_written')" "adoption free_written false for paid-only run"
+  assert_equals "0" "$(echo "$adoption_line" | jq -r '.units')" "adoption units zero for paid-only run"
+
+  pass "fm-fanout-check.sh: paid-only run is not free adoption"
+}
+
+test_label_reuse_across_runs() {
+  # review-3 reverse: a genuine free check_passed for a label that some other collected
+  # run reports free_exhausted must still count as free-written.
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local data_dir="$tmp_root/data"
+  local ledger_file="$tmp_root/units.jsonl"
+  mkdir -p "$state_dir" "$data_dir"
+  local task_id="task-label-reuse-1"
+  local free_run_a="fr-20261005T010203Z-aaa111"
+  local free_run_b="fr-20261005T010204Z-bbb222"
+  echo "$free_run_a $free_run_b" > "$state_dir/${task_id}.status"
+  printf '{"run_id":"%s","label":"step1","outcome":"free_exhausted"}\n' "$free_run_a" > "$ledger_file"
+  printf '{"run_id":"%s","label":"step1","outcome":"check_passed","requested_model":"openai/gpt-oss-120b"}\n' "$free_run_b" >> "$ledger_file"
+
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
+  local rc=$?
+  expect_code 0 $rc "exit code for label reuse"
+  assert_equals "fanout-check: $task_id free_written=yes verdict=yes units=1 paid_step_ups=1 runs=$free_run_a,$free_run_b" "$out" "stdout label reuse"
+  assert_equals "" "$(cat "$errfile")" "stderr empty label reuse"
+
+  pass "fm-fanout-check.sh: free pass survives a free_exhausted on another run's label"
+}
+
 test_malformed_ledger() {
   local tmp_root
   tmp_root=$(fm_test_tmproot fm-fanout-check)
@@ -247,11 +318,11 @@ test_malformed_ledger() {
   local run_id="fr-20261005T010203Z-abc123"
   echo "$run_id" > "$state_dir/${task_id}.status"
   {
-    printf '{"run_id":"%s","label":"step1","outcome":"check_passed"}\n' "$run_id"
+    printf '{"run_id":"%s","label":"step1","outcome":"check_passed","requested_model":"openai/gpt-oss-120b"}\n' "$run_id"
     printf 'garbage line\n'
     printf '\n'
     printf '["array","not","object"]\n'
-    printf '{"run_id":"%s","label":"step2","outcome":"check_passed"}\n' "$run_id"
+    printf '{"run_id":"%s","label":"step2","outcome":"check_passed","requested_model":"dots-studio/dots-3-note-preview:free"}\n' "$run_id"
   } > "$ledger_file"
 
   local out errfile="$tmp_root/stderr.txt"
@@ -379,7 +450,7 @@ test_pr_url() {
   local task_id="task-pr-url-1"
   local run_id="fr-20261005T010203Z-abc123"
   mkdir -p "$state_dir" "$data_dir"
-  printf '{"run_id":"%s","label":"step1","outcome":"check_passed"}\n' "$run_id" > "$ledger_file"
+  printf '{"run_id":"%s","label":"step1","outcome":"check_passed","requested_model":"openai/gpt-oss-120b"}\n' "$run_id" > "$ledger_file"
   cat > "$fakebin/gh" <<'SH'
 #!/usr/bin/env bash
 printf 'PR body mentioning fr-20261005T010203Z-abc123 for this lane.\n'
@@ -430,6 +501,8 @@ test_missing_ledger
 test_no_runs
 test_multiple_ids_on_one_line
 test_paid_step_up
+test_paid_only_run
+test_label_reuse_across_runs
 test_malformed_ledger
 test_adoption_accumulates
 test_bad_usage

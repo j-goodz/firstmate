@@ -14,6 +14,7 @@
 #   STATE              ${FM_STATE_OVERRIDE:-$FM_HOME/state}
 #   DATA               ${FM_DATA_OVERRIDE:-$FM_HOME/data}
 #   units ledger       ${FM_FANOUT_LEDGER:-$HOME/.nexus/fanout-units.jsonl}   (read only)
+#   ranked free models ${FM_FANOUT_MODELS:-$HOME/.nexus/free-coding-models.json} (read only)
 #   adoption ledger    $DATA/fanout-adoption.jsonl                            (append one line per run)
 #
 # Run ids: strings matching the extended regex  fr-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}
@@ -24,21 +25,24 @@
 #      (bin/fm-timeout-lib.sh); any failure, including gh missing or the bound
 #      expiring, is silently ignored and yields no ids)
 #
-# Units ledger rows are JSON lines with at least: run_id, label, outcome. Outcome values that
-# matter: "check_passed" and "free_exhausted". Blank or malformed lines are ignored.
-# A unit is a distinct (run_id, label) pair. Only rows whose run_id is one of the collected
-# run ids count.
+# Units ledger rows are JSON lines with at least: run_id, label, outcome, requested_model.
+# Outcome values that matter: "check_passed" and "free_exhausted". Blank or malformed lines
+# are ignored. A unit is a distinct (run_id, label) pair. Only rows whose run_id is one of the
+# collected run ids count.
+#
+# Free vs paid provenance comes from the row that produced the code: requested_model, or
+# served_model when requested_model is empty. A free model is one named by the ranked list in
+# $FM_FANOUT_MODELS (plus the engine's seed fallback and "auto"); any other model is paid. A
+# check_passed row counts as free-written only when its model is free, so a run a lead handed
+# wholesale to a paid model is never recorded as free adoption.
 #
 # Verdict, decided in this order:
 #   no-runs         no run id was found anywhere
 #   missing-ledger  run ids were found but the units ledger file does not exist or is unreadable
 #   yes             at least one unit is free-written (see units)
 #   no              run ids found, ledger readable, but zero units are free-written
-# A label with a free_exhausted row is a unit free could not write; only such units may then be
-# handed to a paid model, and any check_passed row for that same label is that paid step-up's,
-# never a free-written unit.
-# units = number of distinct (run_id,label) pairs with outcome check_passed whose label has no
-#         free_exhausted row (0 for no-runs and missing-ledger)
+# units = number of distinct (run_id,label) pairs whose check_passed row names a free model
+#         (0 for no-runs and missing-ledger)
 # paid_step_ups = number of distinct (run_id,label) pairs with outcome free_exhausted
 #                 (0 for no-runs and missing-ledger)
 #
@@ -71,6 +75,7 @@ FM_HOME="${FM_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 UNITS_LEDGER="${FM_FANOUT_LEDGER:-$HOME/.nexus/fanout-units.jsonl}"
+FREE_MODELS_FILE="${FM_FANOUT_MODELS:-$HOME/.nexus/free-coding-models.json}"
 
 # Parse arguments
 TASK_ID=""
@@ -158,23 +163,51 @@ else
   if [[ ! -r "$UNITS_LEDGER" ]]; then
     verdict="missing-ledger"
   else
-    # Process ledger with jq to count distinct (run_id, label) pairs per outcome
+    # The engine's own free-model universe: the ranked list, its seed fallback, and "auto".
+    if [[ -r "$FREE_MODELS_FILE" ]]; then
+      ranked_models=$(jq -r '
+        if type == "object" and has("models") then .models else . end
+        | if type == "array" then .[] else empty end
+        | if type == "string" then . elif type == "object" then .model else empty end
+        | select(type == "string" and length > 0)
+      ' "$FREE_MODELS_FILE" 2>/dev/null || true)
+    else
+      ranked_models=""
+    fi
+    free_models_json=$(
+      {
+        printf '%s\n' "$ranked_models"
+        printf '%s\n' \
+          "openai/gpt-oss-120b" \
+          "nvidia/nemotron-3-ultra-550b-a55b:free" \
+          "dots-studio/dots-3-note-preview:free" \
+          "cohere/north-mini-code:free" \
+          "codestral-2508" \
+          "auto"
+      } | jq -R 'select(length > 0)' | jq -s 'unique'
+    )
+
+    # Process ledger with jq to count distinct (run_id, label) pairs per outcome. A
+    # check_passed unit counts as free-written only when its producing model is free.
     counts=$(jq -R 'fromjson? | select(type=="object")' "$UNITS_LEDGER" \
       | jq --argjson ids "$run_ids_json" '
           select(.run_id as $rid | ($ids | index($rid)) != null)
-          | {run_id, label, outcome}
+          | {run_id, label, outcome,
+             requested_model: (.requested_model // ""),
+             served_model: (.served_model // "")}
         ' \
-      | jq -s '
-          (map(select(.outcome == "free_exhausted") | .label) | unique) as $paid_labels
-          | group_by(.run_id, .label)
+      | jq -s --argjson free "$free_models_json" '
+          group_by(.run_id, .label)
           | map({
               run_id: .[0].run_id,
               label: .[0].label,
-              has_check_passed: any(.outcome == "check_passed"),
-              has_free_exhausted: any(.outcome == "free_exhausted")
+              has_free_pass: any(.[]; . as $row | ($row.outcome == "check_passed")
+                and ((($free | index($row.requested_model)) != null)
+                     or (($free | index($row.served_model)) != null))),
+              has_free_exhausted: any(.[]; .outcome == "free_exhausted")
             })
           | {
-              units: (map(select(. as $g | $g.has_check_passed and (($paid_labels | index($g.label)) == null))) | length),
+              units: (map(select(.has_free_pass)) | length),
               paid_step_ups: (map(select(.has_free_exhausted)) | length)
             }
         ')
