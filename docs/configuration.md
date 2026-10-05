@@ -436,9 +436,9 @@ The address selects the existing shared server; it does not authorize starting o
 ## Fan-out adoption ledger (data/fanout-adoption.jsonl)
 
 Ship briefs name the FreeLLMAPI fan-out as the standard build method, and `bin/fm-brief.sh` renders that section.
-At ship teardown, `bin/fm-fanout-check.sh` reads the task's fan-out run ids from its status log and PR body.
+At ship teardown, `bin/fm-fanout-check.sh` reads the task's fan-out run ids from its status log and, in the PR body, only from the line starting `Fan-out runs:`.
 It reports how many units free models actually wrote: a unit counts as free-written when its `check_passed` row names a ranked free model in either `requested_model` or `served_model`, so a run a lead handed wholesale to a paid model is never recorded as free adoption, and a paid step-up is counted only for a unit that first reported `free_exhausted` under a collected run.
-It appends one JSON line per check to `data/fanout-adoption.jsonl` with the task, `free_written`, verdict (`yes`, `no`, `missing-ledger` or `no-runs`), free-written unit count and paid step-ups.
+It appends one JSON line per check to `data/fanout-adoption.jsonl` with the task, `free_written` (true only for `yes`), verdict (`yes` for free-written units with no paid step-ups, `mixed` for free-written units plus at least one paid step-up, `no` for zero free-written units, `missing-ledger`, or `no-runs`), free-written unit count and paid step-ups.
 A lane with no run ids, or a missing ledger, prints a one-line warning and never blocks teardown.
 `FM_FANOUT_ENGINE` overrides the engine path the scaffold names (default `$HOME/nexus/scripts/free_direct_fanout.py`).
 `FM_FANOUT_MODELS` overrides the ranked free-model list the check reads to tell free-written from paid-written units (default `$HOME/.nexus/free-coding-models.json`).

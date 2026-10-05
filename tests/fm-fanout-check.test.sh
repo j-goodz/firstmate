@@ -29,14 +29,13 @@ test_yes() {
   echo "$run_id" > "$state_dir/${task_id}.status"
   printf '{"run_id":"%s","label":"step1","outcome":"check_passed","requested_model":"dots-studio/dots-3-note-preview:free"}\n' "$run_id" > "$ledger_file"
   printf '{"run_id":"%s","label":"step2","outcome":"check_passed","requested_model":"openai/gpt-oss-120b"}\n' "$run_id" >> "$ledger_file"
-  printf '{"run_id":"%s","label":"step3","outcome":"free_exhausted"}\n' "$run_id" >> "$ledger_file"
 
   local out errfile="$tmp_root/stderr.txt"
   out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
   local rc=$?
 
   expect_code 0 $rc "exit code for yes case"
-  assert_equals "fanout-check: $task_id free_written=yes verdict=yes units=2 paid_step_ups=1 runs=$run_id" "$out" "stdout for yes case"
+  assert_equals "fanout-check: $task_id free_written=yes verdict=yes units=2 paid_step_ups=0 runs=$run_id" "$out" "stdout for yes case"
   assert_equals "" "$(cat "$errfile")" "stderr should be empty"
   assert_present "$adoption_file" "adoption ledger should exist"
   local adoption_line
@@ -54,7 +53,7 @@ test_yes() {
   assert_equals "true" "$free_written" "adoption free_written"
   assert_equals "yes" "$verdict" "adoption verdict"
   assert_equals "2" "$units" "adoption units"
-  assert_equals "1" "$paid_step_ups" "adoption paid_step_ups"
+  assert_equals "0" "$paid_step_ups" "adoption paid_step_ups"
   assert_equals "$run_id" "$runs" "adoption runs"
 
   pass "fm-fanout-check.sh: yes case"
@@ -187,8 +186,8 @@ test_multiple_ids_on_one_line() {
   out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
   local rc=$?
   expect_code 0 $rc "exit code for multi-ids status file"
-  assert_equals "fanout-check: $task_id free_written=yes verdict=yes units=1 paid_step_ups=1 runs=$run_id1,$run_id2" "$out" "stdout multi-ids status file"
-  assert_equals "" "$(cat "$errfile")" "stderr empty multi-ids status file"
+  assert_equals "fanout-check: $task_id free_written=no verdict=mixed units=1 paid_step_ups=1 runs=$run_id1,$run_id2" "$out" "stdout multi-ids status file"
+  assert_contains "$(cat "$errfile")" "WARNING: fanout-check:" "stderr WARNING multi-ids status file"
 
   # Test 2: two run ids on one line in status file, each with check_passed
   local tmp_root2
@@ -300,8 +299,8 @@ test_label_reuse_across_runs() {
   out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
   local rc=$?
   expect_code 0 $rc "exit code for label reuse"
-  assert_equals "fanout-check: $task_id free_written=yes verdict=yes units=1 paid_step_ups=1 runs=$free_run_a,$free_run_b" "$out" "stdout label reuse"
-  assert_equals "" "$(cat "$errfile")" "stderr empty label reuse"
+  assert_equals "fanout-check: $task_id free_written=no verdict=mixed units=1 paid_step_ups=1 runs=$free_run_a,$free_run_b" "$out" "stdout label reuse"
+  assert_contains "$(cat "$errfile")" "WARNING: fanout-check:" "stderr WARNING label reuse"
 
   pass "fm-fanout-check.sh: free pass survives a free_exhausted on another run's label"
 }
@@ -453,7 +452,7 @@ test_pr_url() {
   printf '{"run_id":"%s","label":"step1","outcome":"check_passed","requested_model":"openai/gpt-oss-120b"}\n' "$run_id" > "$ledger_file"
   cat > "$fakebin/gh" <<'SH'
 #!/usr/bin/env bash
-printf 'PR body mentioning fr-20261005T010203Z-abc123 for this lane.\n'
+printf 'Fan-out runs: fr-20261005T010203Z-abc123\n'
 SH
   chmod +x "$fakebin/gh"
 
@@ -495,6 +494,80 @@ test_ledger_unchanged() {
   pass "fm-fanout-check.sh: ledger unchanged case"
 }
 
+test_mixed() {
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local data_dir="$tmp_root/data"
+  local ledger_file="$tmp_root/units.jsonl"
+  local adoption_file="$data_dir/fanout-adoption.jsonl"
+  mkdir -p "$state_dir" "$data_dir"
+  local task_id="task-mixed-1"
+  local run_id="fr-20261005T010203Z-abc123"
+  echo "$run_id" > "$state_dir/${task_id}.status"
+  printf '{"run_id":"%s","label":"step1","outcome":"check_passed","requested_model":"openai/gpt-oss-120b"}\n' "$run_id" > "$ledger_file"
+  printf '{"run_id":"%s","label":"step2","outcome":"check_passed","requested_model":"openai/gpt-oss-120b"}\n' "$run_id" >> "$ledger_file"
+  printf '{"run_id":"%s","label":"step3","outcome":"free_exhausted"}\n' "$run_id" >> "$ledger_file"
+
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
+  local rc=$?
+
+  expect_code 0 $rc "exit code for mixed case"
+  assert_equals "fanout-check: $task_id free_written=no verdict=mixed units=2 paid_step_ups=1 runs=$run_id" "$out" "stdout for mixed case"
+  local stderr_content
+  stderr_content=$(cat "$errfile")
+  assert_contains "$stderr_content" "WARNING: fanout-check:" "stderr contains WARNING for mixed"
+  assert_present "$adoption_file" "adoption ledger should exist for mixed"
+  local adoption_line
+  adoption_line=$(cat "$adoption_file")
+  local free_written
+  free_written=$(echo "$adoption_line" | jq -r '.free_written')
+  local verdict
+  verdict=$(echo "$adoption_line" | jq -r '.verdict')
+  local units
+  units=$(echo "$adoption_line" | jq -r '.units')
+  local paid_step_ups
+  paid_step_ups=$(echo "$adoption_line" | jq -r '.paid_step_ups')
+  local runs
+  runs=$(echo "$adoption_line" | jq -r '.runs | join(",")')
+  assert_equals "false" "$free_written" "adoption free_written for mixed"
+  assert_equals "mixed" "$verdict" "adoption verdict for mixed"
+  assert_equals "2" "$units" "adoption units for mixed"
+  assert_equals "1" "$paid_step_ups" "adoption paid_step_ups for mixed"
+  assert_equals "$run_id" "$runs" "adoption runs for mixed"
+
+  pass "fm-fanout-check.sh: mixed case"
+}
+
+test_pr_body_runs_line_only() {
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local data_dir="$tmp_root/data"
+  local ledger_file="$tmp_root/units.jsonl"
+  local fakebin
+  fakebin=$(fm_fakebin "$tmp_root")
+  local task_id="task-pr-body-1"
+  local run_id="fr-20261005T010203Z-abc123"
+  mkdir -p "$state_dir" "$data_dir"
+  printf '{"run_id":"%s","label":"step1","outcome":"check_passed","requested_model":"openai/gpt-oss-120b"}\n' "$run_id" > "$ledger_file"
+  cat > "$fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+printf 'Fan-out runs: fr-20261005T010203Z-abc123\nSome pasted output fr-20261005T010203Z-def456\nMore text fr-20261005T010203Z-fff000\n'
+SH
+  chmod +x "$fakebin/gh"
+
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(PATH="$fakebin:$PATH" FM_TIMEOUT_MECHANISM_OVERRIDE=bash FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" --pr-url "https://forge.example/pr/1" 2>"$errfile")
+  local rc=$?
+  expect_code 0 $rc "exit code for pr-body runs-line-only"
+  assert_equals "fanout-check: $task_id free_written=yes verdict=yes units=1 paid_step_ups=0 runs=$run_id" "$out" "stdout for pr-body runs-line-only"
+  assert_equals "" "$(cat "$errfile")" "stderr empty for pr-body runs-line-only"
+
+  pass "fm-fanout-check.sh: pr-body runs line only case"
+}
+
 test_yes
 test_no
 test_missing_ledger
@@ -509,3 +582,5 @@ test_bad_usage
 test_unwritable_data_dir
 test_pr_url
 test_ledger_unchanged
+test_mixed
+test_pr_body_runs_line_only
