@@ -24,13 +24,16 @@
 # This pass is the hourly backstop. It never removes a worktree, a branch, a
 # record, or uncommitted work: an owned lane's agent is stopped through the
 # owning home's own control plane (bin/fm-control.sh exit, which preserves the
-# endpoint and every change), and only a pane no record claims is closed.
+# endpoint and every change), and only a pane no local home claims is closed.
 #
-# Scope. Every running Herdr session except fm-lab-* test labs. Homes are the
-# directories directly under $HOME holding bin/fm-spawn.sh, state/ and
-# AGENTS.md (FM_IDLE_REAP_HOMES, colon-separated, overrides discovery). A
-# pane is a candidate only when Herdr reports an agent in it and its tab label
-# is a Firstmate lane label (fm-<task>); every other pane is left alone.
+# Scope. Every running Herdr session except fm-lab-* test labs. Homes are
+# rediscovered on every run: directories under $HOME holding a secondmate-home
+# marker or AGENTS.md plus bin/, plus every local home registered in those
+# homes' data/secondmates.md. FM_IDLE_REAP_HOMES adds homes, never limits
+# discovery. A pane is a candidate only when Herdr reports an agent in it and
+# its tab label is a Firstmate lane label (fm-<task>); every other pane is
+# left alone. Ownership is judged by the lane id, never by Herdr pane id
+# (pane ids change across Herdr server restarts).
 #
 # Decision, in order, per pane. The first rule that matches is logged.
 #   no-agent                 Herdr reports no agent in the pane.
@@ -42,8 +45,8 @@
 #   not-a-firstmate-lane     the tab label is not fm-<task>.
 #   agent-stopped            the pane provably holds only an idle shell (Herdr
 #                            keeps the last agent label after an agent exits).
-#   ambiguous-owner          more than one local record claims the pane.
-#   Owned (exactly one record claims session+pane):
+#   ambiguous-owner          more than one local home claims the task.
+#   Owned (exactly one home holds state/<task>.meta for the lane):
 #     remote-record          the record lives on another machine.
 #     recent-activity        the newest of the task's turn-ended, progress,
 #                            busy-state, status and meta files is younger than
@@ -61,7 +64,7 @@
 #     finished-idle          acted on: exited through the owning home's
 #                            fm-control.sh, and a note: line naming this pass
 #                            is appended to the task's status log.
-#   Ownerless (no record claims the pane):
+#   Ownerless (no local home claims the task):
 #     no-owner-home          no Firstmate home was discovered at all, so the
 #                            pane's owner cannot be judged: never closed.
 #     first-sight-idle, activity-seen
@@ -102,6 +105,8 @@ FM_HOME="${FM_HOME:-$FM_ROOT}"
 fm_backend_source herdr
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
+# shellcheck source=bin/fm-secondmate-registry-lib.sh
+. "$SCRIPT_DIR/fm-secondmate-registry-lib.sh"
 
 FM_IDLE_REAP_UNIT=fm-idle-session-reap
 
@@ -156,26 +161,57 @@ fm_idle_reap_close_pane() {  # <session> <pane>
 
 # --- inventory ---------------------------------------------------------------
 
+# Local home paths named by a home's data/secondmates.md. A remote route names
+# a home on another machine and is not one of this machine's homes.
+fm_idle_reap_registry_homes() {  # <registry-file>
+  local reg=$1 line
+  [ -f "$reg" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    secondmate_registry_parse_line "$line" || continue
+    [ "$SECONDMATE_REGISTRY_REMOTE" = 1 ] && continue
+    [ -n "$SECONDMATE_REGISTRY_HOME" ] || continue
+    printf '%s\n' "$SECONDMATE_REGISTRY_HOME"
+  done < "$reg"
+}
+
+# Homes are rediscovered fresh every run so a home added after install-timer,
+# a home missing from the recorded FM_IDLE_REAP_HOMES, or a changed Herdr pane
+# id never makes a home-owned task look ownerless. FM_IDLE_REAP_HOMES entries
+# are added to discovery, never substituted for it.
 fm_idle_reap_homes() {
-  local d real seen=$'\n'
-  if [ -n "${FM_IDLE_REAP_HOMES:-}" ]; then
-    printf '%s\n' "$FM_IDLE_REAP_HOMES" | tr ':' '\n' | awk 'NF'
-    return 0
-  fi
+  local d real entry seen=$'\n' reg queue=() i=0
   for d in "$HOME"/*/; do
     d=${d%/}
-    [ -f "$d/bin/fm-spawn.sh" ] && [ -d "$d/state" ] && [ -f "$d/AGENTS.md" ] || continue
-    real=$(cd "$d" 2>/dev/null && pwd -P) || continue
+    if [ -f "$d/$FM_BACKEND_HERDR_SECONDMATE_MARKER" ] \
+       || { [ -f "$d/AGENTS.md" ] && [ -d "$d/bin" ]; }; then
+      queue+=("$d")
+    fi
+  done
+  if [ -n "${FM_IDLE_REAP_HOMES:-}" ]; then
+    while IFS= read -r entry; do
+      [ -n "$entry" ] && queue+=("$entry")
+    done < <(printf '%s\n' "$FM_IDLE_REAP_HOMES" | tr ':' '\n')
+  fi
+  while [ "$i" -lt "${#queue[@]}" ]; do
+    entry=${queue[$i]}
+    i=$((i + 1))
+    real=$(cd "$entry" 2>/dev/null && pwd -P) || continue
     case "$seen" in *$'\n'"$real"$'\n'*) continue ;; esac
     seen="$seen$real"$'\n'
     printf '%s\n' "$real"
+    reg="$real/data/secondmates.md"
+    [ -f "$reg" ] || continue
+    while IFS= read -r d; do
+      [ -n "$d" ] && queue+=("$d")
+    done < <(fm_idle_reap_registry_homes "$reg")
   done
 }
 
-# Writes CLAIMS (session|pane<TAB>home<TAB>task) and SECONDMATES (one id per
-# line) for every local home.
+# Writes CLAIMS (task<TAB>home) and SECONDMATES (one id per line) for every
+# local home. A task is claimed by the home that holds its state/<task>.meta,
+# regardless of which Herdr pane id the meta records.
 fm_idle_reap_index() {  # <claims-file> <secondmates-file>
-  local claims=$1 mates=$2 home meta id kind session pane window marker
+  local claims=$1 mates=$2 home meta id kind marker
   : > "$claims"
   : > "$mates"
   HOMES_FOUND=0
@@ -193,15 +229,7 @@ fm_idle_reap_index() {  # <claims-file> <secondmates-file>
       id=${id%.meta}
       kind=$(fm_meta_get "$meta" kind)
       [ "$kind" != secondmate ] || printf '%s\n' "$id" >> "$mates"
-      session=$(fm_meta_get "$meta" herdr_session)
-      pane=$(fm_meta_get "$meta" herdr_pane_id)
-      if [ -z "$session" ] || [ -z "$pane" ]; then
-        window=$(fm_meta_get "$meta" window)
-        session=${window%%:*}
-        pane=${window#*:}
-        case "$pane" in w*:p*) ;; *) continue ;; esac
-      fi
-      printf '%s|%s\t%s\t%s\n' "$session" "$pane" "$home" "$id" >> "$claims"
+      printf '%s\t%s\n' "$id" "$home" >> "$claims"
     done
   done < <(fm_idle_reap_homes)
 }
@@ -416,7 +444,7 @@ fm_idle_reap_ownerless() {
 }
 
 fm_idle_reap_pane() {
-  local lane claims count home id
+  local lane claims count
   P_HOME=
   P_TASK=
   if [ -z "$P_AGENT" ]; then
@@ -448,16 +476,14 @@ fm_idle_reap_pane() {
     fm_idle_reap_log_pane skipped agent-stopped
     return 0
   fi
-  claims=$(awk -F'\t' -v k="$P_SESSION|$P_PANE" '$1 == k { print $2 "\t" $3 }' "$CLAIMS")
+  claims=$(awk -F'\t' -v k="$lane" '$1 == k { print $2 }' "$CLAIMS")
   count=$(printf '%s' "$claims" | awk 'NF { n++ } END { print n + 0 }')
   if [ "$count" -gt 1 ]; then
-    fm_idle_reap_log_pane skipped ambiguous-owner "" "$(printf '%s' "$claims" | tr '\t\n' ': ')"
+    fm_idle_reap_log_pane skipped ambiguous-owner "" "$(printf '%s' "$claims" | tr '\n' ': ')"
     return 0
   fi
   if [ "$count" = 1 ]; then
-    home=${claims%%$'\t'*}
-    id=${claims#*$'\t'}
-    fm_idle_reap_owned "$home" "$id"
+    fm_idle_reap_owned "$claims" "$lane"
     return 0
   fi
   fm_idle_reap_ownerless

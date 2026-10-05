@@ -17,6 +17,9 @@ TMP_ROOT=$(fm_test_tmproot fm-idle-session-reap)
 FIX="$TMP_ROOT/fixture"
 mkdir -p "$FIX"
 fm_git_identity
+# Homes are discovered under $HOME, so point discovery at the fixture root for
+# every run; the fixture homes stand in for a machine's real homes.
+export HOME="$TMP_ROOT"
 
 export FM_IDLE_REAP_LOG="$TMP_ROOT/reaper.jsonl"
 export FM_IDLE_REAP_SEEN="$TMP_ROOT/seen.tsv"
@@ -360,7 +363,7 @@ cat > "$FAKEBIN/systemctl" <<SH
 printf '%s\n' "\$*" >> "$TMP_ROOT/systemctl.log"
 SH
 chmod +x "$FAKEBIN/systemctl"
-PATH="$FAKEBIN:$PATH" FM_IDLE_REAP_SYSTEMD_DIR="$UNIT_DIR" bash "$ROOT/bin/fm-idle-session-reap.sh" install-timer \
+PATH="$FAKEBIN:$PATH" HOME="$TMP_ROOT" FM_IDLE_REAP_SYSTEMD_DIR="$UNIT_DIR" bash "$ROOT/bin/fm-idle-session-reap.sh" install-timer \
   > "$TMP_ROOT/install.out" 2>&1 || fail "install-timer failed: $(cat "$TMP_ROOT/install.out")"
 timer=$(cat "$UNIT_DIR/fm-idle-session-reap.timer")
 service=$(cat "$UNIT_DIR/fm-idle-session-reap.service")
@@ -401,3 +404,67 @@ FM_IDLE_REAP_NOW=$NOW run_reap_no_homes --apply || fail "no-home run failed: $(c
 assert_equals "skipped no-owner-home" "$(last_decision w1:p2)" "with no Firstmate home discovered no pane owner can be judged"
 [ ! -s "$CLOSE_LOG" ] || fail "a pane was closed with no home discovered: $(cat "$CLOSE_LOG")"
 pass "discovery finding no home fails closed and closes nothing"
+
+# --- 17. a home added after install is still discovered fresh ----------------
+# install-timer froze the homes it saw; a home created later must still claim
+# its lane, so its pane is exited through that home, never closed as ownerless.
+reset_run
+H3="$TMP_ROOT/home3"
+make_home "$H3"
+row "w1:p2|fm-late-task|└ late-task · p:x|claude|idle|0|$TMP_ROOT/wt-clean"
+lane_meta "$H3" late-task w1:p2 "$TMP_ROOT/wt-clean"
+crew "$H3" late-task "state: done · source: status-log · done"
+FM_IDLE_REAP_NOW=$NOW run_reap --apply || fail "late-home run failed: $(cat "$TMP_ROOT/run.out")"
+assert_equals "exited finished-idle" "$(last_decision w1:p2)" "a home added after install still owns its finished idle lane"
+assert_equals "$H3 late-task exit" "$(cat "$CONTROL_LOG")" "the exit goes through the added home's fm-control.sh"
+[ ! -s "$CLOSE_LOG" ] || fail "a home-owned pane was closed as ownerless: $(cat "$CLOSE_LOG")"
+pass "a home added after install is discovered fresh and its lane is exited, not closed"
+
+# --- 18. a changed Herdr pane id does not orphan a home-owned lane -----------
+# Herdr pane ids are not stable across server restarts. Ownership comes from
+# state/<task>.meta by lane id, so a pane whose recorded pane id is stale is
+# still exited through its home, never closed directly.
+reset_run
+row "w1:p2|fm-moved-task|└ moved-task · p:x|claude|idle|0|$TMP_ROOT/wt-clean"
+fm_write_meta "$H1/state/moved-task.meta" \
+  "window=s1:w9:p9" "harness=claude" "kind=ship" "backend=herdr" \
+  "herdr_session=s1" "herdr_pane_id=w9:p9" "worktree=$TMP_ROOT/wt-clean"
+fm_touch_epoch "$OLD" "$H1/state/moved-task.meta"
+crew "$H1" moved-task "state: done · source: status-log · done"
+FM_IDLE_REAP_NOW=$NOW run_reap --apply || fail "moved-pane run failed: $(cat "$TMP_ROOT/run.out")"
+assert_equals "exited finished-idle" "$(last_decision w1:p2)" "a stale recorded pane id still resolves the owning home"
+assert_equals "$H1 moved-task exit" "$(cat "$CONTROL_LOG")" "the exit goes through the owning home"
+[ ! -s "$CLOSE_LOG" ] || fail "a home-owned pane with a changed pane id was closed: $(cat "$CLOSE_LOG")"
+pass "a changed Herdr pane id is not treated as ownerless"
+
+# --- 19. FM_IDLE_REAP_HOMES is additional, never the only set ----------------
+# A recorded list missing the owning home must not make that home's lane
+# ownerless; discovery still finds the home under $HOME.
+reset_run
+row "w1:p2|fm-partial-task|└ partial-task · p:x|claude|idle|0|$TMP_ROOT/wt-clean"
+lane_meta "$H2" partial-task w1:p2 "$TMP_ROOT/wt-clean"
+crew "$H2" partial-task "state: done · source: status-log · done"
+FM_IDLE_REAP_HOMES="$H1" FM_IDLE_REAP_NOW=$NOW run_reap --apply || fail "partial-homes run failed: $(cat "$TMP_ROOT/run.out")"
+assert_equals "exited finished-idle" "$(last_decision w1:p2)" "a home absent from FM_IDLE_REAP_HOMES is still discovered"
+assert_equals "$H2 partial-task exit" "$(cat "$CONTROL_LOG")" "the exit goes through the discovered home"
+[ ! -s "$CLOSE_LOG" ] || fail "a home-owned pane was closed as ownerless: $(cat "$CLOSE_LOG")"
+pass "FM_IDLE_REAP_HOMES adds homes and never limits discovery"
+
+# --- 20. a home registered in data/secondmates.md is discovered --------------
+# A secondmate home that is not a direct child of $HOME is found through the
+# registering home's registry, so its lane is exited, never closed.
+reset_run
+H4="$TMP_ROOT/nested/home4"
+make_home "$H4"
+printf 'mate4\n' > "$H4/.fm-secondmate-home"
+cat > "$H1/data/secondmates.md" <<EOF
+- mate4 - nested secondmate (home: $H4; scope: nested work; projects: alpha; added 2026-08-02)
+EOF
+row "w1:p2|fm-nested-task|└ nested-task · p:x|claude|idle|0|$TMP_ROOT/wt-clean"
+lane_meta "$H4" nested-task w1:p2 "$TMP_ROOT/wt-clean"
+crew "$H4" nested-task "state: done · source: status-log · done"
+FM_IDLE_REAP_NOW=$NOW run_reap --apply || fail "registry run failed: $(cat "$TMP_ROOT/run.out")"
+assert_equals "exited finished-idle" "$(last_decision w1:p2)" "a registered home outside the direct \$HOME children still owns its lane"
+assert_equals "$H4 nested-task exit" "$(cat "$CONTROL_LOG")" "the exit goes through the registered home"
+[ ! -s "$CLOSE_LOG" ] || fail "a registered home's pane was closed as ownerless: $(cat "$CLOSE_LOG")"
+pass "a home registered in data/secondmates.md is discovered and its lane is exited, not closed"
