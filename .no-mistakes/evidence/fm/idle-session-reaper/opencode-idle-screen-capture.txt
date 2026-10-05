@@ -1,0 +1,20 @@
+[0m[38;2;255;255;255m[48;2;10;10;10m                                                                                             [0m
+[0m[38;2;255;255;255m[48;2;10;10;10m         [0m[38;2;92;156;245m[48;2;10;10;10m┃[0m[38;2;255;255;255m[48;2;30;30;30m                                                                          [0m[38;2;255;255;255m[48;2;10;10;10m         [0m
+[0m[38;2;255;255;255m[48;2;10;10;10m         [0m[38;2;92;156;245m[48;2;10;10;10m┃[0m[38;2;255;255;255m[48;2;30;30;30m  [0mtimestamp=2026-10-05T07:50:40.569Z level=INFO run=39434def message="watcher backe
+nd" directory=/home/justin/.cache/tmp/opencode/reap-plain-cwd7 platform=linux backend=inotify
+timestamp=2026-10-05T07:50:40.577Z level=INFO run=39434def message="project copy refresh star
+ted" projectID=global[0m[38;2;30;30;30m[48;2;10;10;10m▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀[0m[38;2;255;255;255m[48;2;10;10;10m         [0m
+timestamp=2026-10-05T07:50:40.583Z level=INFO run=39434def message="project copy refresh done
+" projectID=global updated=[] removed=[][0m[38;2;255;255;255m[48;2;10;10;10m                                                     [0m
+timestamp=2026-10-05T07:50:40.675Z level=INFO run=39434def message="booting location services
+" directory=/home/justin/.cache/tmp/opencode/reap-plain-cwd7 workspaceID=undefined[0m[38;2;255;255;255m[48;2;10;10;10m           [0m
+[0m[38;2;255;255;255m[48;2;10;10;10m                                                                                             [0m
+[0m[38;2;255;255;255m[48;2;10;10;10m                                                                                             [0m
+[0m[38;2;255;255;255m[48;2;10;10;10m                                                                                             [0m
+[0m[38;2;255;255;255m[48;2;10;10;10m                                                                                             [0m
+[0m[38;2;255;255;255m[48;2;10;10;10m                                                                                             [0m
+[0m[38;2;255;255;255m[48;2;10;10;10m                                                                                             [0m
+timestamp=2026-10-05T07:50:40.239Z level=WARN run=39434def message="duplicate skill name" nam
+e=no-mistakes existing=/home/justin/.agents/skills/no-mistakes/SKILL.md duplicate=/home/justi
+n/.claude/skills/no-mistakes/SKILL.md
+ti[0m[38;2;128;128;128m[48;2;10;10;10m~/.cache/tmp/opencode/reap-plain-cwd7[0ml=INFO run=39434def message=init count=14    [0m[38;2;128;128;128m[48;2;10;10;10m1.18.34[0m

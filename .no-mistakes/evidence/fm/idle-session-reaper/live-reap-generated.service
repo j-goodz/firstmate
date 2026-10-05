@@ -1,0 +1,10 @@
+[Unit]
+Description=Firstmate idle session reaper: stop idle finished agent sessions (one pass)
+
+[Service]
+Type=oneshot
+Environment="PATH=/home/justin/.cache/tmp/opencode/live-reap/fakebin:/home/justin/.local/bin:/home/justin/bin:/home/justin/bin:/home/justin/.opencode/bin:/home/justin/.local/bin:/home/justin/bin:/home/justin/.local/bin:/home/justin/go/bin:/home/justin/.cargo/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/snap/bin:/opt/homebrew/bin:/opt/homebrew/sbin"
+Environment="FM_IDLE_REAP_HOMES=/home/justin/.cache/tmp/opencode/live-reap/timer-home/reaphome"
+ExecStart=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45CFYVZGWJ99MEX3444XSKQ/bin/fm-idle-session-reap.sh --apply
+Nice=10
+TimeoutStartSec=20min

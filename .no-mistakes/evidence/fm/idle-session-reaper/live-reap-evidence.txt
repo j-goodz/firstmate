@@ -1,0 +1,90 @@
+=== environment ===
+herdr 0.9.1
+systemd-analyze: systemd 259 (259.5-0ubuntu3.4)
+opencode: 1.18.34
+
+=== S-A: install-timer writes and enables an hourly --apply timer ===
+install-timer rc=0: installed /home/justin/.cache/tmp/opencode/live-reap/systemd-user/fm-idle-session-reap.timer (hourly) running /home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45CFYVZGWJ99MEX3444XSKQ/bin/fm-idle-session-reap.sh --apply
+ok - install-timer succeeds with a discovered home
+--- generated timer unit ---
+[Unit]
+Description=Run the Firstmate idle session reaper every hour
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+--- generated service unit ---
+[Unit]
+Description=Firstmate idle session reaper: stop idle finished agent sessions (one pass)
+
+[Service]
+Type=oneshot
+Environment="PATH=/home/justin/.cache/tmp/opencode/live-reap/fakebin:/home/justin/.local/bin:/home/justin/bin:/home/justin/bin:/home/justin/.opencode/bin:/home/justin/.local/bin:/home/justin/bin:/home/justin/.local/bin:/home/justin/go/bin:/home/justin/.cargo/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/snap/bin:/opt/homebrew/bin:/opt/homebrew/sbin"
+Environment="FM_IDLE_REAP_HOMES=/home/justin/.cache/tmp/opencode/live-reap/timer-home/reaphome"
+ExecStart=/home/justin/.no-mistakes/worktrees/c7804fcd202d/01M45CFYVZGWJ99MEX3444XSKQ/bin/fm-idle-session-reap.sh --apply
+Nice=10
+TimeoutStartSec=20min
+ok - systemd-analyze verify accepts the generated units
+ok - timer OnCalendar=hourly (runs every hour)
+ok - service is Type=oneshot
+ok - service has no Restart retry loop
+ok - service ExecStart runs this script with --apply
+ok - timer is enabled via systemctl --user enable --now
+ok - service records discovered homes (hourly run does not rely on HOME rediscovery)
+ok - install-timer refuses (rc=1) and writes no unit when no home is discovered
+refusal message: error: install-timer discovered no Firstmate home; refusing to install a timer that would find nothing (run it from a Firstmate account or add homes with FM_IDLE_REAP_HOMES)
+
+=== isolated Herdr instance ===
+isolated default running=true
+{"default":true,"name":"default","running":true,"session_dir":"/home/justin/.cache/tmp/opencode/live-reap/xdg/herdr","socket_path":"/home/justin/.cache/tmp/opencode/live-reap/xdg/herdr/herdr.sock"}
+lab session=fm-lab-reaplive-472752-26970
+=== S-C: the real reaper never touches an fm-lab-* session ===
+real idle agent pane: {"pane_id":"w2:p1","agent":"opencode","agent_status":"idle"}
+run1: summary: mode=apply panes=0 acted=0 kept=0 failed=0 log=/home/justin/.cache/tmp/opencode/live-reap/reaper-labskip.jsonl
+run2: summary: mode=apply panes=0 acted=0 kept=0 failed=0 log=/home/justin/.cache/tmp/opencode/live-reap/reaper-labskip.jsonl
+ok - the reaper logged no event for the fm-lab session
+ok - the fm-lab agent pane survives the reaper run
+
+=== S-B: real reaper CLI drives a real ownerless idle agent pane ===
+--- run1 output ---
+skipped fm-reaplive:w1:p1 1 no-agent 
+observed fm-reaplive:w2:p1 fm-live-task first-sight-idle 
+summary: mode=apply panes=2 acted=0 kept=2 failed=0 log=/home/justin/.cache/tmp/opencode/live-reap/reaper-live.jsonl
+--- run2 output ---
+skipped fm-reaplive:w1:p1 1 no-agent 
+skipped fm-reaplive:w2:p1 fm-live-task composer-unknown 
+summary: mode=apply panes=2 acted=0 kept=2 failed=0 log=/home/justin/.cache/tmp/opencode/live-reap/reaper-live.jsonl
+--- pane decisions (json) ---
+{"ts":"2026-10-05T08:00:08Z","epoch":1791183208,"host":"homelab","event":"pane","mode":"apply","session":"fm-reaplive","pane":"w1:p1","tab":"1","agent":"","agent_status":"unknown","home":"","task":"","action":"skipped","reason":"no-agent","idle_s":null,"detail":""}
+{"ts":"2026-10-05T08:00:09Z","epoch":1791183208,"host":"homelab","event":"pane","mode":"apply","session":"fm-reaplive","pane":"w2:p1","tab":"fm-live-task","agent":"opencode","agent_status":"idle","home":"","task":"","action":"observed","reason":"first-sight-idle","idle_s":0,"detail":""}
+{"ts":"2026-10-05T08:00:09Z","epoch":1791187209,"host":"homelab","event":"pane","mode":"apply","session":"fm-reaplive","pane":"w1:p1","tab":"1","agent":"","agent_status":"unknown","home":"","task":"","action":"skipped","reason":"no-agent","idle_s":null,"detail":""}
+{"ts":"2026-10-05T08:00:15Z","epoch":1791187209,"host":"homelab","event":"pane","mode":"apply","session":"fm-reaplive","pane":"w2:p1","tab":"fm-live-task","agent":"opencode","agent_status":"idle","home":"","task":"","action":"skipped","reason":"composer-unknown","idle_s":4001,"detail":""}
+final decision: skipped composer-unknown
+ok - the agent pane is still present after the real reaper run (fail-closed: composer not proven safe)
+ok - the anchor pane and default session were untouched
+
+=== S-D: real reaper closes an idle ownerless lane whose composer proves empty ===
+synthetic idle pane: {"agent":"claude","agent_status":"idle"} composer=empty
+run1: observed fm-reaplive:w3:p1 fm-live-close first-sight-idle 
+run2: closed fm-reaplive:w3:p1 fm-live-close ownerless-idle 
+final decision: closed ownerless-idle
+ok - the real reaper closed the idle ownerless lane (closed ownerless-idle) and the pane is gone
+
+=== default session tripwire / teardown ===
+ok - lab teardown verified the default session tripwire
+
+=== evidence files ===
+total 36
+drwxr-xr-x  2 justin justin 4096 Oct  5 07:57 .
+drwxr-xr-x 46 justin justin 4096 Oct  5 07:42 ..
+-rw-rw-r--  1 justin justin 5293 Oct  5 08:00 live-reap-evidence.txt
+-rw-rw-r--  1 justin justin  739 Oct  5 07:57 live-reap-generated.service
+-rw-rw-r--  1 justin justin  168 Oct  5 07:57 live-reap-generated.timer
+-rw-rw-r--  1 justin justin  388 Oct  5 07:57 live-reap-labskip-decisions.jsonl
+-rw-rw-r--  1 justin justin 1510 Oct  5 07:57 live-reap-pane-decisions.jsonl
+-rw-rw-r--  1 justin justin 2801 Oct  5 07:57 opencode-idle-screen-capture.txt
+done
