@@ -1,0 +1,10 @@
+FM_TEST_BEGIN 2026-10-05T00:00:00Z tests/a.test.sh family=unclassified expected_gate_skip=none
+ok - a
+FM_TEST_END 2026-10-05T00:00:00Z tests/a.test.sh exit=0 duration_ms=42 gate_skip=false
+FM_TEST_BEGIN 2026-10-05T00:00:00Z tests/b.test.sh family=unclassified expected_gate_skip=none
+not ok - b
+FM_TEST_END 2026-10-05T00:00:00Z tests/b.test.sh exit=1 duration_ms=40 gate_skip=false
+FM_TEST_SUMMARY total=2 failed=1 skipped_gate=0 duration_ms=478
+FM_TEST_SUMMARY_FAMILY family=unclassified count=2 duration_ms=82 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/a.test.sh duration_ms=42
+FM_TEST_SLOWEST rank=2 script=tests/b.test.sh duration_ms=40

@@ -1371,6 +1371,7 @@ families_for_changed_path() {
       # Only this script wraps each suite in run_script_bounded's fixture Git
       # isolation, and only a standalone-family script proves it.
       printf '%s\n' "__script__:fm-test-fixtures.test.sh"
+      printf '%s\n' "__script__:fm-test-run-suite-slot.test.sh"
       ;;
     bin/fm-test-isolation-proof.sh)
       # Same reason as the runner above: the proof drives every
@@ -1580,9 +1581,13 @@ families_for_changed_path() {
       # lane's contract coverage re-runs.
       printf '%s\n' real-herdr-gated
       ;;
+    bin/fm-brief.sh)
+      printf '%s\n' pure-contract-unit
+      printf '%s\n' "__script__:fm-brief-test-method.test.sh"
+      ;;
     bin/fm-lint.sh|bin/fm-lint-workflows.sh|bin/fm-install-shellcheck.sh|\
     bin/fm-install-actionlint.sh|\
-    bin/fm-brief.sh|bin/fm-ensure-agents-md.sh|bin/fm-crew-state.sh|\
+    bin/fm-ensure-agents-md.sh|bin/fm-crew-state.sh|\
     bin/fm-captain-hold.sh|bin/fm-decision-hold.sh|bin/fm-supervision*|bin/fm-transition-lib.sh|\
     bin/fm-tmux-lib.sh|bin/fm-marker-lib.sh|bin/fm-operational-input.sh|bin/fm-tasks-axi-lib.sh|\
     bin/fm-vendor-auth-probe.sh|\
@@ -1848,6 +1853,9 @@ with open(out, "w", encoding="utf-8") as fh:
 PY
 }
 
+# The original arguments, kept for the whole-suite slot re-exec below.
+FM_TEST_RUN_ARGV=("$@")
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --all)
@@ -2080,6 +2088,18 @@ esac
 # who named no selection mode is told that rather than this.
 if [ -n "${MODE:-}" ] && [ "$LIST_ONLY" -eq 0 ] && [ "$LIST_SCHEDULED" -eq 0 ]; then
   refuse_primary_checkout_for_task
+fi
+
+# A whole-suite run takes a machine-wide suite slot (docs/test-capacity-standard.md)
+# by re-executing through bin/fm-suite-slot.sh, so full suites never stack on one
+# machine. Narrower selections, inspection modes, CI, a run already inside a slot,
+# and a runner copied without its sibling gate are unchanged, as is a host
+# without flock or bash 5 (stock macOS), which the gate needs.
+if [ "${MODE:-}" = all ] && [ "$LIST_ONLY" -eq 0 ] && [ "$LIST_SCHEDULED" -eq 0 ] \
+  && [ -z "${CI:-}" ] && [ "${FM_SUITE_SLOT_HELD:-}" != 1 ] \
+  && [ "${BASH_VERSINFO[0]}" -ge 5 ] && command -v flock >/dev/null 2>&1 \
+  && [ -x "$ROOT/bin/fm-suite-slot.sh" ]; then
+  exec "$ROOT/bin/fm-suite-slot.sh" run --key firstmate -- "$ROOT/bin/fm-test-run.sh" "${FM_TEST_RUN_ARGV[@]}"
 fi
 
 case "${MODE:-}" in

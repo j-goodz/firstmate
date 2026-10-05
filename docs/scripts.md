@@ -44,6 +44,9 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-herdr-ci-cleanup.sh` | Snapshot and tear down only job-owned `fm-lab-*` sessions in the Herdr CI lane       |
 | `fm-test-run.sh`         | Behavior-test runner: selection, portable lanes, bounded concurrency, budgets, coverage guard, timing/JSON; refuses to execute in the repository primary checkout when `FM_TASK_ID` marks a task worker |
 | `fm-test-isolation-proof.sh` | Concurrent isolation harness and portable candidate set owner |
+| `fm-suite-slot.sh`       | Machine-wide gate that queues whole-suite runs by CPU count, heat, and available memory (docs/test-capacity-standard.md) |
+| `fm-suite-daily.sh`      | Run one whole-suite test per repo per day at a quiet hour on the machine placement picks, log the result, and post a failure once to #issues |
+| `fm-place.sh`            | Rank this machine and each second-mate host by load per CPU, heat, memory, and free suite slots to choose where new work runs |
 | `fm-ensure-agents-md.sh` | Ensure a project's real `AGENTS.md`, its `CLAUDE.md` `@AGENTS.md` pointer, and self-governance guidance (explicit project mark documented in the helper's header and help) |
 | `fm-guard.sh`            | Warn on primary-checkout tangles, main-session pending wakes, and unhealthy supervision |
 | `fm-primary-scope-lib.sh` | Shared marker-or-plain-checkout primary-home predicate for tracked hooks             |
