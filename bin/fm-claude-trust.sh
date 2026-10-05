@@ -409,10 +409,11 @@ fi
 # never to answer that dialog on the human's behalf. So the import flags land
 # on the project entry - the only place the imports check ever reads (see the
 # disassembly note above) - only when that entry ALREADY carries
-# hasClaudeMdExternalIncludesApproved===true, i.e. the human already said yes
-# at some point and this write is a same-value refresh, not new consent from
-# an absent flag. When it is not already true (including plain absent, the
-# common case for a project claude has never asked about), the import flags
+# hasClaudeMdExternalIncludesApproved===true or a parent-inherited approval
+# covers the same checkout (see INHERITED APPROVAL above), i.e. the human
+# already said yes at some point and this write is a same-value refresh, not
+# new consent from an absent flag. When neither holds (including plain absent,
+# the common case for a project claude has never asked about), the import flags
 # are left untouched on both entries: writing them to the worktree entry alone
 # would be a pure no-op (the imports check never reads it) that only obscures
 # the real state, so trust still registers normally but the import dialog is
