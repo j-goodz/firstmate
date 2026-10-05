@@ -3462,6 +3462,40 @@ test_capped_inventory_requires_exact_worktree_path() {
   pass 'a worktree spelling the inventory does not record reads unreadable'
 }
 
+test_capped_inventory_resolves_linked_worktree_to_primary_checkout() {
+  make_capped_runs_case capped-linked-primary running cancelled hidden
+  local d=$TMP_ROOT/capped-linked-primary out
+  FM_FAKE_AXI_STATUS="$(run_failed fm/competing | sed 's/01RUN/01OLD/; s/failed/cancelled/')"
+  export FM_FAKE_AXI_STATUS
+  git -C "$d/wt" checkout -q -b parking
+  git -C "$d/wt" worktree add -q "$d/linked" fm/competing
+  fm_write_meta "$d/state/competing.meta" "window=fm:fm-competing" "worktree=$d/linked" "kind=ship"
+  out=$(run_crew_state "$d" competing)
+  assert_contains "$out" 'state: parked' 'expected parked state'
+  assert_contains "$out" 'parked at review: 2 finding(s)' 'expected parked review message'
+  assert_contains "$out" '01NEW' 'expected run step 01NEW'
+  assert_not_contains "$out" 'unreadable' 'should not be unreadable'
+  pass 'a linked worktree resolves to its primary checkout row and reports the real run step'
+}
+
+test_capped_inventory_linked_worktree_without_primary_row_stays_unknown() {
+  make_capped_runs_case capped-linked-no-row running running
+  local d=$TMP_ROOT/capped-linked-no-row out
+  git -C "$d/wt" checkout -q -b parking
+  git -C "$d/wt" worktree add -q "$d/linked" fm/competing
+  fm_write_meta "$d/state/competing.meta" "window=fm:fm-competing" "worktree=$d/linked" "kind=ship"
+  python3 - "$NM_HOME/state.sqlite" <<'PY'
+import sqlite3, sys
+with sqlite3.connect(sys.argv[1]) as db:
+    db.execute("DELETE FROM repos")
+PY
+  out=$(run_crew_state "$d" competing)
+  assert_contains "$out" 'state: unknown' 'expected unknown state'
+  assert_contains "$out" 'unreadable' 'expected unreadable'
+  assert_contains "$out" '01NEW' 'expected 01NEW'
+  pass 'a linked worktree whose primary checkout is unregistered still reads unknown'
+}
+
 test_capped_replacement_keeps_gate_and_inventory_unchanged() {
   make_capped_runs_case "capped reviewer's replacement" running cancelled
   local d="$TMP_ROOT/capped reviewer's replacement" out before after
@@ -4963,6 +4997,8 @@ test_capped_overview_without_repo_line_and_no_runs_reports_absent
 test_no_branch_run_beside_a_live_run_elsewhere_reads_absent
 test_capped_inventory_reader_is_time_bounded
 test_capped_inventory_requires_exact_worktree_path
+test_capped_inventory_resolves_linked_worktree_to_primary_checkout
+test_capped_inventory_linked_worktree_without_primary_row_stays_unknown
 test_capped_replacement_keeps_gate_and_inventory_unchanged
 test_capped_inventory_failures_report_unknown
 test_complete_inventory_ignores_unrelated_semantics

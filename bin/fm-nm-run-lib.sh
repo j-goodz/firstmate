@@ -251,6 +251,16 @@ try:
     with closing(sqlite3.connect((root / "state.sqlite").as_uri() + "?mode=ro", uri=True, timeout=30)) as db:
         db.execute("BEGIN")
         repo = db.execute("SELECT id FROM repos WHERE working_path = ?", (worktree,)).fetchall()
+        if len(repo) == 0:
+            import subprocess
+            try:
+                result_dir = subprocess.run(["git", "-C", worktree, "rev-parse", "--path-format=absolute", "--git-dir"], check=True, capture_output=True, text=True, timeout=5).stdout.strip()
+                result_common = subprocess.run(["git", "-C", worktree, "rev-parse", "--path-format=absolute", "--git-common-dir"], check=True, capture_output=True, text=True, timeout=5).stdout.strip()
+            except (subprocess.SubprocessError, OSError) as e:
+                raise ValueError(str(e))
+            if result_dir != result_common:
+                primary_path = os.path.dirname(result_common)
+                repo = db.execute("SELECT id FROM repos WHERE working_path = ?", (primary_path,)).fetchall()
         if len(repo) != 1:
             raise ValueError
         rows = db.execute(
