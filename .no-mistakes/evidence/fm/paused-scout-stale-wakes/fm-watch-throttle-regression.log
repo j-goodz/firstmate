@@ -1,0 +1,25 @@
+no-mistakes Test-phase evidence
+repo: firstmate  branch: fm/paused-scout-stale-wakes
+base: 827887e06379c5f8039be9ecd95ec07775ef5471  target: 1bba278f3795bffed308a71e50b9bc9d9eb08a7a
+command: FM_TEST_ONLY=<test> bash tests/fm-watch-triage.test.sh
+These tests execute the real bin/fm-watch.sh as a subprocess and assert its observable triage behavior (wake queue, throttle markers, process exit).
+
+
+===== TARGET 1bba278: test_working_flicker_does_not_reset_the_declared_wait_throttle =====
+ok - a working read between inconclusive reads does not reset a declared wait's re-surface throttle
+exit=0
+
+===== TARGET 1bba278: test_secondmate_working_read_keeps_declared_wait_throttle =====
+ok - a secondmate's working read keeps the declared wait's re-surface throttle
+exit=0
+
+===== BASE 827887e (fix removed): test_working_flicker_does_not_reset_the_declared_wait_throttle =====
+not ok - flicker round 2 cleared the declared wait's re-surface throttle
+exit=1
+
+===== BASE 827887e (fix removed): test_secondmate_working_read_keeps_declared_wait_throttle =====
+not ok - a secondmate's working read cleared its declared wait's re-surface throttle
+exit=1
+
+===== worktree restored to target; status =====
+(empty status = clean)
