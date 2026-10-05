@@ -147,7 +147,9 @@
 # `decisions_reviewed=1` and `decision_keys=` keys, and an inventory entry that
 # names no existing task resolves through the legacy `<origin>-decision-<entry>`
 # identity, so pre-collapse metadata written by fm-decision-hold.sh verifies
-# unchanged. An entry that exists as a task id is always that task. On the
+# unchanged. An inventory entry whose answered task Done retention has moved to
+# the done archive stays durable through the resolution record the archive keeps.
+# An entry that exists as a task id is always that task. On the
 # Beads backend an attested legacy markdown id that resolves to no task is
 # accepted through the migrated row fm-hold-migration produced, found by the
 # authoritative evidence first: a row whose notes carry the marker line
@@ -523,11 +525,43 @@ resolution_block() {  # <mode>
     "$DECISION_DIGEST" "$1" "$label" "$DECISION_TEXT"
 }
 
+# Done retention moves a closed row out of the active backlog into the done
+# archive, so an answered captain call named by a live origin's inventory stops
+# resolving as a task. The archived row still carries the recorded answer
+# verbatim, which is exactly the durable evidence the gate accepts, so a
+# markdown backlog's archive is consulted when the active read finds no row.
+# Succeeds only when the archive holds `- [x] <id> - ` with a resolution record
+# written by fm-captain-hold or fm-decision-hold; a bare closed row is no answer.
+archived_resolution_recorded() {  # <task-id>
+  local id=$1 data root backend archive
+  data=$(fm_backlog_data_absolute "$DATA") || return 1
+  root=$(fm_backlog_root "$data") || return 1
+  backend=$(fm_tasks_axi_backend "$root" 2>/dev/null) || return 1
+  [ "$backend" = markdown ] || return 1
+  archive=$(sed -n '/^\[markdown\]/,/^\[/s/^archive[[:space:]]*=[[:space:]]*"\(.*\)".*$/\1/p' \
+    "$root/.tasks.toml" 2>/dev/null | head -1)
+  case "$archive" in
+    '') archive=$data/done-archive.md ;;
+    /*) : ;;
+    *) archive=$root/$archive ;;
+  esac
+  [ -f "$archive" ] || return 1
+  awk -v id="$id" '
+    /^- \[/ { in_row = (index($0, "- [x] " id " - ") == 1); next }
+    /^## / { in_row = 0; next }
+    in_row && /^  Resolution recorded by fm-(captain|decision)-hold\.$/ { found = 1 }
+    END { exit found ? 0 : 1 }
+  ' "$archive"
+}
+
 # Durable state of one captain call: an active captain hold (annotations
 # surviving even when a date gate has expired) or a recorded captain answer.
 verify_hold_durable() {  # <task-id>
   local id=$1 show state hold_kind body
-  task_show "$id" || fail "captain-held task $id is absent from this home's configured backlog (data directory $DATA)"
+  task_show "$id" || {
+    ! archived_resolution_recorded "$id" || return 0
+    fail "captain-held task $id is absent from this home's configured backlog (data directory $DATA)"
+  }
   show=$TASK_SHOW_OUTPUT
   state=$(show_field "$show" state)
   hold_kind=$(show_field_value "$show" hold_kind)
@@ -758,8 +792,16 @@ resolve_entry() {  # <origin-or-empty> <entry>; prints "<id> <how>" or fails
     2) return 2 ;;
     124) return 124 ;;
   esac
+  if archived_resolution_recorded "$entry"; then
+    printf '%s archived' "$entry"
+    return 0
+  fi
   if [ -n "$origin" ] && [ "$origin" != "$BINDING_ANY" ]; then
     legacy=$(legacy_hold_id "$origin" "$entry")
+    if archived_resolution_recorded "$legacy"; then
+      printf '%s archived' "$legacy"
+      return 0
+    fi
     fail "no captain-held task $entry and no migrated hold for it in this home's configured backlog (data directory $DATA); the nearest legacy identity $legacy also resolves to nothing"
   fi
   fail "no captain-held task $entry and no migrated hold for it in this home's configured backlog (data directory $DATA)"

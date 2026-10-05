@@ -791,6 +791,43 @@ EOF
   pass "the completion gate attests captain-held inventory and transfers open status decisions"
 }
 
+# A scout whose inventory names a captain call that was answered and then
+# pruned into the done archive by Done retention must still verify, complete
+# and tear down: the archived row is the recorded answer, not an absence.
+test_answered_call_pruned_to_the_archive_still_passes_the_gate() {
+  local home id call
+  home=$(make_home pruned-answer)
+  id=sample-pruned-scout
+  call=sample-pruned-call
+  mkdir -p "$home/data/$id"
+  tasks_in "$home" add "$id" "Investigate the pruned answer" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create the scout origin"
+  write_origin_meta "$home" "$id"
+  printf 'done: report complete\n' > "$home/state/$id.status"
+  printf '# Pruned review\n\nOne captain choice.\n' > "$home/data/$id/report.md"
+  run_captain "$home" hold "$call" \
+    --title "Choose the shape" --reason "captain shape pending" --repo sample >/dev/null \
+    || fail "could not register the captain-held task"
+  run_captain "$home" complete "$id" "$call" >/dev/null \
+    || fail "completion failed for the held inventory"
+  printf 'Approve this shape.\n' > "$home/answer.txt"
+  run_captain "$home" answer "$call" --decision-file "$home/answer.txt" >/dev/null \
+    || fail "could not record the captain answer"
+  # Done retention: keep nothing, so the answered row moves to the archive.
+  tasks_in "$home" prune --keep 0 >/dev/null || fail "could not prune the Done section"
+  tasks_in "$home" show "$call" >/dev/null 2>&1 \
+    && fail "the fixture did not prune the answered call out of the backlog"
+  assert_grep "$call" "$home/data/done-archive.md" "the answered call was not archived"
+
+  run_captain "$home" verify "$id" > "$home/verify.out" 2> "$home/verify.err" \
+    || fail "verify refused an archived recorded answer: $(cat "$home/verify.err")"
+  run_captain "$home" complete "$id" "$call" >/dev/null 2> "$home/complete.err" \
+    || fail "complete refused an archived recorded answer: $(cat "$home/complete.err")"
+  run_teardown "$home" "$id" >/dev/null 2> "$home/teardown.err" \
+    || fail "teardown refused after the answer was archived: $(cat "$home/teardown.err")"
+  pass "an answered captain call pruned to the archive still passes verify, complete and teardown"
+}
+
 # The recorded-answer rule: answering closes with the captain's exact words, an
 # exact retry is idempotent, a drifted retry is rejected, dependent work routed
 # behind the answered task is released by the close, and the completion gate is
@@ -4080,3 +4117,4 @@ test_verify_names_the_unresolvable_legacy_id_once
 test_verify_resolves_a_pre_collapse_key_through_its_derived_marker
 test_captain_hold_mutations_address_the_beads_backend
 test_hold_creates_a_captain_row_when_beads_requires_due_without_custom_type
+test_answered_call_pruned_to_the_archive_still_passes_the_gate
