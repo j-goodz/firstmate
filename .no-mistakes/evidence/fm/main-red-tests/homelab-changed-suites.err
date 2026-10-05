@@ -1,0 +1,5 @@
+fm-test-run: gate skip: tests/fm-busy-adapter-wiring.test.sh: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi busy extension lifecycle case (install node 24 or tsx)
+fm-test-run: gate skip: tests/fm-calm-pi-extension.test.sh: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi calm home-resolution test (install node 24 or tsx)
+fm-test-run: gate skip: tests/fm-ci-workflow.test.sh: ruby not found to parse .github/workflows/ci.yml as YAML (install ruby)
+fm-test-run: gate skip: tests/fm-nm-test-contract.test.sh: ruby not found to parse .no-mistakes.yaml for this contract (install ruby)
+fm-test-run: gate skip: tests/fm-pi-watch-extension.test.sh: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi primary watcher extension checks (install node 24 or tsx)

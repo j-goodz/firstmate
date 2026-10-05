@@ -1,0 +1,1157 @@
+FM_TEST_BEGIN 2026-10-04T23:07:11Z tests/fm-backend-herdr.test.sh family=backend-dispatch expected_gate_skip=none
+ok - fm_backend_herdr_version_check: accepts the current protocol (14)
+ok - fm_backend_herdr_version_check: refuses an old protocol loudly
+ok - fm_backend_herdr_version_check: refuses loudly when herdr is not installed
+ok - fm_backend_herdr_workspace_label: a primary home (no marker) resolves to 'firstmate'
+ok - fm_backend_herdr_workspace_label: a secondmate home (.fm-secondmate-home) resolves to '2ndmate-<id>'
+ok - fm_backend_herdr_workspace_label: trims whitespace around the marker's secondmate id
+ok - fm_backend_herdr_workspace_label: an empty marker file falls back to the primary label 'firstmate'
+ok - fm_backend_herdr_workspace_label: two different secondmate homes get two different, non-colliding labels
+ok - fm_backend_herdr_cli: sets HERDR_SESSION AND appends a trailing --session flag on every call
+ok - herdr client selection: a live pane behind a stale shadowing client reads alive
+ok - herdr recovery-grade read: a stopped server means missing there, and nowhere else
+ok - herdr stale registration: a shell-only pane with a lingering Pi record is agent-free with an explicit reason
+ok - herdr stale registration: no registered status can outrank a shell-only process view
+ok - herdr stale registration: a registered agent with a live Pi foreground process still reads alive
+ok - herdr stale registration: only a shell-only pane demotes a registration
+ok - herdr stale registration: a transient prompt helper settles into stale-agent instead of reading live
+ok - herdr stale registration: an exhausted settle window still reads a non-shell foreground as live
+ok - herdr stale registration: an agent process outside the foreground group still counts as alive
+ok - herdr stale registration: the descendant walk reads a spaced executable path whole
+ok - herdr stale registration: an unreadable process view refuses instead of guessing either way
+ok - herdr stale registration: an empty foreground list over a real shell is not unreadable, it settles via the descendant walk
+ok - herdr stale registration: presentation reclaim never closes a stale-registration pane
+ok - herdr stale registration: busy_state proves a working record at process level before reporting busy
+ok - herdr client selection: one selected client is reused per process
+ok - herdr client selection: selected clients remain scoped to their session
+ok - herdr client selection: only protocol_mismatch triggers reselection; other failures pass through untouched
+ok - herdr client selection: the happy path makes no extra call
+ok - herdr client status: .server.compatible, legacy protocol equality, unknown, and stopped shapes all normalize
+ok - fm_backend_herdr_launcher_identity: a firstmate not running inside herdr has no launcher workspace to inherit
+ok - fm_backend_herdr_launcher_identity: HERDR_ENV=1 without a pane id selects the backend but binds no parent
+ok - fm_backend_herdr_launcher_identity: resolves the launcher's exact workspace even when a same-labeled workspace sorts first
+ok - fm_backend_herdr_launcher_identity: refuses a launcher pane that names a different herdr session
+ok - fm_backend_herdr_launcher_identity: refuses a claimed pane without exact server identity
+ok - fm_backend_herdr_launcher_identity: refuses a launcher pane whose injected socket belongs to another herdr server
+ok - fm_backend_herdr_launcher_identity: refuses when the launcher's own pane no longer resolves
+ok - fm_backend_herdr_launcher_identity: refuses when the launcher's pane and tab disagree about their workspace
+ok - fm_backend_herdr_launcher_identity: refuses when the launcher's workspace is gone from its own session
+ok - fm_backend_herdr_workspace_ensure: places a worker in the launcher's exact workspace, not the first same-labeled one
+ok - fm_backend_herdr_workspace_ensure: refuses to guess between two same-labeled home workspaces
+ok - fm_backend_herdr_workspace_ensure: a --secondmate container resolves that home's own workspace, not the launcher's
+ok - fm_backend_herdr_container_ensure: surfaces the exact ambiguous-placement refusal instead of a generic failure
+ok - fm_backend_herdr_container_ensure: version-gates, starts the server, ensures the firstmate workspace, echoes session:workspace_id + the seeded default tab id
+ok - fm_backend_herdr_server_ensure: scrubs home and harness identity without disturbing unrelated environment or session routing
+ok - fm_backend_herdr_container_ensure: reuses an existing firstmate workspace without recreating it, and reports no seeded default tab (adopted, not created)
+ok - fm_backend_herdr_container_ensure: workspace create passes --no-focus
+ok - fm_backend_herdr_container_ensure: creates the workspace under the SECONDMATE home's own label, not 'firstmate'
+ok - fm_backend_herdr_create_task: prunes exactly the seeded default tab container_ensure identified, once the first real task tab exists
+ok - herdr repeated spawn/teardown: one persistent firstmate workspace reused, zero orphans, default tab pruned, create ran once
+ok - fm_backend_herdr_create_task: an ADOPTED workspace's pre-existing tab is never pruned (the created-vs-adopted gate)
+ok - fm_backend_herdr_create_task: the label-collision startup-workspace scenario (2026-07-02 incident) leaves the captain's live tab untouched
+ok - fm_backend_herdr_workspace_prune_seeded_default_tab: refuses to close the seeded default tab when its pane reports a working agent (defense in depth)
+ok - fm_backend_herdr_create_task: refuses a duplicate tab label (herdr's own tab create has no uniqueness check)
+ok - fm_backend_herdr_create_task: a same-labeled tab with a live (even idle) registered agent still refuses exactly as before
+ok - fm_backend_herdr_create_task: scans every same-labeled tab and refuses if any duplicate is live
+ok - fm_backend_herdr_create_task: closes and replaces a same-labeled tab whose pane is dead (pane_not_found)
+ok - fm_backend_herdr_create_task: closes and replaces a same-labeled tab whose pane is alive but hosts no registered agent (a restored plain shell)
+ok - fm_backend_herdr_create_task: closes every confirmed same-labeled husk only after creating the replacement
+ok - fm_backend_herdr_create_task: refuses success when a preexisting husk tab remains after replacement
+ok - fm_backend_herdr_create_task: refuses (fail-safe) rather than guessing when the duplicate's agent state cannot be classified confidently
+ok - fm_backend_herdr_create_task: creates the replacement tab BEFORE closing the husk tab, never the reverse
+ok - fm_backend_herdr_create_task: creates a tab and parses tab_id/pane_id from the JSON response, prunes nothing when no seeded tab id is given
+ok - fm_backend_herdr_create_task: tab create passes --no-focus
+ok - herdr presentation: a home that set nothing gets the projection by default at or above the floor
+ok - herdr presentation: an unconfigured home below the floor falls back flat with one naming warning
+ok - herdr presentation: an unreadable client release falls back flat instead of guessing
+ok - herdr presentation: a deliberate opt-in is never silently downgraded below the floor
+ok - herdr presentation: an explicit off opts the home out
+ok - herdr presentation: an unrecognized value warns and follows the default instead of failing a spawn
+ok - herdr presentation: the below-floor warning is one per home per release, not one per spawn
+ok - herdr presentation: warning marker publication is atomic, symlink-safe, and fails visible
+ok - herdr presentation: client and selected server floors compose conservatively without overriding explicit opt-in
+ok - herdr presentation floor: every measured release, and each signal alone, classifies correctly
+ok - herdr presentation floor: either signal alone can carry an above verdict, and each divergence is real
+ok - herdr presentation: config parsing separates a deliberate choice from an unconfigured default
+ok - herdr presentation journal: atomically publishes one non-authoritative 128-bit correlator and refuses overwrite
+ok - herdr presentation journal: version 2 binds exact home/endpoint/parent identities and advances atomically
+ok - herdr presentation create: exact response IDs yield one normal task pane with no workspace-close authority
+ok - herdr presentation create: concurrent same-label tabs are never prune targets
+ok - herdr presentation focus: snapshot requires one exact active workspace and tab
+ok - herdr presentation focus: exact pane close restores the exact prior workspace and tab
+ok - herdr presentation focus: cleanup refuses rather than close the tab a live client is viewing
+ok - herdr presentation focus: unexpected foreground-client reasons fail closed
+ok - herdr presentation focus: cleanup closes a persisted-focused tab when no live client is attached
+ok - herdr presentation focus: pane close fails when exact focus restoration fails
+ok - herdr presentation reclaim: live agent state at the close boundary refuses mutation
+ok - herdr presentation focus: active-tab attachment is rechecked after agent validation
+ok - herdr presentation focus: pre-close checkpoint catches a target focused during planning
+ok - herdr presentation focus: close preserves a live client that switches away from the target during planning
+ok - herdr presentation cleanup: emptying close behind focus ends the exact shell without a move or focus change
+ok - herdr presentation cleanup: emptying close before focus moves the doomed workspace to the end and ends its exact shell
+ok - herdr presentation cleanup: emptying close with the focused workspace last skips the move
+ok - herdr presentation cleanup: emptying close of the last workspace skips the move
+ok - herdr presentation cleanup: a non-emptying close stays plain with no proof, move, or signal
+ok - herdr presentation cleanup: no-move plain close requires structured pane removal
+ok - herdr presentation cleanup: an ambiguous workspace layout falls back to the plain close
+ok - herdr presentation cleanup: a failed repositioning move falls back to the plain close with a warning
+ok - herdr presentation cleanup: a pane with a live foreground process falls back to the plain close
+ok - herdr presentation cleanup: a transient prompt helper settles into the pane-death path instead of the plain close
+tests/fm-backend-herdr.test.sh: line 2585:  9946 Killed                     bash -c 'trap "" HUP; sleep 300'
+ok - herdr presentation cleanup: a SIGHUP-surviving shell is escalated to SIGKILL before giving up
+tests/fm-backend-herdr.test.sh: line 2623: 10173 Killed                     bash -c 'trap "" HUP; sleep 300'
+ok - herdr presentation cleanup: a failed pane-death close falls back to the plain close
+ok - herdr presentation cleanup: the exact-tab restore remains the backstop behind the pane-death close
+ok - herdr presentation cleanup: SIGKILL never reaches a pid the exact pane no longer owns
+ok - herdr presentation cleanup: every unconfirmed removal restores the exact original workspace order and reports failure
+ok - fm_backend_herdr_kill: one session lock covers the focus-safe emptying removal
+ok - fm_backend_herdr_kill: killing the focused workspace's tab keeps the legitimate plain close
+ok - endpoint confirmed-gone: only structured not-found permits record removal and ambiguous identity refuses
+ok - fm_backend_herdr_kill: unavailable session locks defer every pane close
+ok - herdr presentation focus: projected seeded pruning refuses the active tab
+ok - herdr presentation labels: └ concise-task · p:<full-token> for primary and secondmate children
+ok - herdr presentation ordering: exact new workspace appends to the primary block while focus and relative orders stay stable
+ok - herdr presentation ordering: secondmate children append under their owning parent block
+ok - herdr presentation ordering: a foreign legacy child is warning-only and read-only
+ok - herdr presentation ordering: intervening parent child blocks remain traversable
+ok - herdr presentation ordering: only the exact new id moves; human spaces keep relative order
+ok - herdr presentation ordering: move failure warns, returns success, and grants no cleanup authority
+ok - herdr presentation ordering: an ambiguous existing worker block is warning-only and read-only
+ok - herdr presentation ordering: the launcher's exact parent workspace id disambiguates a duplicated home label without moving anything
+ok - herdr presentation ordering: a foreign new-format child is warning-only and read-only
+ok - herdr presentation ordering: missing owning parent is warning-only and read-only
+ok - herdr presentation lock: one path per session/socket across homes
+ok - herdr presentation lock: null and missing socket paths fail closed
+ok - herdr presentation ordering: malformed socket metadata is warning-only and read-only
+ok - herdr presentation reclaim: legacy, cross-home, ambiguous, live/unknown, and focus-unknown cases refuse without mutation
+ok - herdr presentation reclaim: exact agent-free husk survives duplicate parent labels while its sibling stays untouched
+warning: 2 exact herdr presentation token matches for task-p3 are quarantined; inspecting only for duplicate-agent risk
+warning: quarantined herdr presentation for task-p3 is dead or agent-free; exact bound reclaim may proceed, otherwise spawning flat
+ok - herdr presentation recovery: duplicate-token inspection is read-only and live-agent risk refuses fallback
+ok - fm_backend_herdr_workspace_find: matches only THIS home's own label among several coexisting workspaces
+ok - fm_backend_herdr_list_live: scoped to this home's own workspace, never a sibling home's
+ok - fm_backend_herdr_parse_target: splits '<session>:<pane_id>' on the FIRST colon (pane_id itself contains one)
+ok - fm_backend_herdr_normalize_key: Enter/Escape/C-c map to herdr's verified enter/escape/ctrl+c
+ok - fm_backend_herdr_capture: calls 'pane read <pane> --source recent --lines N' with the session set
+ok - fm_backend_herdr_capture: works around the verified small-N '--lines' bug by over-fetching and trimming locally
+ok - fm_backend_herdr_capture: ensures the session and preserves pane read failure
+ok - fm_backend_herdr_send_key: normalizes the key and targets the right pane
+ok - fm_backend_herdr_kill: calls pane close and stays best-effort on failure
+ok - fm_backend_herdr_current_path: reads pane foreground_cwd (the live running process), not the frozen creation-time cwd
+ok - fm_backend_herdr_busy_state: working -> busy
+ok - fm_backend_herdr_busy_state: done -> idle, blocked -> idle (surfaced like a stale pane, not suppressed as busy)
+ok - fm_backend_herdr_busy_state: unparseable/absent agent state reports unknown, the regex-fallback cue
+ok - fm_backend_herdr_composer_state: a bare '❯' composer row reads empty
+ok - fm_backend_herdr_composer_state: bright placeholder-like text stays pending rather than being mistaken for an idle ghost
+ok - fm_backend_herdr_composer_state: real composer text reads pending
+ok - fm_backend_herdr_composer_state: Grok's exact title overhang is empty while pending and unproved panes remain safe
+ok - fm_backend_herdr_composer_state: a slash-command popup's argument-hint placeholder still reads pending (the incident fix)
+ok - fm_backend_herdr_composer_state: reports unknown when the pane cannot be captured
+ok - fm_backend_herdr_composer_state: reports unknown for bare shell prompts with no composer row
+ok - fm_backend_herdr_composer_state: a blocked pi pane parked on a prompt is not an empty composer
+ok - fm_backend_herdr_composer_state: a native idle Pi separator composer reads empty
+ok - fm_backend_herdr_composer_state: real Pi composer text remains pending
+ok - fm_backend_herdr_composer_state: an incomplete lower Pi separator cannot inherit a stale empty row
+ok - fm_backend_herdr_composer_state: Pi separators never authorize working, non-Pi, unreadable, or over-tall targets
+ok - fm_backend_herdr_composer_state: a real-claude unbordered '❯' prompt row (no border box in view) reads empty
+ok - fm_backend_herdr_composer_state: a real-claude unbordered '❯ <text>' prompt row reads pending
+ok - fm_backend_herdr_composer_state: a live unbordered prompt row below a stale bordered decorative box still wins (not misread as the box's own row)
+ok - fm_backend_herdr_composer_state: claude's dim prompt-suggestion ghost (the overnight wedge shape) reads empty
+ok - fm_backend_herdr_composer_state: real typed text on the same claude prompt row still reads pending
+ok - fm_backend_herdr_composer_state: grok's dark-truecolor placeholder (the TRUECOLOR gap) reads empty
+ok - fm_backend_herdr_composer_state: grok's real bright typed input still reads pending
+ok - fm_backend_herdr_composer_state: a real-codex unbordered '›' prompt row reads empty
+ok - fm_backend_herdr_composer_state: a faint real-codex ghost suggestion reads empty
+ok - fm_backend_herdr_composer_state: non-faint codex prompt text still reads pending
+ok - fm_backend_herdr_wait_for_working: reports 'busy' immediately on the first poll, without spending the rest of the budget
+ok - fm_backend_herdr_wait_for_working: a slow transition landing on a later sample within one window is still caught (robust against the 'slow transition' failure direction)
+ok - fm_backend_herdr_wait_for_working: spreads six samples across the full budget endpoint without a final trailing sleep
+ok - fm_backend_herdr_send_text_submit: applies the herdr minimum confirmation budget before polling agent-state
+ok - fm_backend_herdr_wait_for_working: reports 'idle' (readable, genuinely not yet working) when 'busy' never appears
+ok - fm_backend_herdr_wait_for_working: reports 'unknown' (a hard read failure, not a timing race) only when EVERY poll in the window fails
+ok - fm_backend_herdr_wait_for_working: treats blocked as submit-active for confirmation without changing watcher busy-state semantics
+ok - fm_backend_herdr_send_text_submit: reports 'empty' once agent_status reports working after one Enter, without ever reading the composer
+ok - fm_backend_herdr_send_text_submit: reports 'pending' when agent_status stays idle and the composer still holds unsent text after retried Enters (swallowed)
+ok - fm_backend_herdr_send_text_submit: a slash-command popup's placeholder fill on Enter #1 never flips agent_status to working, so it does not short-circuit as submitted; Enter #2 is retried and lands it
+ok - fm_backend_herdr_send_text_submit: a post-Enter blocked state confirms delivery without retrying into the prompt
+ok - fm_backend_herdr_send_text_submit: native working + proven pending after retries reports empty (queued Enter)
+ok - fm_backend_herdr_send_text_submit: a failed Enter cannot borrow preexisting working state as queued-delivery proof
+ok - fm_backend_herdr_send_text_submit: a failed Enter cannot borrow a later native transition as delivery proof
+ok - fm_backend_herdr_send_text_submit: idle native agent-state plus empty composer reports empty (landed Claude turn)
+ok - fm_backend_herdr_send_text_submit: idle native baseline uses a rendered busy footer to confirm a queued Enter
+ok - fm_backend_herdr_composer_state: cursor's mid-turn placeholder-plus-busy-token row reads pending (why delivery needs a separate signal)
+ok - fm_backend_herdr_rendered_busy_state: busy/idle/unknown from the rendered footer, with an unreadable pane never reading idle
+ok - fm_backend_herdr_send_text_submit: a rendered-footer idle-to-busy transition confirms delivery when native agent-state never reports idle
+ok - fm_backend_herdr_send_text_submit: an already-busy footer baseline is never accepted as proof that this Enter landed
+ok - fm_backend_herdr_send_text_submit: confirms submission via native agent-state alone, immune to a codex-style dynamic idle-tip composer that would have misread as 'pending' under the old composer-based confirmation
+ok - fm_backend_herdr_composer_state: a faint real-codex dynamic idle-tip composer row reads empty
+ok - fm_backend_composer_state (herdr): the pre-injection empty-box guard still refuses a genuinely non-empty composer, unaffected by the submit-confirmation change
+ok - fm_backend_herdr_send_text_submit: a slow transition landing on a later sample within one Enter's budget is confirmed WITHOUT sending a needless extra Enter
+ok - fm_backend_herdr_send_text_submit: reports 'send-failed' when the literal send-text call itself errors
+ok - fm_backend_herdr_send_text_submit: reports 'unknown' when the post-Enter agent-get read fails (never retries past an unreadable target)
+ok - fm_backend_herdr_send_text_submit: an unreadable composer stops Enter retries after native status stays idle
+ok - fm_backend_validate: herdr is a known backend (P2)
+ok - fm_backend_busy_state: tmux (no native primitive) always reports unknown, preserving the P1 regex-only path
+error: unknown backend 'bogus' (known: tmux herdr zellij orca cmux)
+ok - fm_backend_composer_state dispatches every backend to its named thin classifier, unknown for unrecognized backends
+ok - fm-peek/fm-send: explicit stale targets matching metadata use the recorded backend
+ok - fm_backend_herdr_normalize_event routes through the shared record with an empty from_status
+ok - fm_backend_herdr_escalation_marker keys the dedupe marker exactly like the watcher's .stale-<key>
+ok - fm_backend_herdr_apply_transition: blocked dedupe starts only after explicit commit
+ok - fm_backend_herdr_apply_transition: a working edge clears the marker so the next ->blocked re-escalates
+ok - fm_backend_herdr_clear_transition removes task-owned dedupe state
+ok - fm_backend_herdr_apply_transition: idle/done (defer) and unknown/empty (fallback) take no fast action
+ok - fm_backend_herdr_wait_transition: a home with no herdr panes falls back to polling (rc 2)
+ok - fm_backend_herdr_wait_transition: below-capability protocol/schema falls back to polling (rc 2)
+ok - fm_backend_herdr_wait_transition: reconnect level-reconcile returns an uncommitted blocked pane
+ok - fm_backend_herdr_wait_transition: subscribes before reconnect level-reconcile
+ok - fm_backend_herdr_wait_transition: a still-blocked, already-escalated pane is not re-delivered on reconnect
+ok - fm_backend_herdr_wait_transition: a streamed ->blocked edge returns the record sub-poll
+ok - fm_backend_herdr_wait_transition: streamed working clears the marker, idle/done are deferred (clean timeout)
+ok - fm_backend_herdr_wait_transition: a reader/subscribe failure falls back to polling (rc 2)
+ok - fm_backend_herdr_wait_transition: Bash 3.2-safe bad-ack path closes fd 9 and removes its FIFO
+ok - fm_backend_herdr_wait_transition: stock macOS Bash clean timeout closes fd 9 and returns 1
+FM_TEST_END 2026-10-04T23:08:17Z tests/fm-backend-herdr.test.sh exit=0 duration_ms=66749 gate_skip=false
+FM_TEST_BEGIN 2026-10-04T23:08:17Z tests/fm-busy-adapter-wiring.test.sh family=standalone expected_gate_skip=none
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi busy extension lifecycle case (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi busy extension settle-order case (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi busy extension stale-incarnation case (install node 24 or tsx)
+ok - kimi and grok install no unverified semantic wiring and classify through their own gates
+ok - opencode plugin classifies from session.status, scoped to the latched worker session
+ok - claude hooks open on UserPromptSubmit and close on Stop, StopFailure, and SessionEnd
+ok - claude hook events from a superseded incarnation are rejected without breaking the hook
+ok - gemini hooks open on BeforeAgent and close on AfterAgent and a repeated SessionEnd
+ok - gemini hook events from a superseded incarnation are rejected without breaking the hook
+ok - raw gemini launch remains unwired and classifies unknown
+ok - gemini is refused as a secondmate because it has no primary supervision protocol
+ok - codex classifies unknown until a semantic source is verified, never idle or footer-matched
+all fm-busy-adapter-wiring tests passed
+fm-test-run: gate skip: tests/fm-busy-adapter-wiring.test.sh: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi busy extension lifecycle case (install node 24 or tsx)
+FM_TEST_END 2026-10-04T23:08:56Z tests/fm-busy-adapter-wiring.test.sh exit=0 duration_ms=38658 gate_skip=true
+FM_TEST_BEGIN 2026-10-04T23:08:56Z tests/fm-calm-claude-mod.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - the Calm mod is one hooks module, linked into the project's auto-load path, with no command, skill, agent, or classic hook path that bypasses its exact opt-in
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Calm shared sprite and Pi rendering (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Calm raster packing (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Calm presentation policy (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Calm operational-input classifier parity (install node 24 or tsx)
+FM_TEST_END 2026-10-04T23:08:58Z tests/fm-calm-claude-mod.test.sh exit=0 duration_ms=1742 gate_skip=false
+FM_TEST_BEGIN 2026-10-04T23:08:58Z tests/fm-calm-pi-extension.test.sh family=pure-contract-unit expected_gate_skip=none
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi calm home-resolution test (install node 24 or tsx)
+ok - Pi calm compatibility evidence never rejects a Pi version for being newer than 0.82.0, and still fails closed on a missing or malformed version
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi calm degraded-adapter test (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi calm missing-adapter-export test (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi calm gate test (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi calm activation test (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi calm renderer test (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi calm mid-turn renderer test (install node 24 or tsx)
+skip: pi or tmux not found for Pi operational follow-up E2E
+skip: pi or tmux not found for Pi Calm hidden-block geometry E2E
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi Calm working-ship test (install node 24 or tsx)
+ok - the rendered-export-DOM guard renders in one pass, retries a bounded number of Chrome start-up failures, and reports the Chrome binary, Chrome version, Pi version, exit status, and Chrome diagnostic when every attempt fails
+skip: pi or tmux not found for Pi calm interactive E2E
+fm-test-run: gate skip: tests/fm-calm-pi-extension.test.sh: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi calm home-resolution test (install node 24 or tsx)
+FM_TEST_END 2026-10-04T23:09:03Z tests/fm-calm-pi-extension.test.sh exit=0 duration_ms=5051 gate_skip=true
+FM_TEST_BEGIN 2026-10-04T23:09:03Z tests/fm-ci-workflow.test.sh family=unclassified expected_gate_skip=none
+skip: ruby not found to parse .github/workflows/ci.yml as YAML (install ruby)
+fm-test-run: gate skip: tests/fm-ci-workflow.test.sh: ruby not found to parse .github/workflows/ci.yml as YAML (install ruby)
+FM_TEST_END 2026-10-04T23:09:03Z tests/fm-ci-workflow.test.sh exit=0 duration_ms=256 gate_skip=true
+FM_TEST_BEGIN 2026-10-04T23:09:03Z tests/fm-nm-test-contract.test.sh family=unclassified expected_gate_skip=none
+skip: ruby not found to parse .no-mistakes.yaml for this contract (install ruby)
+fm-test-run: gate skip: tests/fm-nm-test-contract.test.sh: ruby not found to parse .no-mistakes.yaml for this contract (install ruby)
+FM_TEST_END 2026-10-04T23:09:04Z tests/fm-nm-test-contract.test.sh exit=0 duration_ms=259 gate_skip=true
+FM_TEST_BEGIN 2026-10-04T23:09:04Z tests/fm-omp-harness.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - fm-harness: omp detects by its anchored name; the marker is a precedence override that needs real omp ancestry
+ok - session lock and tmux liveness: omp is anchored, decoys stay out
+ok - fm-spawn: the omp launch line clears markers, pins posture, and wires the state-resident extension
+ok - fm-spawn: omp model validation is scoped to providers the listing can prove
+ok - fm-spawn: a real omp secondmate launch relies on auto-discovery while crewmates load one -e
+ok - fm-spawn: the config/secondmate-harness model pin is validated against the omp catalog before launch
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the omp busy extension lifecycle (install node 24 or tsx)
+ok - control, composer, and supervision-model tables carry omp's verified values
+ok - fm-wake-lib: the omp ownership proof is keyed on its own extensions and gates the hand-off tolerance
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the omp turn-end guard extension (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the omp watch extension (install node 24 or tsx)
+FM_TEST_END 2026-10-04T23:09:24Z tests/fm-omp-harness.test.sh exit=0 duration_ms=20589 gate_skip=false
+FM_TEST_BEGIN 2026-10-04T23:09:24Z tests/fm-pi-watch-extension.test.sh family=watcher-wake-lock expected_gate_skip=none
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi primary watcher extension checks (install node 24 or tsx)
+ok - OpenCode plugins have an explicit ESM boundary even under a typeless parent package
+ok - OpenCode watcher plugin uses the effective FM_HOME state
+ok - OpenCode watcher plugin sources the effective config
+ok - OpenCode watcher plugin requires session lock ownership
+ok - OpenCode watcher coordinator respects primary scope
+ok - OpenCode watcher plugin starts one successor before wake prompt delivery settles
+ok - OpenCode pre-ready actionable close preserves its successor
+ok - OpenCode hung successor falls back to one typed actionable wake
+ok - OpenCode unretired successor falls back without an overlapping retry
+ok - OpenCode late unretired closes resume classified supervision
+ok - OpenCode clean empty close triggers a bounded continuity retry
+ok - OpenCode established clean closes stop at the configured retry limit
+ok - OpenCode close handler verifies session-lock ownership before successor launch
+ok - OpenCode watcher plugin coordinates with the turn-end guard
+ok - OpenCode healthy arm output does not suppress the turn-end guard
+ok - OpenCode watcher plugin arms in a marked second-mate home
+ok - OpenCode watcher plugin does not arm in a crewmate task worktree
+ok - OpenCode guard follow-up carries the session's most recent user-message model
+ok - OpenCode watcher wake carries the session's most recent user-message model
+ok - OpenCode guard stops after three failing follow-ups and records one failure
+ok - OpenCode guard resets its consecutive-failure bound after a normal turn
+ok - OpenCode guard publishes exactly one failure line to the parent channel
+ok - OpenCode session-start nudge carries the session's most recent user-message model
+ok - OpenCode session-model resolver uses the launch argument before the stored session model
+ok - OpenCode session-model resolver prefers the user-message model over the launch argument
+ok - OpenCode session-model resolver parses --model <p/m>, --model=<p/m>, and -m <p/m>
+fm-test-run: gate skip: tests/fm-pi-watch-extension.test.sh: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi primary watcher extension checks (install node 24 or tsx)
+FM_TEST_END 2026-10-04T23:09:50Z tests/fm-pi-watch-extension.test.sh exit=0 duration_ms=25482 gate_skip=true
+FM_TEST_BEGIN 2026-10-04T23:09:50Z tests/fm-secondmate-harness.test.sh family=secondmate expected_gate_skip=none
+ok - A1 fm-harness.sh secondmate resolves the fallback chain; crew mode unchanged
+ok - fm-harness detects only Cursor Agent CLI's exact invocation marker
+ok - C1 fm-harness.sh secondmate-model/secondmate-effort resolve the optional tokens; bare harness stays empty (backward-compat)
+ok - pi-signed identity: authoritative launch selection distinguishes shared wrapper ancestry
+ok - harness identity: dash-leading ps command names are basename operands, not options
+ok - B1 propagate_inheritable_config: copy, idempotence, convergence, absence-mirror, exclusion, no-op, skip diagnostics
+ok - B2 spawn: secondmate runs the secondmate harness; its home inherits declared config
+ok - B3 spawn: an absent secondmate-harness falls back to the crew harness (backward-compat)
+ok - B4 spawn: no config at all -> own harness and no propagation side effects
+ok - B5 spawn: an explicit per-spawn harness arg overrides config/secondmate-harness
+ok - B6 spawn: an unverified resolved secondmate harness is refused (guard intact)
+skip: cursor executable not resolvable in this environment, so the launch could not be built
+ok - B5b spawn: FM_BACKEND wins over inherited config/backend
+ok - B5c spawn: explicit --backend wins over FM_BACKEND and inherited config/backend
+ok - C2 spawn: a bare harness-only secondmate-harness file launches with no model/effort flag (backward-compat)
+ok - C3 spawn: config/secondmate-harness's model token threads --model into the launch and meta
+ok - C4 spawn: config/secondmate-harness's model+effort tokens thread into the launch and meta
+ok - C5 spawn: an explicit --model overrides config/secondmate-harness's model token; the file's effort token still applies
+ok - C6 spawn: an explicit --effort overrides config/secondmate-harness's effort token; the file's model token still applies
+ok - C7 spawn: an explicit --harness starts with clean model/effort defaults
+ok - C8 spawn: an explicit --harness still honors explicit model/effort flags
+ok - C9 spawn: secondmate launch pins supervision to its own harness
+ok - C9 spawn: the harness fallback chain still resolves with no tokens; crew/scout launches are unaffected by this feature
+ok - B7 bootstrap sweep pushes, re-converges, and mirrors absence; never inherits secondmate-harness
+ok - B8 bootstrap sweep propagates config even when the home's tracked files are already current
+ok - B9 bootstrap sweep defers new inherited config until the home ignores it
+ok - B10 bootstrap sweep materializes and inherits the startup-memory default while fast-forwarding
+ok - B12b backend inheritance: present values and primary absence converge exactly
+ok - C2b spawn: config/claude-permission-mode=auto reaches a Claude secondmate launch
+ok - B12c claude-permission-mode inheritance: present values and primary absence converge exactly
+ok - B12c presentation inheritance: the primary default converges on, and only an explicit opt-out propagates off
+ok - B11 bootstrap sweep surfaces config propagation failures
+ok - B11 bootstrap rereads completed config writes after partial propagation
+ok - B12 config-push propagates via shared live discovery, reports items, rereads on change only, and does not fast-forward
+ok - B13 config-push reports dirty, non-allowing, and invalid homes without failing warnings-only runs
+ok - B14 config-push exits nonzero on real propagation errors
+ok - B14 config-push rereads completed config writes after partial propagation
+ok - B15 config reread is per-home, exact-byte, ordered, and pointer-only
+ok - B16 config reread isolation, ABSENT, generation safety, send failure, and retry
+ok - B20 config reread publication failures retain exact generations for retry
+ok - B21 config reread instruction-write failures retain exact retry generations
+ok - B21 config reread preserves exact bytes when temporary adoption also fails
+ok - B21 config reread serializes concurrent propagation and delivery
+ok - B22 full config reread retry queues drain before new publication
+ok - B23 mixed config reread delivery failures still bound sent history
+ok - B26 config reread delivery stops after the oldest failed generation
+ok - B17 config reread skips unchanged homes and reads destination post-write bytes
+ok - B18 bootstrap config reread path works; spawn flexibility remains defaults-only
+ok - B19 bootstrap respawns before inherited-config reread
+ok - B25 spawn quarantines stale rereads without blocking relaunch
+ok - B24 bootstrap detect-only mode remains filesystem read-only
+# all fm-secondmate-harness tests passed
+FM_TEST_END 2026-10-04T23:14:51Z tests/fm-secondmate-harness.test.sh exit=0 duration_ms=300796 gate_skip=false
+FM_TEST_BEGIN 2026-10-04T23:14:51Z tests/fm-secondmate-safety.test.sh family=secondmate expected_gate_skip=none
+ok - FM_HOME parameterizes data and state paths
+ok - fm-lock status is scoped per home
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - seed allows overlapping project clone lists and drops the owns/owner routing
+ok - home-seed validation rejects registry records no operational parser can consume
+ok - home seeding refuses broken registry symlinks before provisioning
+ok - home seeding refuses unreadable registries before provisioning
+ok - home seed validation rejects duplicate home routes
+ok - home seed validation rejects duplicate id routes
+ok - home seed validation rejects nested home routes
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+leased worktree for dash
+ok - home seeding durably leases treehouse-acquired dash homes under the secondmate id
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding returns rejected acquired homes through treehouse
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seed rollback warns when treehouse-acquired return fails
+ok - home seeding leaves unsafe acquired active homes untouched
+ok - home seeding rolls back failed clone attempts without residue
+ok - home seeding refuses direct seed without filled charter text
+ok - home seeding refuses unfilled placeholder charters
+ok - home seeding refuses empty normalized charter fields
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding scaffolds, registers, and spawns a project-less home end to end
+ok - secondmate spawn resolves home validation and projects from punctuated registry fields
+ok - secondmate spawn refuses ambiguous, supplied-home, and metadata-home registry bindings
+ok - home seeding validates reused project-less charters before mutation
+ok - home seeding refuses project-less conversion of a populated home
+ok - home seeding refuses project-less homes whose projects directory cannot be inspected
+ok - home seeding refuses project-less homes with symlinked projects directories
+ok - home seeding refuses project-less homes with non-directory projects paths
+ok - home seeding refuses project-less homes whose project registry cannot be inspected
+ok - home seeding fails loudly on accidental project omission and rejects mixed --no-projects
+ok - home seeding refuses local-only projects
+ok - home seeding refuses registry delimiter home paths
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding refuses active home and repo root
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding refuses homes marked for another id
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding refuses homes registered to another id
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding refuses same-id reassignment to a different home
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding refuses registered home overlaps
+ok - remote-backed subhome seeding requires a source origin
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - remote-backed subhome seeding validates existing destination origins
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding resolves relative source origins against the source project
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding skips initialized existing no-mistakes clones
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding refuses uninitialized existing no-mistakes clones
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding refuses project destinations outside the subhome
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding refuses operational directories outside the subhome
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home seeding refuses symlinked and non-regular leaf files
+Note: switching to 'c32b089b0e6c93c571099fa962ec76045c81c178'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - home reseeding preserves and enforces the durable parent binding
+ok - secondmate spawn validates homes before launch
+ok - secondmate spawn refuses operational directories outside the subhome
+ok - fm-send refuses a bare firstmate window with no metadata in this home
+ok - secondmate teardown retires empty homes and releases routing
+ok - secondmate teardown refuses ambiguous and identity-mismatched registry bindings
+ok - normal secondmate teardown sweeps process events before removal
+ok - secondmate teardown preserves state when process-event sweeping is unavailable
+ok - later teardown refusals preserve active process-event sources
+ok - force teardown sweeps nested secondmate homes before deletion
+ok - force teardown preserves nested process-event restoration status and recovery state
+ok - secondmate teardown refuses to hide failed leased-home return
+ok - secondmate teardown raw-removes plain-clone homes
+ok - secondmate force teardown discards child work
+ok - forced secondmate teardown refuses duplicated descendant pool slots
+ok - secondmate force teardown preserves child worktree after unproven lock refusal
+ok - force teardown allows non-state operational directory symlinks inside the subhome
+ok - force teardown refuses operational directory symlinks outside the subhome
+ok - secondmate teardown refuses homes containing registered nested homes
+ok - secondmate teardown refuses nested homes from the child registry
+ok - force teardown validates subhome before child cleanup
+ok - forced teardown refuses a non-directory descendant state path
+ok - forced teardown refuses a symlinked descendant state path
+ok - forced teardown locks a descendant whose state directory was absent
+ok - forced teardown refuses while a fresh task is being published in the home
+ok - a fresh spawn refuses to publish while a forced teardown owns the task set
+ok - a fresh remote secondmate spawn refuses while the task set is owned
+ok - force teardown refuses child worktrees inside the active home
+ok - force teardown refuses child worktrees inside the firstmate repo
+ok - force teardown refuses unregistered child worktree paths
+ok - secondmate teardown path-boundary matrix refuses unmarked/ancestor/active-descendant/repo-descendant homes
+ok - idle kind=secondmate pane is healthy and not stale
+ok - secondmate charter brief is idle by default and does not self-initiate work
+ok - fm-backlog-handoff aborts atomically on unmatched, in-flight, and unregistered targets
+ok - fm-backlog-handoff refuses Done items under whitespace section headings and unsafe homes
+FM_TEST_END 2026-10-04T23:17:14Z tests/fm-secondmate-safety.test.sh exit=0 duration_ms=142861 gate_skip=false
+FM_TEST_BEGIN 2026-10-04T23:17:14Z tests/fm-sessionstart-nudge.test.sh family=session-bootstrap expected_gate_skip=none
+ok - fm-sessionstart-nudge: a genuine primary gets one explicitly marked instruction line
+ok - fm-sessionstart-nudge: NO_MISTAKES_GATE is silent
+ok - fm-sessionstart-nudge: .no-mistakes gate common-dir is silent
+ok - fm-sessionstart-nudge: an unmarked linked task worktree is silent
+ok - fm-sessionstart-nudge: a marked linked secondmate home is a primary
+ok - fm-sessionstart-nudge: a checkout without state is silent
+ok - fm-sessionstart-nudge: a lock holder in process ancestry is already run
+# skip: unprivileged PID namespaces are unavailable here, so the namespace pid 1 lock owner is unverified
+ok - OpenCode session.created delivers the exact wrapper nudge once per session
+ok - run wrapper: startup runs the full digest and never also nudges
+ok - run wrapper: clear and compact re-emit the digest without repeating startup sweeps
+ok - run wrapper forwards only stale-cache rebuild sources to immutable-baseline instruction refresh
+ok - run wrapper refreshes a compact even when startup completion is unproven
+ok - run wrapper: clear falls back to full startup when completion is unproven
+ok - run wrapper: clear accepts completion only from the current harness
+ok - run wrapper: resume delegates to the nudge instead of re-running the digest
+ok - run wrapper: the hook payload's source field drives routing with no explicit argument
+ok - run wrapper: an unrecognized or absent source takes the helm rather than skipping it
+ok - run wrapper: ordinary ineligible opens stay silent-zero and Pi preflight gets an explicit silent stand-down
+ok - run wrapper: a session start that cannot take the lock still opens the session and says so
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi continuation classification test (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi session-start generation prerequisite test (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi reload exit-listener test (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi large session-start delivery test (install node 24 or tsx)
+FM_TEST_END 2026-10-04T23:18:53Z tests/fm-sessionstart-nudge.test.sh exit=0 duration_ms=99444 gate_skip=false
+FM_TEST_BEGIN 2026-10-04T23:18:53Z tests/fm-test-run.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - exact suite coverage: --all lists every tests/*.test.sh once
+ok - family selection returns a proper subset of the suite
+ok - single-script selection lists exactly that path
+ok - changed-file selection stays conservative (never silent full suite)
+ok - a task marker refuses execution in the primary checkout and leaves worktrees and inspection alone
+ok - runner and its documentation surfaces select their curated family, not just their contract owners
+ok - shell line-ending policy selects runner coverage
+fm-test-run: no tests selected for changes vs HEAD (map is conservative; use --all for the complete suite)
+ok - changed selection covers dependents, fails closed for live unmapped source, and accepts retired unconsumed source
+ok - a bin reference selects the referencing scripts, and consumers still select their curated families
+ok - changed defaults to bounded automatic scheduling with serial override
+ok - Windows emulation exempts only synthetic POSIX modes
+ok - a plain script list defaults to bounded automatic concurrency without an automatic timeout
+ok - family proofs run concurrently only within separate family phases
+ok - empty changed selection emits deterministic text and JSON summaries
+ok - timing markers and JSON artifact are valid
+ok - aggregate exit reflects any script failure
+ok - gate-skip accounting is honest and non-failing
+ok - a gate skip records why it skipped
+ok - a script that actually ran records no skip reason
+ok - live guards are recorded as a capability class, not a bare env opt-in
+ok - fail-on-gate-skip converts herdr-not-found into a hard failure
+ok - exclude-family drops the named primary family after selection
+ok - proven-isolated scheduling ignores parallel hints
+ok - family, all, changed, and script selections ignore parallel hints
+ok - portable shard union, disjointness, and coverage guard hold
+ok - portable parallel lanes are fully hinted and packed within 5% of each other
+ok - portable serial shards are a deterministic disjoint cover of the serial lane
+ok - coverage guard reports and bounds the unmeasured portable serial share
+ok - portable serial shard lanes refuse mismatched, out-of-range, and countless names
+ok - --jobs refuses non-proven / stateful selections
+ok - --jobs admits and schedules a family with a recorded concurrent proof
+ok - an unclassified new test stays serial while the proven residual family runs concurrently
+ok - a changed shared test fixture selects its readers while an unread tests/ path still refuses
+ok - a concurrent run starts the longest-hint script first
+ok - --per-script-timeout-secs turns a hung script into a bounded failure
+ok - --max-wall-ms fails an over-budget run and refuses a malformed budget
+ok - jobs scheduler runs proven scripts; failure propagates; non-proven refused
+skip: ruby not found to parse .github/workflows/ci.yml as YAML (install ruby)
+ok - aggregate-json merges lane timing artifacts
+FM_TEST_END 2026-10-04T23:24:42Z tests/fm-test-run.test.sh exit=0 duration_ms=348646 gate_skip=false
+FM_TEST_BEGIN 2026-10-04T23:24:42Z tests/fm-turnend-guard.test.sh family=watcher-wake-lock expected_gate_skip=none
+ok - fm_supervision_unhealthy: false with no state/*.meta at all
+ok - fm_supervision_unhealthy: true with in-flight task and no beacon ever
+ok - fm_supervision_unhealthy: true with in-flight task and a beacon far outside the grace window
+ok - fm_supervision_unhealthy: false with in-flight task and a fresh beacon
+ok - fm_supervision_status: FM_SUP_QUEUE_PENDING tracks state/.wake-queue
+ok - fm_supervision_needed: X-mode relay poll needs supervision
+ok - fm_supervision_unhealthy: source-only home needs supervision
+ok - fm_supervision_needed: a registered custom check needs supervision with no task in flight
+ok - fm_supervision_needed: a registered check whose bytes drifted still needs supervision
+ok - fm_supervision_needed: false for a check.sh with no registration binding
+ok - fm_supervision_needed: a task PR poll without a trust binding is not a registered custom check
+ok - fm_supervision_status: the relay shim is not counted as a registered custom check
+ok - fm-turnend-guard: silent no-op with nothing in flight
+ok - fm-turnend-guard: blocks when a fresh beacon has no live watcher lock
+ok - fm-turnend-guard: non-Claude path blocks a source-only home
+ok - fm-turnend-guard: blocks on a dead watcher lock even when the beacon is fresh
+ok - fm-turnend-guard: silent no-op with a live watcher lock and fresh beacon
+ok - fm-turnend-guard: healthy non-Claude harness paths ignore Claude episode contention
+ok - fm-turnend-guard: blocks on a live watcher lock with an ancient beacon
+ok - fm-turnend-guard: blocks with the exact required reason in the primary when unhealthy
+ok - fm-turnend-guard: blocks from active FM_HOME state, not only repo-root state
+ok - fm-turnend-guard: X-mode repair reason sources the cadence config
+ok - fm-turnend-guard: X-mode-only supervision remains guarded in default mode
+ok - fm-turnend-guard: registered-check-only supervision is named in the block banner
+ok - fm-turnend-guard: ignores stale repo-root state when FM_HOME is set
+ok - fm-turnend-guard: uses FM_STATE_OVERRIDE ahead of FM_HOME/state
+ok - fm-turnend-guard: stop_hook_active=true always allows the stop (never blocks twice in one turn)
+ok - fm-turnend-guard: blocks a blind turn end in a secondmate's own home (.fm-secondmate-home no longer excludes it)
+ok - fm-turnend-guard: idle-by-default - silent in a secondmate home with nothing in flight
+ok - fm-turnend-guard: stop_hook_active=true allows the stop in a secondmate home (never blocks twice in one turn)
+ok - fm-turnend-guard: secondmate deferred-death recovery - silent while watched, forces re-arm once the watcher exits
+ok - fm-turnend-guard: inert in a secondmate's own child worktree (linked git worktree) even when unhealthy
+ok - fm-turnend-guard: blocks a blind turn end in a treehouse-leased LINKED secondmate home (marker force-include)
+ok - fm-turnend-guard: an invalid (empty) marker cannot spoof inclusion; linked worktree stays exempt
+ok - fm-turnend-guard: a non-ASCII marker cannot spoof inclusion; linked worktree stays exempt
+ok - fm-turnend-guard: inert in a crewmate/scout task worktree (linked git worktree) even when unhealthy
+ok - fm-turnend-guard: fails open (never blocks) when jq is missing
+ok - fm-turnend-guard: silent no-op on empty stdin
+ok - fm-turnend-guard: runs well under the generous timing margin (1s)
+ok - fm-turnend-guard-grok: forces one explicitly marked same-session resume when the shared predicate blocks
+ok - fm-turnend-guard-grok: legacy environment loop guard prevents a nested resume loop
+ok - fm-turnend-guard-grok: native false delegates blocking feedback with zero resume processes
+ok - fm-turnend-guard-grok: native true remains bounded and starts no resume process
+ok - fm-turnend-guard-grok: both spellings are typed and camelCase has deterministic precedence
+ok - fm-turnend-guard-grok: malformed, invalidly typed, and missing-prerequisite payloads start neither path
+ok - fm-turnend-guard-grok: missing jq and no-supervision-needed stops stay silent and bounded
+ok - tracked .claude/settings.json entries: 5 inert under grok, the documented subagent exception still armed, all live under Claude
+ok - .codex/hooks.json: Stop hook uses hook process root when payload cwd is outside
+ok - .codex/hooks.json: Stop hook ignores nested git root guard scripts
+ok - .opencode primary plugin: guard path is anchored to worktree, not directory
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi turn-end guard logical-run case (install node 24 or tsx)
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi turn-end guard delivery-retry case (install node 24 or tsx)
+ok - fm-turnend-guard --claude: re-blocks a loop-guarded stop while unhealthy and unclaimed (incident regression)
+ok - fm-turnend-guard --claude: X-mode-only homes re-block when auto-arm recovery is absent
+ok - fm-turnend-guard --claude: a live arming epoch advances once and repeated observation is idempotent
+ok - fm-turnend-guard --claude: repeated failed-to-arming races make bounded monotonic progress
+ok - fm-turnend-guard --claude: terminal owner boundary excludes a concurrent start without deadlock
+ok - fm-turnend-guard --claude: fresh rewake epoch prevents a duplicate continuation for the same event
+ok - fm-turnend-guard --claude: an abandoned auto-arm claim no longer allows a blind stop (incident regression)
+ok - fm-turnend-guard --claude: a claim whose pid was reused stops counting as recovery even while its entry reads arming
+ok - fm-turnend-guard --claude: a hung owner frozen at arming with no watcher beat no longer allows a blind stop
+ok - fm-turnend-guard --claude: a live open generation claim owns recovery with no lock held
+ok - fm-turnend-guard --claude: a stuck generation claim no longer allows a blind stop
+ok - fm-turnend-guard --claude: the terminal path clears an abandoned claim instead of stepping aside silently
+ok - fm-turnend-guard --claude: fresh failed epochs preserve and advance monotonic fail-open progression
+ok - fm-turnend-guard --claude: integrated fresh failures reach one bounded fail-open, stop continuation, and reset on recovery
+ok - fm-turnend-guard --claude: an inert auto-arm's frozen epoch reaches one bounded fail-open and resets on recovery
+ok - fm-turnend-guard --claude: a frozen unverified epoch spends the budget yet still blocks
+ok - fm-turnend-guard --claude: reset contention preserves all episode state until retry
+ok - fm-turnend-guard --claude: concurrent auto-arm and guard resets are idempotent and deadlock-free
+ok - fm-turnend-guard --claude: stale rewake epoch does not allow a blind stop
+ok - fm-turnend-guard --claude: budget exhaustion alone cannot permit a blind stop
+ok - fm-turnend-guard --claude: verified fail-open is loud, bounded, attended, and non-repeating
+ok - fm-turnend-guard --claude: fail-open requires both exhausted retries and consumed notice
+ok - fm-turnend-guard --claude: away ownership excludes the Stop-autoarm fail-open
+ok - fm-turnend-guard --claude: positive watcher recovery resets failure episode state
+ok - fm-turnend-guard --claude: bounded claim wait avoids a token-consuming forced continuation
+ok - fm-turnend-guard --claude: secondmate home re-blocks unclaimed and allows auto-arm-claimed stops
+ok - fm-turnend-guard: a live away-mode daemon satisfies supervision with no watcher holding the lock
+ok - fm-turnend-guard: away-mode daemon ownership survives a leftover dead watcher lock
+ok - fm-turnend-guard: away mode with no daemon and no watcher still blocks
+ok - fm-turnend-guard: away mode blocks on a dead away-mode daemon
+ok - fm-turnend-guard: away mode blocks on a pid-reused away-mode daemon lock
+ok - fm-turnend-guard: away-mode daemon ownership never substitutes for a fresh beacon
+ok - fm-turnend-guard: a daemon lock proves nothing while away mode is off
+ok - fm-turnend-guard: away-mode beacon freshness uses the poll-derived grace, not the flat default
+ok - fm-turnend-guard: a dead away-mode daemon still blocks under the poll-derived grace
+ok - fm-turnend-guard: the poll-derived grace is bounded, not unlimited
+ok - fm-turnend-guard: with away mode off, the poll-derived grace never applies
+FM_TEST_END 2026-10-04T23:25:56Z tests/fm-turnend-guard.test.sh exit=0 duration_ms=74297 gate_skip=false
+FM_TEST_BEGIN 2026-10-04T23:25:56Z tests/fm-watch-recovery-loop.test.sh family=watcher-wake-lock expected_gate_skip=none
+ok - a resurfacing handling successor stays alive and supervises instead of going blind
+skip: Pi extension typecheck prerequisite not found: node v22.22.1 lacks TypeScript type-stripping support for the Pi watcher recovery-loop generation case (install node 24 or tsx)
+FM_TEST_END 2026-10-04T23:26:00Z tests/fm-watch-recovery-loop.test.sh exit=0 duration_ms=3658 gate_skip=false
+FM_TEST_BEGIN 2026-10-04T23:26:00Z tests/fm-documentation-audiences.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - documentation inventory classifies every maintained prose surface exactly once
+ok - classification, setup routing, and maintained-prose scope fail safely
+ok - required documentation owner pointers cannot silently disappear
+ok - local links resolve while dates, versions, commands, and incident prose remain semantically reviewed
+FM_TEST_END 2026-10-04T23:26:02Z tests/fm-documentation-audiences.test.sh exit=0 duration_ms=2056 gate_skip=false
+FM_TEST_SUMMARY total=15 failed=0 skipped_gate=5 duration_ms=1131638
+FM_TEST_SUMMARY_FAMILY family=backend-dispatch count=1 duration_ms=66749 failed=0
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=5 duration_ms=378084 failed=0
+FM_TEST_SUMMARY_FAMILY family=secondmate count=2 duration_ms=443657 failed=0
+FM_TEST_SUMMARY_FAMILY family=session-bootstrap count=1 duration_ms=99444 failed=0
+FM_TEST_SUMMARY_FAMILY family=standalone count=1 duration_ms=38658 failed=0
+FM_TEST_SUMMARY_FAMILY family=unclassified count=2 duration_ms=515 failed=0
+FM_TEST_SUMMARY_FAMILY family=watcher-wake-lock count=3 duration_ms=103437 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-test-run.test.sh duration_ms=348646
+FM_TEST_SLOWEST rank=2 script=tests/fm-secondmate-harness.test.sh duration_ms=300796
+FM_TEST_SLOWEST rank=3 script=tests/fm-secondmate-safety.test.sh duration_ms=142861
+FM_TEST_SLOWEST rank=4 script=tests/fm-sessionstart-nudge.test.sh duration_ms=99444
+FM_TEST_SLOWEST rank=5 script=tests/fm-turnend-guard.test.sh duration_ms=74297
+FM_TEST_SLOWEST rank=6 script=tests/fm-backend-herdr.test.sh duration_ms=66749
+FM_TEST_SLOWEST rank=7 script=tests/fm-busy-adapter-wiring.test.sh duration_ms=38658
+FM_TEST_SLOWEST rank=8 script=tests/fm-pi-watch-extension.test.sh duration_ms=25482
+FM_TEST_SLOWEST rank=9 script=tests/fm-omp-harness.test.sh duration_ms=20589
+FM_TEST_SLOWEST rank=10 script=tests/fm-calm-pi-extension.test.sh duration_ms=5051
+FM_TEST_SLOWEST rank=11 script=tests/fm-watch-recovery-loop.test.sh duration_ms=3658
+FM_TEST_SLOWEST rank=12 script=tests/fm-documentation-audiences.test.sh duration_ms=2056
+FM_TEST_SLOWEST rank=13 script=tests/fm-calm-claude-mod.test.sh duration_ms=1742
+FM_TEST_SLOWEST rank=14 script=tests/fm-nm-test-contract.test.sh duration_ms=259
+FM_TEST_SLOWEST rank=15 script=tests/fm-ci-workflow.test.sh duration_ms=256
