@@ -465,6 +465,14 @@ FM_COMPOSER_IDLE_RE_DEFAULT='^Type a message\.\.\.$|^Ask anything(\.\.\.|…)|^P
 # ("Build · GPT-5.5 Fast OpenAI · high"). It is composer furniture, not typed
 # text, and only the run's LAST row is ever matched against it.
 FM_COMPOSER_LEFTBAR_FOOTER_RE_DEFAULT='^(Build|Plan)[[:space:]]+·[[:space:]]+'
+# opencode draws one status row directly under its left-bar composer's
+# half-block floor: working directory on the left, context usage in the
+# middle, and the right-aligned `ctrl+p commands` hint (verified live through
+# Herdr on opencode with DeepSeek V4.1 Flash). It is opencode furniture, not
+# lower activity, so it must not make the composer above it read stale. It is
+# consulted only for the single row below a PROVEN floor row, and only the
+# right-aligned hint is matched so typed text cannot satisfy it.
+FM_COMPOSER_LEFTBAR_STATUS_RE_DEFAULT='[[:space:]]ctrl\+p[[:space:]]+commands[[:space:]]*$'
 # Claude draws its permission-mode hint on its own row directly below the
 # composer (` ⏵⏵ bypass permissions on (shift+tab to cycle)`, ` ⏵⏵ accept edits
 # on`, ` ⏸ plan mode on`; verified live through Herdr on claude 2.1.236). The
@@ -1402,7 +1410,7 @@ _fm_composer_locate_footer_zone() {  # <plain>
 }
 
 _fm_composer_select_cursorless() {
-  local plain=$1 generic=-1 next boundary raw trimmed glyph bare footer=0
+  local plain=$1 generic=-1 next boundary raw trimmed glyph bare footer=0 floor_found=0
   FM_COMPOSER_SELECTED_KIND=
   FM_COMPOSER_SELECTED_FIRST=-1
   FM_COMPOSER_SELECTED_LAST=-1
@@ -1489,6 +1497,7 @@ _fm_composer_select_cursorless() {
       fm_composer_normalize_trim_var trimmed
       if _fm_composer_leftbar_floor_row "$trimmed"; then
         boundary=$next
+        floor_found=1
       fi
     fi
     # The same footer zone, read from the other side: rows this envelope's own
@@ -1501,6 +1510,14 @@ _fm_composer_select_cursorless() {
     raw=$(_fm_composer_screen_row "$next" "$plain")
     trimmed=$raw
     fm_composer_normalize_trim_var trimmed
+    if [ "$floor_found" = 1 ] \
+       && fm_composer_idle_matches "$trimmed" \
+         "${FM_COMPOSER_LEFTBAR_STATUS_RE:-$FM_COMPOSER_LEFTBAR_STATUS_RE_DEFAULT}" sensitive; then
+      next=$((next + 1))
+      raw=$(_fm_composer_screen_row "$next" "$plain")
+      trimmed=$raw
+      fm_composer_normalize_trim_var trimmed
+    fi
     if [ -n "$trimmed" ] && ! fm_composer_row_has_edge "$trimmed"; then
       FM_COMPOSER_SELECTED_KIND=
       return 1
