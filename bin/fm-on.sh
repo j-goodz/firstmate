@@ -20,6 +20,11 @@
 # remote completion and must be reconciled by the semantic caller, never
 # blindly repeated by this layer.
 #
+# A host listed one alias per line in config/remote-login-shell is reached through
+# `bash -lc 'exec fm-remote-entrypoint.sh "$@"'` instead of the bare entrypoint, so
+# an account whose login profile (not its non-interactive PATH) exposes the
+# entrypoint works with no change on that machine. Other hosts are unchanged.
+#
 # The SSH alias keeps normal public-key and strict host-key policy in ~/.ssh.
 # This command explicitly disables agent forwarding, forwarding setup, and
 # configured SendEnv patterns. The remote entrypoint executes the selected
@@ -45,7 +50,7 @@ PROTOCOL=1
 . "$SCRIPT_DIR/fm-secondmate-registry-lib.sh"
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
-usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 encode_base64() {
   base64 | tr -d '\n'
@@ -111,13 +116,25 @@ case "$ALIVE_COUNT_MAX" in ''|*[!0-9]*) die "FM_SSH_ALIVE_COUNT_MAX must be a po
 [ "$ALIVE_INTERVAL" -gt 0 ] || die "FM_SSH_ALIVE_INTERVAL must be a positive integer: $ALIVE_INTERVAL"
 [ "$ALIVE_COUNT_MAX" -gt 0 ] || die "FM_SSH_ALIVE_COUNT_MAX must be a positive integer: $ALIVE_COUNT_MAX"
 
+# A host whose non-interactive SSH PATH lacks the entrypoint (for example
+# ~/.local/bin only set up by a login profile) is listed in config/remote-login-shell
+# and reached through a login shell. The -c string is a constant: every value
+# stays a separate argv word after the script name, never part of the string.
+ENTRY_CMD=(fm-remote-entrypoint.sh)
+LOGIN_SHELL_HOSTS="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/remote-login-shell"
+if [ -f "$LOGIN_SHELL_HOSTS" ] && grep -Fxq -e "$HOST" <(sed -e 's/[[:space:]]*$//' -e '/^#/d' "$LOGIN_SHELL_HOSTS"); then
+  # ssh joins its words with spaces and the remote shell re-parses them, so the
+  # script word carries its own single quotes.
+  ENTRY_CMD=(bash -lc "'exec fm-remote-entrypoint.sh \"\$@\"'" fm-remote-entrypoint.sh)
+fi
+
 SSH_ARGS=(
   -o ForwardAgent=no
   -o ClearAllForwardings=yes
   -o 'SendEnv=-*'
   -o "ServerAliveInterval=$ALIVE_INTERVAL"
   -o "ServerAliveCountMax=$ALIVE_COUNT_MAX"
-  -- "$HOST" fm-remote-entrypoint.sh "$PROTOCOL" "$ROOT_B64" "$HOME_B64" "$ARGV_B64"
+  -- "$HOST" "${ENTRY_CMD[@]}" "$PROTOCOL" "$ROOT_B64" "$HOME_B64" "$ARGV_B64"
 )
 if [ "$STDIN_MODE" = caller ]; then
   exec "$SSH_BIN" "${SSH_ARGS[@]}"
