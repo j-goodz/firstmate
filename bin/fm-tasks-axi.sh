@@ -41,6 +41,8 @@
 #   - a markdown `<data>/backlog.md` that is itself a symlink, because the
 #     first write would replace the link with a private copy, exactly the fork
 #     this command exists to prevent. Lifecycle transitions refuse the same file.
+#   - `done` of a task held for the captain, which would lose the hold marker;
+#     the refusal names `fm-captain-hold.sh answer <id> --decision-file <path>`.
 # Otherwise the exit status is tasks-axi's own.
 set -u
 
@@ -121,6 +123,15 @@ if [ -n "$FM_BACKLOG_AXI_FILE" ]; then
   export TASKS_AXI_FILE="$FM_BACKLOG_AXI_FILE"
 else
   unset TASKS_AXI_FILE
+fi
+
+# A plain done would drop a captain hold's marker and leave no way to attach
+# the captain's words; bin/fm-captain-hold.sh answer closes the call with them.
+if [ "${ARGS[0]:-}" = "done" ] && [ -n "${ARGS[1]:-}" ]; then
+  if fm_backlog_row_probe "$DATA" "${ARGS[1]}" \
+    && [ "${FM_BACKLOG_ROW_STATE%% *}" != "done" ] && [ "$FM_BACKLOG_ROW_HOLD_KIND" = captain ]; then
+    fail "task ${ARGS[1]} is held for the captain; close it with the captain's words: fm-captain-hold.sh answer ${ARGS[1]} --decision-file <path>"
+  fi
 fi
 
 cd "$FM_BACKLOG_AXI_ROOT" || fail "cannot enter the backlog root $FM_BACKLOG_AXI_ROOT"

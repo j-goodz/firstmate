@@ -65,8 +65,9 @@
 # matches the newest record; a changed decision or a mode mismatch is rejected.
 # A re-held task may record a new answer on top. On a task already closed outside this script,
 # `answer` records the missing resolution block (the old `repair` path) only
-# when the task still carries the captain-hold provenance tasks-axi preserves
-# through a close, so an ordinary finished task cannot be dressed up as an
+# when the task still carries captain-hold provenance: the hold kind tasks-axi
+# preserves through a close, or, once an unhold dropped it, the hold-set stamp
+# in the body or a captain-hold key in a status log, so an ordinary finished task cannot be dressed up as an
 # answered captain call. A hold that expired by date (`--until` in the past) is
 # still answerable: the surviving hold annotations, not tasks-axi's live
 # `held:` bit, prove the captain owned it.
@@ -817,6 +818,16 @@ body_hold_set_timestamp() {  # <decoded-task-body>
     | head -1
 }
 
+# History proving a closed task was a captain call even though tasks-axi no
+# longer reports hold_kind: the hold-set stamp heading its body, or a
+# captain-hold key published for it to any status log in this home.
+closed_task_has_captain_hold_history() {  # <task-id> <shown-body>
+  local id=$1 decoded
+  decoded=$(decode_shown_value "$2" 2>/dev/null) || decoded=''
+  [ -z "$(body_hold_set_timestamp "$decoded")" ] || return 0
+  grep -qs -F "[key=captain-hold-$id-" "$STATE"/*.status
+}
+
 write_hold_set_stamp() {  # <task-id> <shown-body> <timestamp> <preserve-existing-0-or-1>
   local id=$1 body=$2 hold_set=$3 preserve=$4 existing new_body tmp
   body=$(decode_shown_value "$body") \
@@ -1101,7 +1112,10 @@ command_answer() {
     # Closed outside this script: record the captain's answer retroactively.
     # tasks-axi keeps hold_kind through a close, so it is the surviving proof
     # this really was the captain's item rather than ordinary finished work.
-    [ "$hold_kind" = captain ] \
+    # A plain done after an unhold drops hold_kind, so the hold-set stamp in
+    # the body and the parent-channel captain-hold key in a status log count
+    # as the same proof.
+    [ "$hold_kind" = captain ] || closed_task_has_captain_hold_history "$id" "$body" \
       || fail "task $id was never held for the captain; nothing to record an answer on"
     write_resolution_record "$id" repaired "$body"
     remove_interrupted_answer_stamp "$id"
