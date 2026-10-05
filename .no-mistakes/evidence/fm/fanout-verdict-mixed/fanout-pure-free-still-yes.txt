@@ -1,0 +1,4 @@
+# Scenario: a pure free lane still reports yes (no regression)
+
+stdout:  fanout-check: task-pure-free free_written=yes verdict=yes units=2 paid_step_ups=0 runs=fr-20261005T010203Z-aaa111
+ledger:  {"ts":1791200404,"at":"2026-10-05T11:40:04Z","task":"task-pure-free","free_written":true,"verdict":"yes","units":2,"paid_step_ups":0,"runs":["fr-20261005T010203Z-aaa111"],"pr":""}

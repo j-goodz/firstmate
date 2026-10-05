@@ -1,0 +1,13 @@
+# Scenario: PR body run ids are read only from the 'Fan-out runs:' line
+
+Fake gh body:
+  Fan-out runs: fr-20261005T010203Z-aaa111
+  ...pasted log mentions fr-20261005T010203Z-bbb222 and ...ccc333...
+Ledger has free check_passed rows for aaa111, bbb222, ccc333.
+
+## Pre-fix baseline (scanned the whole body)
+fanout-check: task-pr-scope free_written=yes verdict=yes units=3 paid_step_ups=0 runs=fr-20261005T010203Z-aaa111,fr-20261005T010203Z-bbb222,fr-20261005T010203Z-ccc333
+
+## Post-fix
+stdout:  fanout-check: task-pr-scope free_written=yes verdict=yes units=1 paid_step_ups=0 runs=fr-20261005T010203Z-aaa111
+ledger:  {"ts":1791200397,"at":"2026-10-05T11:39:57Z","task":"task-pr-scope","free_written":true,"verdict":"yes","units":1,"paid_step_ups":0,"runs":["fr-20261005T010203Z-aaa111"],"pr":"https://forge.example/pr/1"}

@@ -1,0 +1,16 @@
+ok - fm-fanout-check.sh: yes case
+ok - fm-fanout-check.sh: no case
+ok - fm-fanout-check.sh: missing-ledger case
+ok - fm-fanout-check.sh: no-runs case
+ok - fm-fanout-check.sh: multiple ids on one line case
+ok - fm-fanout-check.sh: paid step-up case
+ok - fm-fanout-check.sh: paid-only run is not free adoption
+ok - fm-fanout-check.sh: free pass survives a free_exhausted on another run's label
+ok - fm-fanout-check.sh: malformed ledger case
+ok - fm-fanout-check.sh: adoption accumulates case
+ok - fm-fanout-check.sh: bad usage case
+ok - fm-fanout-check.sh: unwritable data dir case
+ok - fm-fanout-check.sh: --pr-url case
+ok - fm-fanout-check.sh: ledger unchanged case
+ok - fm-fanout-check.sh: mixed case
+ok - fm-fanout-check.sh: pr-body runs line only case

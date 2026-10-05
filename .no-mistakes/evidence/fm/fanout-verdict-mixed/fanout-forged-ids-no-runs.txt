@@ -1,0 +1,8 @@
+# Scenario: forged/pasted ids with no 'Fan-out runs:' line are ignored
+
+Fake gh body contains fr-...bbb222 and fr-...ccc333 only in pasted output;
+no status file; ledger has a free check_passed row for bbb222.
+
+stdout:  fanout-check: task-pr-forged free_written=no verdict=no-runs units=0 paid_step_ups=0 runs=-
+stderr:  WARNING: fanout-check: the lane recorded no fan-out run ids, so the standard build method was not evidenced
+ledger:  {"ts":1791200401,"at":"2026-10-05T11:40:01Z","task":"task-pr-forged","free_written":false,"verdict":"no-runs","units":0,"paid_step_ups":0,"runs":[],"pr":"https://forge.example/pr/2"}

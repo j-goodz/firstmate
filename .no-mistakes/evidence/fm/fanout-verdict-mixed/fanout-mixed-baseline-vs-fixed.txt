@@ -1,0 +1,12 @@
+# Scenario: mixed free/paid lane is recorded as mixed (PR 37 free-builds-c3 repro)
+
+Setup: task free-builds-c3, one run id fr-20261005T010203Z-abc123,
+8 check_passed units on a free model + 3 free_exhausted units (paid step-ups).
+
+## Pre-fix baseline (git show ebe58c0:bin/fm-fanout-check.sh)
+fanout-check: free-builds-c3 free_written=yes verdict=yes units=8 paid_step_ups=3 runs=fr-20261005T010203Z-abc123
+
+## Post-fix (bin/fm-fanout-check.sh at target commit)
+stdout:  fanout-check: free-builds-c3 free_written=no verdict=mixed units=8 paid_step_ups=3 runs=fr-20261005T010203Z-abc123
+stderr:  WARNING: fanout-check: free models wrote some units but paid step-ups were needed for others
+ledger:  {"ts":1791200390,"at":"2026-10-05T11:39:50Z","task":"free-builds-c3","free_written":false,"verdict":"mixed","units":8,"paid_step_ups":3,"runs":["fr-20261005T010203Z-abc123"],"pr":""}
