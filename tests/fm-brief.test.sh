@@ -473,6 +473,35 @@ test_ship_project_memory_wording() {
   pass "fm-brief.sh: ship project-memory wording carries the AGENTS.md authoring bar"
 }
 
+test_ship_scaffold_has_build_method() {
+  local home id mode brief line_build line_dod
+  home="$TMP_ROOT/build-method-home"
+  mkdir -p "$home/data"
+  for id_mode in "brief-buildmethod-a1:no-mistakes" "brief-buildmethod-a2:direct-PR" "brief-buildmethod-a3:local-only"; do
+    id=${id_mode%%:*}
+    mode=${id_mode##*:}
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1
+    brief="$home/data/$id/brief.md"
+    assert_present "$brief" "$mode: brief was not scaffolded"
+    assert_grep "# Build method" "$brief" "$mode: brief missing # Build method section"
+    assert_grep "free_direct_fanout.py" "$brief" "$mode: brief missing free_direct_fanout.py reference"
+    assert_grep "--manifest" "$brief" "$mode: brief missing --manifest flag"
+    assert_grep "free_exhausted" "$brief" "$mode: brief missing free_exhausted reference"
+    assert_grep "run ids" "$brief" "$mode: brief missing run ids reference"
+    [ "$(grep -c -F -- '# Build method' "$brief")" = 1 ] \
+      || fail "$mode: # Build method section appears more than once"
+    line_build=$(grep -n -F -- '# Build method' "$brief" | head -1 | cut -d: -f1)
+    line_dod=$(grep -n -F -- '# Definition of done' "$brief" | head -1 | cut -d: -f1)
+    [ "$line_build" -lt "$line_dod" ] \
+      || fail "$mode: # Build method must appear before # Definition of done"
+  done
+  id="brief-buildmethod-scout"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --scout >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_no_grep "# Build method" "$brief" "scout brief must not carry a # Build method section"
+  pass "fm-brief.sh: ship scaffold carries the Build method section"
+}
+
 test_herdr_lab_contract_is_explicit_and_complete() {
   local home id brief
   home="$TMP_ROOT/herdr-lab-home"
@@ -1073,6 +1102,7 @@ test_no_mistakes_dod_wording
 test_pr_based_dod_requires_non_draft
 test_ask_user_escalation_format
 test_ship_project_memory_wording
+test_ship_scaffold_has_build_method
 test_herdr_lab_contract_is_explicit_and_complete
 test_herdr_lab_contract_quotes_foreign_firstmate_path
 test_herdr_lab_omission_is_loud_for_ship_and_scout

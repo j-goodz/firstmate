@@ -276,6 +276,10 @@
 #     root still exists, so the account's healthy LaunchAgent worker and every
 #     live remote secondmate worker are out of scope. Best effort: a sweep
 #     failure never blocks this teardown.
+#   Adoption check - bin/fm-fanout-check.sh reads this ship task's FreeLLMAPI fan-out run ids
+#     (status log and PR body), reports how many of their units free models wrote and appends
+#     the result to data/fanout-adoption.jsonl. A recorded check, never a gate: best effort,
+#     a failure or a lane with no run ids only prints a warning.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -3491,6 +3495,11 @@ fi
 # Fix 3 (see script header): sweep remote job workers abandoned by an already
 # pruned code root. Best effort - a sweep failure never blocks this teardown.
 "$SCRIPT_DIR/fm-remote-job-reap-orphans.sh" >&2 || true
+
+# Adoption check (recorded, never a gate): did free models write this lane? Best effort.
+if [ "$KIND" = ship ] && [ -x "$SCRIPT_DIR/fm-fanout-check.sh" ]; then
+  "$SCRIPT_DIR/fm-fanout-check.sh" "$ID" ${PR_URL:+--pr-url "$PR_URL"} >&2 || true
+fi
 
 # Best-effort: drop the local task branch so the shared repo does not accumulate refs.
 if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
