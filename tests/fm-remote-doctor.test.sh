@@ -779,6 +779,43 @@ assert_contains "$DOCTOR_OUT" 'check herdr-server=ok:' "the started server was n
 [ ! -s "$CASE_LAUNCHCTL_LOG" ] || fail "the linux path invoked launchctl"
 pass "a non-darwin host skips launch agents and starts its herdr server directly"
 
+# --- a long-lived herdr server must not keep --fix waiting -------------------
+# The real server never exits and keeps every descriptor it inherited. The fake
+# does the same, and --fix must still return as soon as the server is running.
+
+new_case Linux with-herdr no-gui
+cat > "$CASE_BIN/herdr" <<'SH'
+#!/usr/bin/env bash
+set -u
+case "${1:-} ${2:-}" in
+  "status --json")
+    running=$(cat "$FM_FAKE_HERDR_RUNNING" 2>/dev/null || printf 'false')
+    printf '{"client":{"version":"0.7.5","protocol":16},"server":{"running":%s,"socket":"%s"}}\n' "$running" "$FM_FAKE_HERDR_SOCKET"
+    ;;
+  "server "*|"server ")
+    printf 'true\n' > "$FM_FAKE_HERDR_RUNNING"
+    printf '%s\n' "$$" > "$FM_FAKE_STATE/herdr-server.pid"
+    while :; do /bin/sleep 1; done
+    ;;
+esac
+exit 0
+SH
+chmod +x "$CASE_BIN/herdr"
+# Release a hung doctor after 12s so a regression fails instead of stalling.
+( /bin/sleep 12; [ ! -s "$CASE_STATE/herdr-server.pid" ] || kill "$(cat "$CASE_STATE/herdr-server.pid")" 2>/dev/null ) &
+WATCHDOG_PID=$!
+FIX_START=$SECONDS
+doctor --fix
+FIX_ELAPSED=$((SECONDS - FIX_START))
+kill "$WATCHDOG_PID" 2>/dev/null || true
+if [ -s "$CASE_STATE/herdr-server.pid" ]; then
+  kill "$(cat "$CASE_STATE/herdr-server.pid")" 2>/dev/null || true
+fi
+expect_code 0 "$DOCTOR_RC" "--fix did not start a long-lived herdr server on linux"
+assert_contains "$DOCTOR_OUT" 'fix herdr-server=applied:' "--fix did not report starting the long-lived server"
+[ "$FIX_ELAPSED" -lt 8 ] || fail "--fix stayed blocked for ${FIX_ELAPSED}s on a running long-lived herdr server"
+pass "--fix returns once a long-lived herdr server reports running"
+
 # --- --fix may add only owned wrappers for version-manager tools -------------
 
 new_case Linux with-herdr no-gui
