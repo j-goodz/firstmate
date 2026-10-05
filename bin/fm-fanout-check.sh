@@ -23,7 +23,8 @@
 #   2. when --pr-url is given: the PR body from
 #      `gh pr view <url> --json body --jq .body`, hard-bounded by fm_run_timed
 #      (bin/fm-timeout-lib.sh); any failure, including gh missing or the bound
-#      expiring, is silently ignored and yields no ids)
+#      expiring, is silently ignored and yields no ids.
+#      From the PR body, only the line starting `Fan-out runs:` is scanned.
 #
 # Units ledger rows are JSON lines with at least: run_id, label, outcome, requested_model.
 # Outcome values that matter: "check_passed" and "free_exhausted". Blank or malformed lines
@@ -39,7 +40,8 @@
 # Verdict, decided in this order:
 #   no-runs         no run id was found anywhere
 #   missing-ledger  run ids were found but the units ledger file does not exist or is unreadable
-#   yes             at least one unit is free-written (see units)
+#   yes             at least one unit is free-written (see units) and zero paid step-ups
+#   mixed           at least one unit is free-written and some paid step-ups were needed
 #   no              run ids found, ledger readable, but zero units are free-written
 # units = number of distinct (run_id,label) pairs whose check_passed row names a free model
 #         (0 for no-runs and missing-ledger)
@@ -141,7 +143,7 @@ if [[ -n "$PR_URL" ]]; then
         seen+=("$id")
         run_ids+=("$id")
       fi
-    done < <(echo "$pr_body" | grep -oE 'fr-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}' || true)
+    done < <(echo "$pr_body" | grep -E '^[[:space:]]*Fan-out runs:' | grep -oE 'fr-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{6}' || true)
   fi
 fi
 
@@ -215,7 +217,11 @@ else
     paid_step_ups=$(echo "$counts" | jq -r '.paid_step_ups')
 
     if [[ $units -gt 0 ]]; then
-      verdict="yes"
+      if [[ $paid_step_ups -eq 0 ]]; then
+        verdict="yes"
+      else
+        verdict="mixed"
+      fi
     else
       verdict="no"
     fi
@@ -252,6 +258,9 @@ if [[ "$verdict" != "yes" ]]; then
       ;;
     no)
       reason="run ids found but zero units are free-written"
+      ;;
+    mixed)
+      reason="free models wrote some units but paid step-ups were needed for others"
       ;;
     *)
       reason="unknown verdict"

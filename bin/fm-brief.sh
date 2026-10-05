@@ -594,7 +594,7 @@ It is the standard method, not an iron rule: skip it for a specific part only wh
 2. Run \`python3 $FANOUT_ENGINE --manifest <file>\` (if that path is missing, use the nexus checkout path on this machine). Keep scratch files under ~/scratch/$ID, never inside a git tree.
 3. Review every result and apply it. Never hand-write code. A rate-limited or failed call reroutes to the next free model and is not a failure.
 4. Only units the run reports \`free_exhausted\` may go to a paid model, and only after you append a \`working\` status line naming those units.
-5. Name the fan-out run ids (fr-...) in the PR body and in a status line. Firstmate records whether free models wrote the change; a lane with no run ids gets a warning, never a refusal.
+5. Name the fan-out run ids (fr-...) in a status line, and in the PR body on one line that starts with \`Fan-out runs:\` followed by the ids; firstmate reads only that line. Firstmate records whether free models wrote the change; a lane with no run ids gets a warning, never a refusal.
 
 $DOD
 EOF
