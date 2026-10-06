@@ -19,6 +19,9 @@ set -u
 WATCH="$ROOT/bin/fm-watch.sh"
 WATCH_ARM="$ROOT/bin/fm-watch-arm.sh"
 DRAIN="$ROOT/bin/fm-wake-drain.sh"
+# These tests check what the recovery fold exposes, not the unchanged-section gate
+# (tests/fm-wake-drain-dedupe.test.sh owns that), so every drain prints in full.
+export FM_WAKE_DRAIN_FULL=1
 
 TMP_ROOT=$(fm_test_tmproot fm-watch-arm-tests)
 

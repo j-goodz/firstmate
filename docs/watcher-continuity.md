@@ -66,6 +66,17 @@ A concurrently appended wake has a higher sequence, remains queued, and keeps th
 Consequently, an empty-queue downtime publication during handling can be retired by the outstanding acknowledgement without a dedicated recovery turn.
 An acknowledged episode does not freeze the generation, because the next downtime after it opens an episode of its own.
 
+## Turn-end acknowledgement and absorbed wakes (Claude Stop hook)
+
+A main drain that prints `WAKE_ACK_REQUIRED` also records the printed cutoff and generation in `state/.drain-delivered`.
+When the handling turn ends normally, the Claude Stop hook claims that record atomically and runs the same acknowledgement, so the model spends no tool call on it.
+A turn the person interrupted (an interruption marker in the transcript at or after the record), a record older than six hours, a missing or unreadable transcript, and an away session all acknowledge nothing, so re-delivery stays exactly as durable as before.
+`bin/fm-wake-absorb-lib.sh` owns those checks and the record format, and `state/wake-absorb.jsonl` logs every acknowledgement, skip and absorb.
+The drain prints the OPEN DECISIONS block in full only when its content changed since the last committed presentation or its record is older than `FM_DRAIN_SECTION_TTL_SECS` (default 14400), otherwise one count line; `FM_WAKE_DRAIN_FULL=1` or `state/.drain-full-next` forces the full block, and a new session's start-up drain always forces it.
+An actionable watcher close that needs no model is absorbed by the hook through `bin/fm-wake-drain.sh --absorb-resurface`, which consumes only rows the library classifies as record-only (working-only status signals and a landed merge for a task already gone) or a recovery re-announcement with no queued row, retires the episode, and re-arms without a rewake.
+A refusal consumes nothing and wakes the model as before, and `FM_WAKE_ABSORB_MAX` bounds absorbs per hook firing.
+`bin/fm-wake-absorb-report.sh --since-hours <N>` counts the logged acknowledgements, skips and absorbs for a window.
+
 ## Per-actor acknowledgement
 
 `bin/fm-wake-drain.sh` consumes the queue per actor, not per whole-queue cutoff, using `bin/fm-lease-lib.sh`'s existing `fm_lease_actor` identity (`FM_SUPERVISION_ACTOR`, unset or `main` for every non-Pi harness and Pi's own main session; `branch` only inside the Pi supervision branch's own bash tool calls, injected deterministically by the extension - never agent memory).

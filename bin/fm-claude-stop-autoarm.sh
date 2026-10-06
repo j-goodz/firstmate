@@ -19,6 +19,18 @@
 #     the hook delegates guarded recovery to bin/fm-lock.sh and then re-verifies
 #     ownership. A live owner, missing lock, malformed lock, or unresolved
 #     ancestry remains inert, so a competing session never arms or rewakes.
+#   - Turn-end acknowledgement: when the handling turn that ran bin/fm-wake-drain.sh
+#     ends normally, this hook acknowledges the rows that drain delivered
+#     (state/.drain-delivered, claimed atomically) instead of leaving the model to
+#     spend a tool call on it. A turn the person interrupted, a missing or stale
+#     record, or an unreadable transcript acknowledges nothing, so re-delivery
+#     stays exactly as durable as before (bin/fm-wake-absorb-lib.sh owns the
+#     checks).
+#   - Absorb: an actionable close whose queued rows are all record-only (or that
+#     has no queued row at all, for a recovery re-announcement) is consumed by
+#     bin/fm-wake-drain.sh --absorb-resurface and the arm runs again without
+#     waking the model, at most FM_WAKE_ABSORB_MAX (default 25) times in one
+#     firing.
 #   - AFK: while state/.afk exists the away daemon owns the watcher and triage;
 #     this hook exits 0 and NEVER rewakes the primary (checked again at
 #     translation time so a mid-cycle AFK transition is honored).
@@ -102,6 +114,14 @@ esac
 . "$SCRIPT_DIR/fm-session-lock-lib.sh"
 # shellcheck source=bin/fm-hook-host-lib.sh
 . "$SCRIPT_DIR/fm-hook-host-lib.sh"
+# The brain-cost helpers are optional so a checkout without them behaves as before.
+if [ -f "$SCRIPT_DIR/fm-wake-absorb-lib.sh" ]; then
+  # shellcheck source=bin/fm-wake-absorb-lib.sh
+  . "$SCRIPT_DIR/fm-wake-absorb-lib.sh"
+fi
+ABSORB_MAX=${FM_WAKE_ABSORB_MAX:-25}
+case "$ABSORB_MAX" in ''|*[!0-9]*) ABSORB_MAX=25 ;; esac
+AUTOACK_MAX_AGE_SECS=21600
 
 # fm-watch.sh touches the liveness beacon once per cycle, immediately before
 # its terminal wait, so a healthy watcher's beacon can legitimately age up to
@@ -144,6 +164,37 @@ fi
 
 # --- AFK: the away daemon owns the watcher and triage; never rewake ----------
 [ -e "$STATE/.afk" ] && exit 0
+
+# --- turn-end acknowledgement of the rows the finished turn drained -------------
+# Best effort and never fatal: any doubt leaves the rows queued for re-delivery.
+autoack_delivered_wakes() {
+  local transcript rc now
+  command -v fm_wake_delivered_claim >/dev/null 2>&1 || return 0
+  [ -e "$STATE/.drain-delivered" ] || return 0
+  fm_wake_delivered_claim || { fm_wake_absorb_log autoack-skipped reason=bad-record; return 0; }
+  now=$(date -u +%s)
+  if [ $((now - FM_DELIVERED_EPOCH)) -gt "$AUTOACK_MAX_AGE_SECS" ]; then
+    fm_wake_absorb_log autoack-skipped reason=stale-record
+    return 0
+  fi
+  transcript=$(printf '%s' "$PAYLOAD" \
+    | sed -n 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+  rc=0
+  fm_stop_turn_interrupted "$transcript" "$FM_DELIVERED_EPOCH" || rc=$?
+  if [ "$rc" -ne 1 ]; then
+    fm_wake_absorb_log autoack-skipped "reason=$([ "$rc" -eq 0 ] && echo interrupted || echo no-transcript)"
+    return 0
+  fi
+  [ -x "$SCRIPT_DIR/fm-wake-drain.sh" ] || return 0
+  if FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/fm-wake-drain.sh" \
+    --ack-through "$FM_DELIVERED_SEQ" --recovery-generation "$FM_DELIVERED_GENERATION" >/dev/null 2>&1; then
+    fm_wake_absorb_log autoack "through=$FM_DELIVERED_SEQ"
+  else
+    fm_wake_absorb_log autoack-failed "through=$FM_DELIVERED_SEQ"
+  fi
+  return 0
+}
+autoack_delivered_wakes
 
 # --- need: whatever bin/fm-supervision-lib.sh counts as supervision need ------
 need_supervision() {
@@ -271,6 +322,7 @@ trap 'handle_autoarm_signal INT' INT
 OUT=
 ACTIONABLE=0
 HEALTHY=0
+ABSORBED=0
 attempt=0
 while [ "$attempt" -lt "$AUTOARM_ATTEMPTS" ]; do
   # A superseded owner must not start or attach another watcher or mutate any
@@ -308,7 +360,23 @@ while [ "$attempt" -lt "$AUTOARM_ATTEMPTS" ]; do
   # watcher, and the Stop that ended the handling turn has already deferred to
   # it (the 2026-10-03 unsupervised idle home).
   if [ "$ACTIONABLE" -eq 1 ]; then
-    rewake_episode_open && break
+    if rewake_episode_open; then
+      # Every reason is a status signal, a landed merge or a recovery
+      # re-announcement: let the drain decide whether the queued rows (if any)
+      # need the model at all. Absorbed rows cost no model call, and the arm
+      # simply runs again.
+      if [ "$ABSORBED" -lt "$ABSORB_MAX" ] && [ -x "$SCRIPT_DIR/fm-wake-drain.sh" ] \
+        && [ -n "$OUT" ] && ! grep -E '^(signal:|stale:|check:|heartbeat)' "$OUT" 2>/dev/null \
+          | grep -Evq '^(signal:|check: merge landed: |check: rearm-resurface)' \
+        && FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/fm-wake-drain.sh" --absorb-resurface >/dev/null 2>&1; then
+        ABSORBED=$((ABSORBED + 1))
+        rm -f "$OUT" 2>/dev/null || true
+        OUT=
+        attempt=$((attempt - 1))
+        continue
+      fi
+      break
+    fi
     ACTIONABLE=0
   fi
 
@@ -370,7 +438,7 @@ if [ "$ACTIONABLE" -eq 1 ]; then
   {
     printf 'firstmate watcher wake - one supervision event needs a handling turn now.\n'
     [ -n "$OUT" ] && grep -E '^(signal:|stale:|check:|heartbeat)' "$OUT" 2>/dev/null | head -8
-    printf 'Run bin/fm-wake-drain.sh first, handle the wake, then run its exact WAKE_ACK_REQUIRED --ack-through command. Until that post-handling acknowledgement, interruption leaves the wake durable for idempotent re-handling. This Stop hook owns watcher continuity: when the handling turn ends, the next needed cycle arms automatically - do NOT run bin/fm-watch-arm.sh after an ordinary wake.\n'
+    printf 'Run bin/fm-wake-drain.sh first and handle the wake. The Stop hook acknowledges the drained rows when the handling turn ends normally; an interrupted turn leaves the wake durable for idempotent re-handling. This Stop hook owns watcher continuity: when the handling turn ends, the next needed cycle arms automatically - do NOT run bin/fm-watch-arm.sh after an ordinary wake.\n'
   } >&2
   if autoarm_commit rewake; then
     [ -z "$OUT" ] || rm -f "$OUT" 2>/dev/null || true

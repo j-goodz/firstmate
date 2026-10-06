@@ -14,6 +14,9 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/wake-helpers.sh"
 
 DRAIN="$ROOT/bin/fm-wake-drain.sh"
+# These tests check what the incremental fold exposes, not the unchanged-section gate
+# (tests/fm-wake-drain-dedupe.test.sh owns that), so every drain prints in full.
+export FM_WAKE_DRAIN_FULL=1
 
 TMP_ROOT=$(fm_test_tmproot fm-wake-drain-open-decisions-cursor-tests)
 
