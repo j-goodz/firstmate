@@ -207,6 +207,10 @@
 #             same-session Claude id as its own, so the re-emit proceeds, while
 #             a lock another live session took meanwhile still produces the
 #             ordinary read-only path.
+#             The re-emitted digest is compact: counts and ids for the
+#             backlog, at most FM_SESSION_START_REEMIT_TASKS (default 12) task
+#             rows, size pointers instead of full context files, and, on
+#             Claude, the --compact supervision block.
 #
 #   --source  The native session-open source, supplied only by
 #             fm-sessionstart-run.sh. A genuine `startup` that owns the active
