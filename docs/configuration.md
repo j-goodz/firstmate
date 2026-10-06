@@ -428,6 +428,12 @@ A `reserve-file` line names a file whose lines each hold an account number or la
 Past lines are ignored and a missing file reserves nothing.
 When no account qualifies and the current account is reserved, the launch takes the first signed-in, unreserved account in file order, and refuses with one line naming the account and when its reserve ends only when no such account exists.
 A reserve gates new launches only and does not stop workers already running.
+
+An optional `ceiling <label> <pct>` line caps one account's 5-hour use at an integer percent from 1 to 100, once per label.
+An account whose 5-hour use is at or above its ceiling is excluded from every pick, fallback included, and the pick log row shows its status as `excluded-ceiling` with the ceiling and the reading.
+`ceiling account-3 60` keeps the marketwatch account's 5-hour window from being filled by Firstmate's own workers, so its trading desk always has headroom.
+A current account over its ceiling is never kept as the fallback, and when every signed-in, unreserved account is over its ceiling the launch refuses with one line naming each account and its ceiling.
+A ceiling is judged only on fresh readings, and a missing jq refuses the launch because the ceiling cannot be honored.
 Each pick appends one JSON line to `data/account-picks.jsonl` with every account's numbers, data age, status, reserve state and end, the choice, and the reason, and the task record gains `account=<label>`.
 `bin/fm-account-pick.sh`'s header owns the file format, thresholds, data-age limit, ranking, tie-break, reserve rules, and log fields.
 An absent file keeps today's launch exactly, while a malformed file or a reserve refusal stops the spawn before any endpoint, worktree, or task record exists.
