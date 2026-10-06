@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/fm-wake-drain-dedupe.test.sh - behavior tests for the delivery record, the
-# unchanged-section gate, and the --absorb-record-only mode of bin/fm-wake-drain.sh.
+# unchanged-section gate, and the --absorb-resurface mode of bin/fm-wake-drain.sh.
 set -u
 
 # shellcheck source=tests/wake-helpers.sh
@@ -326,36 +326,6 @@ test_unchanged_gate_full_env() {
     pass "test_unchanged_gate_full_env"
 }
 
-# Test 9: .drain-full-next forces full block and is removed.
-test_unchanged_gate_full_next_file() {
-    local dir
-    dir=$(make_case "unchanged-gate-full-next")
-    local state="$dir/state"
-    local out="$dir/out"
-    local err="$dir/err"
-
-    printf 'needs-decision [key=pick-a] [at=1791061356]: pick A or B\n' > "$state/t1.status"
-    append_wake "$state" signal t1.status "signal: $state/t1.status"
-
-    # First drain
-    run_drain "$state" "$out" "$err"
-
-    # Create .drain-full-next
-    touch "$state/.drain-full-next"
-    [[ -f "$state/.drain-full-next" ]] || fail "file created"
-
-    # Second drain - should be full and remove file
-    run_drain "$state" "$out" "$err"
-    assert_contains "$(cat "$out")" "OPEN DECISIONS (still open" "drain with .drain-full-next prints full"
-    [[ ! -f "$state/.drain-full-next" ]] || fail ".drain-full-next should be removed"
-
-    # Third drain - should be one-line
-    run_drain "$state" "$out" "$err"
-    assert_contains "$(cat "$out")" "1 still open" "next drain one-line"
-
-    pass "test_unchanged_gate_full_next_file"
-}
-
 # Test 10: FM_DRAIN_SECTION_TTL_SECS=1 causes reprint after sleep.
 test_unchanged_gate_ttl() {
     local dir
@@ -450,7 +420,7 @@ test_unchanged_gate_stdout_closed() {
     fi
 }
 
-# Test 13: --absorb-record-only with one working-only row exits 0, clears queue.
+# Test 13: --absorb-resurface with one working-only row exits 0, clears queue.
 test_absorb_working_only() {
     local dir
     dir=$(make_case "absorb-working-only")
@@ -463,7 +433,7 @@ test_absorb_working_only() {
     printf 'working [at=1791061356]: relaunched\n' > "$state/t1.status"
 
     # Run absorb
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     local code=$?
     expect_code 0 "$code" "absorb exits 0"
     [[ ! -s "$out" ]] || fail "stdout should be empty, got: $(cat "$out")"
@@ -490,7 +460,7 @@ test_absorb_with_recovery_marker() {
     append_wake "$state" signal t1.status "signal: $state/t1.status"
     printf 'working [at=1791061356]: relaunched\n' > "$state/t1.status"
 
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     local code=$?
     expect_code 0 "$code" "absorb exits 0"
 
@@ -514,7 +484,7 @@ test_absorb_with_inbox_note() {
     printf 'working [at=1791061356]: relaunched\n' > "$state/t1.status"
     append_wake "$state" check inbox:111 "check: captain inbox note 111 - hello"
 
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     local code=$?
     expect_code 1 "$code" "absorb exits 1 with inbox note"
 
@@ -538,7 +508,7 @@ test_absorb_with_turn_ended() {
     printf 'working [at=1791061356]: relaunched\n' > "$state/t1.status"
     append_wake "$state" signal t1.turn-ended "signal: $state/t1.turn-ended"
 
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     local code=$?
     expect_code 1 "$code" "absorb exits 1 with turn-ended"
 
@@ -559,14 +529,14 @@ test_absorb_with_done_signal() {
     append_wake "$state" signal t1.status "signal: $state/t1.status"
     printf 'done [at=1791061356]: finished\n' > "$state/t1.status"
 
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     local code=$?
     expect_code 1 "$code" "absorb exits 1 with done signal"
 
     pass "test_absorb_with_done_signal"
 }
 
-# Test 16: Empty queue (with and without recovery marker) -> exit 1.
+# Test 16: Empty queue (with and without recovery marker) -> exit 0.
 test_absorb_empty_queue() {
     local dir
     dir=$(make_case "absorb-empty")
@@ -576,15 +546,15 @@ test_absorb_empty_queue() {
 
     # Empty queue, no marker
     : > "$state/.wake-queue"
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     local code=$?
-    expect_code 1 "$code" "absorb empty queue no marker exits 1"
+    expect_code 0 "$code" "absorb empty queue no marker exits 0"
 
     # Empty queue with marker
     echo "pending:downtime:gen1" > "$state/.watcher-down"
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     code=$?
-    expect_code 1 "$code" "absorb empty queue with marker exits 1"
+    expect_code 0 "$code" "absorb empty queue with marker exits 0"
 
     pass "test_absorb_empty_queue"
 }
@@ -605,7 +575,7 @@ test_absorb_with_undelivered_decision() {
     append_wake "$state" signal t2.status "signal: $state/t2.status"
     printf 'working [at=1791061356]: relaunched\n' > "$state/t2.status"
 
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     local code=$?
     expect_code 1 "$code" "absorb exits 1 with undelivered decision"
 
@@ -629,7 +599,7 @@ test_absorb_with_undelivered_decision() {
     printf 'working [at=1791061356]: relaunched\n' > "$state/t3.status"
 
     # Absorb should now succeed
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     code=$?
     expect_code 0 "$code" "absorb exits 0 after decision delivered and acked"
 
@@ -652,7 +622,7 @@ test_absorb_with_unread_note() {
     printf 'note [at=1791061400]: an answer\n' > "$state/t2.status"
     append_wake "$state" signal t2.status "signal: $state/t2.status"
 
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     local code=$?
     expect_code 1 "$code" "absorb exits 1 with unread note"
 
@@ -677,7 +647,7 @@ test_absorb_new_rows_survive() {
     printf 'working [at=1791061356]: relaunched\n' > "$state/t1.status"
 
     # Absorb it
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     local code=$?
     expect_code 0 "$code" "first absorb exits 0"
 
@@ -706,7 +676,7 @@ test_absorb_jsonl_log() {
     append_wake "$state" signal t1.status "signal: $state/t1.status"
     printf 'working [at=1791061356]: relaunched\n' > "$state/t1.status"
 
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     local code=$?
     expect_code 0 "$code" "absorb exits 0"
 
@@ -726,7 +696,7 @@ test_absorb_jsonl_log() {
     printf 'working [at=1791061356]: relaunched\n' > "$state2/t1.status"
     append_wake "$state2" check inbox:111 "check: captain inbox note 111 - hello"
 
-    FM_STATE_OVERRIDE="$state2" "$DRAIN" --absorb-record-only > "$out2" 2> "$err2"
+    FM_STATE_OVERRIDE="$state2" "$DRAIN" --absorb-resurface > "$out2" 2> "$err2"
     code=$?
     expect_code 1 "$code" "absorb exits 1"
 
@@ -752,7 +722,7 @@ test_absorb_marks_presented() {
     printf 'working [at=1791061356]: relaunched\n' > "$state/t1.status"
 
     # Absorb
-    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$out" 2> "$err"
+    FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-resurface > "$out" 2> "$err"
     local code=$?
     expect_code 0 "$code" "absorb exits 0"
 
@@ -779,7 +749,6 @@ test_delivery_record_branch_actor
 test_unchanged_gate_first_second
 test_unchanged_gate_add_decision
 test_unchanged_gate_full_env
-test_unchanged_gate_full_next_file
 test_unchanged_gate_ttl
 test_unchanged_gate_resolve
 test_unchanged_gate_stdout_closed

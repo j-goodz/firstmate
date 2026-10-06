@@ -105,7 +105,7 @@ test_no_needs_brain_kind_is_absorbed() {
                 if [[ "$verbs" != "-" ]]; then
                     IFS=',' read -ra verb_arr <<< "$verbs"
                     for v in "${verb_arr[@]}"; do
-                        if [[ "$v" != "working" && "$v" != "resolved" && "$v" != "captain-held" ]]; then
+                        if [[ "$v" != "working" ]]; then
                             must_wake["$episode"]=1
                             break
                         fi
@@ -213,7 +213,7 @@ test_every_absorbed_episode_is_record_only() {
                 if [[ "$verbs" != "-" ]]; then
                     IFS=',' read -ra verb_arr <<< "$verbs"
                     for v in "${verb_arr[@]}"; do
-                        if [[ "$v" != "working" && "$v" != "resolved" && "$v" != "captain-held" ]]; then
+                        if [[ "$v" != "working" ]]; then
                             must_wake["$episode"]=1
                             break
                         fi

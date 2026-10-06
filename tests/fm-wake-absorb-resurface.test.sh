@@ -155,28 +155,6 @@ test_queue_signal_row_done_status() {
   pass "queue signal row done status"
 }
 
-test_absorb_record_only_empty_queue() {
-  local dir state
-  # with marker
-  dir=$(make_case "absorb-record-only-empty-with-marker")
-  state="$dir/state"
-  printf 'pending:downtime:gen1\n' > "$state/.watcher-down"
-
-  FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$dir/out" 2> "$dir/err"
-  local code=$?
-  expect_code 1 "$code" "exit code with marker"
-
-  # without marker
-  dir=$(make_case "absorb-record-only-empty-no-marker")
-  state="$dir/state"
-
-  FM_STATE_OVERRIDE="$state" "$DRAIN" --absorb-record-only > "$dir/out" 2> "$dir/err"
-  code=$?
-  expect_code 1 "$code" "exit code without marker"
-
-  pass "absorb record only empty queue"
-}
-
 test_resurface_then_new_inbox() {
   local dir state
   dir=$(make_case "resurface-then-new-inbox")
@@ -207,7 +185,6 @@ test_empty_queue_marker_decision_delivered_then_resurface
 test_queue_working_only_signal_row
 test_queue_captain_inbox_row
 test_queue_signal_row_done_status
-test_absorb_record_only_empty_queue
 test_resurface_then_new_inbox
 
 echo "ok: fm-wake-absorb-resurface tests"

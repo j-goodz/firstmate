@@ -60,7 +60,7 @@ test_classification_wake_verbs_alone() {
   done
 }
 
-test_classification_working_then_resolved_or_captain_held_record_only() {
+test_classification_working_then_resolved_or_captain_held_needs_brain() {
   # working then resolved
   local case_dir
   case_dir=$(make_case "working-resolved")
@@ -69,7 +69,7 @@ test_classification_working_then_resolved_or_captain_held_record_only() {
   printf '%s\n' "working [corr=abc] [at=1791061356]: coding" >> "$state/task.status"
   printf '%s\n' "resolved [key=brain-lane-stop] [at=1791067165]: settled: lane parked" >> "$state/task.status"
   run_lib "$state" fm_wake_row_needs_brain signal task.status "signal: $status"
-  expect_code 1 $? "working then resolved should be record-only (exit 1)"
+  expect_code 0 $? "working then resolved should need brain (exit 0)"
 
   # working then captain-held
   case_dir=$(make_case "working-captain-held")
@@ -78,7 +78,7 @@ test_classification_working_then_resolved_or_captain_held_record_only() {
   printf '%s\n' "working [corr=abc] [at=1791061356]: coding" >> "$state/task.status"
   printf '%s\n' "captain-held [key=x] [at=1791067165]: held for the captain" >> "$state/task.status"
   run_lib "$state" fm_wake_row_needs_brain signal task.status "signal: $status"
-  expect_code 1 $? "working then captain-held should be record-only (exit 1)"
+  expect_code 0 $? "working then captain-held should need brain (exit 0)"
 }
 
 test_classification_payload_needs_decision_over_working() {
@@ -607,7 +607,7 @@ test_absorb_log_trim() {
 test_classification_working_only_record_only
 test_classification_working_then_done_needs_brain
 test_classification_wake_verbs_alone
-test_classification_working_then_resolved_or_captain_held_record_only
+test_classification_working_then_resolved_or_captain_held_needs_brain
 test_classification_payload_needs_decision_over_working
 test_classification_turn_ended_key_needs_brain
 test_classification_missing_status_invalid_key_symlink_needs_brain

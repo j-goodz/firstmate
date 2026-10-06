@@ -19,13 +19,11 @@
 # - The OPEN DECISIONS block prints in full only when its content changed since
 #   the last committed presentation (or its record is older than
 #   FM_DRAIN_SECTION_TTL_SECS, default 14400); otherwise one count line stands
-#   in. FM_WAKE_DRAIN_FULL=1 or state/.drain-full-next forces the full block.
-# - --absorb-record-only is a non-interactive decision for the Stop hook: exit 0
+#   in. FM_WAKE_DRAIN_FULL=1 forces the full block.
+# - --absorb-resurface is a non-interactive decision for the Stop hook: exit 0
 #   with nothing printed after consuming rows that need no brain (working-only
-#   status signals), exit 1 and consume nothing otherwise.
-# - --absorb-resurface is the same decision for a watcher recovery re-announcement
-#   (check: rearm-resurface): it also succeeds on an empty queue, because a
-#   resurface with no undelivered row and nothing new to present is not news.
+#   status signals) or an empty queue, exit 1 and consume nothing otherwise.
+#   A resurface with no undelivered row and nothing new to present is not news.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,13 +41,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/fm-wake-absorb-lib.sh"
 
 DRAIN_MODE=drain
-ABSORB_EMPTY_OK=0
 ABSORB_NEEDS_BRAIN=0
 ABSORB_ROWS=
 SECTION_RECORD_NAME=
 SECTION_RECORD_HASH=
 SECTION_FORGET=0
-SECTION_FULL_NEXT_USED=0
 DRAIN_TMP=
 DRAIN_VIEW_TMP=
 DRAIN_LOCK_HELD=false
@@ -230,16 +226,11 @@ case "${1:-}" in
     case "$ACK_GENERATION" in ''|*[!A-Za-z0-9._-]*) echo "wake drain: invalid recovery generation" >&2; exit 2 ;; esac
     [ "$#" -eq 4 ] || { echo "wake drain: unexpected acknowledgement arguments" >&2; exit 2; }
     ;;
-  --absorb-record-only)
-    [ "$#" -eq 1 ] || { echo "wake drain: unexpected absorb arguments" >&2; exit 2; }
-    DRAIN_MODE=absorb
-    ;;
   --absorb-resurface)
     [ "$#" -eq 1 ] || { echo "wake drain: unexpected absorb arguments" >&2; exit 2; }
     DRAIN_MODE=absorb
-    ABSORB_EMPTY_OK=1
     ;;
-  *) echo "usage: fm-wake-drain.sh [--ack-through SEQUENCE --recovery-generation GENERATION | --absorb-record-only | --absorb-resurface]" >&2; exit 2 ;;
+  *) echo "usage: fm-wake-drain.sh [--ack-through SEQUENCE --recovery-generation GENERATION | --absorb-resurface]" >&2; exit 2 ;;
 esac
 
 [ "$ACTOR" != branch ] || require_branch_eligible_rows || exit 1
@@ -533,9 +524,7 @@ $output"
   block="${block}OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
 "
   hash=$(fm_wake_section_hash "$block")
-  if [ -e "$STATE/.drain-full-next" ]; then
-    SECTION_FULL_NEXT_USED=1
-  elif [ "${FM_WAKE_DRAIN_FULL:-0}" != 1 ] && fm_wake_section_unchanged open-decisions "$hash"; then
+  if [ "${FM_WAKE_DRAIN_FULL:-0}" != 1 ] && fm_wake_section_unchanged open-decisions "$hash"; then
     printf 'OPEN DECISIONS: %d still open, unchanged since the last drain (set FM_WAKE_DRAIN_FULL=1 to reprint)\n' \
       $((shown + omitted)) || return 1
     return 0
@@ -554,7 +543,6 @@ commit_section_gate() {
   elif [ "$SECTION_FORGET" -eq 1 ]; then
     fm_wake_section_forget open-decisions || true
   fi
-  [ "$SECTION_FULL_NEXT_USED" -ne 1 ] || rm -f -- "$STATE/.drain-full-next"
 }
 
 # Print the RECORD DIVERGENCE section: every captain call whose two records
@@ -678,7 +666,7 @@ print_status_presentation() {  # [<deduped-raw-rows>]
   # Classify only after the snapshot is fixed: a line appended later is past the
   # snapshot endpoint, so the cursor commit below can never mark it presented.
   if [ "$rc" -eq 0 ] && [ "$DRAIN_MODE" = absorb ]; then
-    if [ -s "$ABSORB_ROWS" ] || [ "$ABSORB_EMPTY_OK" -ne 1 ]; then
+    if [ -s "$ABSORB_ROWS" ]; then
       fm_wake_rows_all_record_only "$ABSORB_ROWS" || rc=3
     fi
   fi
@@ -724,13 +712,11 @@ absorb_record_only() {
   ABSORB_ROWS=$(mktemp "$STATE/.wake-queue.absorb.XXXXXX") || return 1
   DRAIN_VIEW_TMP=$ABSORB_ROWS
   if [ ! -f "$FM_WAKE_QUEUE" ]; then
-    [ "$ABSORB_EMPTY_OK" -eq 1 ] || return 1
     : > "$FM_WAKE_QUEUE" || return 1
   fi
   awk -F '\t' 'NF >= 5 && $2 ~ /^[0-9]+$/' "$FM_WAKE_QUEUE" > "$ABSORB_ROWS" || return 1
   fm_lock_release "$held_lock"
   DRAIN_LOCK_HELD=false
-  [ -s "$ABSORB_ROWS" ] || [ "$ABSORB_EMPTY_OK" -eq 1 ] || return 1
   rows_text=$(command cat "$ABSORB_ROWS") || return 1
   seqs=$(awk -F '\t' '{ print $2 }' "$ABSORB_ROWS") || return 1
   (print_status_presentation "$rows_text") || return 1

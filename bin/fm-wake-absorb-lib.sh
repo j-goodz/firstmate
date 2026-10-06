@@ -59,7 +59,7 @@ fm_wake_row_needs_brain() {
             [ -z "$line" ] && continue
             verb="$(status_line_verb "$line")"
             case "$verb" in
-                working|resolved|captain-held)
+                working)
                     ;;
                 *)
                     return 0
