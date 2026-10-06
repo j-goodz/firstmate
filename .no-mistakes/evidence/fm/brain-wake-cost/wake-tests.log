@@ -1,0 +1,64 @@
+== fm-claude-stop-autoack
+RC=2
+ok - test_absorb_no_drain_script
+ok - test_banner_no_manual_ack
+ok: fm-claude-stop-autoack tests
+rc=0
+== fm-wake-absorb-lib
+mkdir: Already exists
+ok: fm-wake-absorb-lib tests
+rc=0
+== fm-wake-absorb-replay
+replay: episodes=541 classifier_absorbed=8 empty_queue=178 share=34%
+ok - test_absorbed_share_floor: share 34% >= 34%
+ok - test_every_absorbed_episode_is_record_only: all classifier-absorbed episodes are record-only
+ok: fm-wake-absorb-replay tests
+rc=0
+== fm-wake-absorb-report
+ok - test_invalid_lines_ignored
+ok - test_invalid_options_and_help
+ok - test_state_option_overrides_env
+ok: fm-wake-absorb-report tests
+rc=0
+== fm-wake-absorb-resurface
+ok - queue captain inbox row
+ok - queue signal row done status
+ok - resurface then new inbox
+ok: fm-wake-absorb-resurface tests
+rc=0
+== fm-wake-drain-dedupe
+ok - test_absorb_new_rows_survive
+ok - test_absorb_jsonl_log
+ok - test_absorb_marks_presented
+ok: fm-wake-drain-dedupe tests
+rc=0
+== fm-wake-drain-open-decisions-cursor
+ok - a cursor-cache read failure refolds decisions without replaying handled unread status
+ok - a pre-fix cursor is rebuilt so a previously skipped corr-tagged decision surfaces
+ok - an old fold cache is rebuilt once before same-version incremental reads resume
+ok - a buried decision survives many growing drains with bounded read cost, and resolution durably clears it at bounded cost too
+rc=0
+== fm-wake-drain-open-decisions
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 616579.1791260092.7U4yoB
+ok - the open-decision section is fleet-wide, not scoped to this drain's own queued records
+ok - a buried open decision surfaces even when the wake queue itself is empty
+ok - the fleet-wide decision scan does not follow status symlinks
+rc=0
+== fm-wake-drain-outcome-backstop
+ok - held-lock initialization accepts a descendant of the outcome lock owner
+ok - index self-heal runs only while the outcome lock is held
+ok - an over-bound unclassifiable routine event stays silent
+ok - the outcome backstop caps each item and its total task output deterministically
+rc=0
+== fm-wake-drain-unread-status
+ok - OPEN DECISIONS still folds needs-decision/blocked independently of unread notes
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 679679.1791260222.lOgRNo
+ok - an empty-queue backstop presentation still preserves the status for its later signal annotation
+ok - routine working and branch-covered done lines print nothing on an empty-queue drain
+rc=0
+== fm-wake-queue
+ok - malformed presentation locks report acquire failure instead of contention
+ok - foreign secondmate queue alerts once per no-progress episode without age-only or cascade noise
+ok - declared external-wait pause rows do not feed secondmate wake-loop escalation
+not ok - a frozen reprovisioned queue generation was hidden: check: rearm-resurface
+rc=1
