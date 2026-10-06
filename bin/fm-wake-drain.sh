@@ -10,6 +10,20 @@
 # retirement; docs/watcher-continuity.md owns the recovery contract.
 # FM_STATUS_PRESENTATION_LOCK_TIMEOUT sets the positive whole-second wait for
 # presentation-path locks (default 10); queue mutation locks remain blocking.
+#
+# Brain-cost contracts (bin/fm-wake-absorb-lib.sh owns the mechanics):
+# - A main drain that prints WAKE_ACK_REQUIRED records the printed cutoff and
+#   generation in state/.drain-delivered, so the Claude Stop hook can
+#   acknowledge a handling turn that ended normally; an acknowledgement at or
+#   above the recorded cutoff removes the record.
+# - The OPEN DECISIONS block prints in full only when its content changed since
+#   the last committed presentation (or its record is older than
+#   FM_DRAIN_SECTION_TTL_SECS, default 14400); otherwise one count line stands
+#   in. FM_WAKE_DRAIN_FULL=1 forces the full block.
+# - --absorb-resurface is a non-interactive decision for the Stop hook: exit 0
+#   with nothing printed after consuming rows that need no brain (working-only
+#   status signals) or an empty queue, exit 1 and consume nothing otherwise.
+#   A resurface with no undelivered row and nothing new to present is not news.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,7 +37,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
 # shellcheck source=bin/fm-lease-lib.sh
 . "$SCRIPT_DIR/fm-lease-lib.sh"
+# shellcheck source=bin/fm-wake-absorb-lib.sh
+. "$SCRIPT_DIR/fm-wake-absorb-lib.sh"
 
+DRAIN_MODE=drain
+ABSORB_NEEDS_BRAIN=0
+ABSORB_ROWS=
+SECTION_RECORD_NAME=
+SECTION_RECORD_HASH=
+SECTION_FORGET=0
 DRAIN_TMP=
 DRAIN_VIEW_TMP=
 DRAIN_LOCK_HELD=false
@@ -204,7 +226,11 @@ case "${1:-}" in
     case "$ACK_GENERATION" in ''|*[!A-Za-z0-9._-]*) echo "wake drain: invalid recovery generation" >&2; exit 2 ;; esac
     [ "$#" -eq 4 ] || { echo "wake drain: unexpected acknowledgement arguments" >&2; exit 2; }
     ;;
-  *) echo "usage: fm-wake-drain.sh [--ack-through SEQUENCE --recovery-generation GENERATION]" >&2; exit 2 ;;
+  --absorb-resurface)
+    [ "$#" -eq 1 ] || { echo "wake drain: unexpected absorb arguments" >&2; exit 2; }
+    DRAIN_MODE=absorb
+    ;;
+  *) echo "usage: fm-wake-drain.sh [--ack-through SEQUENCE --recovery-generation GENERATION | --absorb-resurface]" >&2; exit 2 ;;
 esac
 
 [ "$ACTOR" != branch ] || require_branch_eligible_rows || exit 1
@@ -387,6 +413,7 @@ EOF
     return 0
   fi
   [ "$shown" -gt 0 ] || [ "$omitted" -gt 0 ] || return 0
+  ABSORB_NEEDS_BRAIN=1
   printf 'STATUS OUTCOME BACKSTOP (newest captain-facing task event has no covering branch outcome):\n' || return 1
   printf '%s' "$output" || return 1
   if [ "$omitted" -gt 0 ]; then
@@ -424,6 +451,7 @@ $unread
 EOF
 
   [ "$shown" -gt 0 ] || return 0
+  ABSORB_NEEDS_BRAIN=1
 }
 
 # Print the consolidated OPEN DECISIONS section: every still-open
@@ -450,7 +478,10 @@ print_open_decisions_section() {
   else
     open=$(scan_open_decisions_incremental "$STATE") || return 1
   fi
-  [ -n "$open" ] || return 0
+  if [ -z "$open" ]; then
+    SECTION_FORGET=1
+    return 0
+  fi
 
   while IFS=$(printf '\t') read -r task key verb note; do
     [ -n "$task" ] || continue
@@ -475,17 +506,43 @@ print_open_decisions_section() {
 $open
 EOF
 
-  [ "$shown" -gt 0 ] || [ "$omitted" -gt 0 ] || return 0
-  printf 'OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):\n' || return 1
-  printf '%s' "$output" || return 1
+  if [ "$shown" -eq 0 ] && [ "$omitted" -eq 0 ]; then
+    SECTION_FORGET=1
+    return 0
+  fi
+  local block hash
+  block="OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+$output"
   if [ "$omitted" -gt 0 ]; then
-    printf 'OPEN DECISIONS: %d more omitted (byte cap)\n' "$omitted" || return 1
+    block="${block}OPEN DECISIONS: $omitted more omitted (byte cap)
+"
   fi
   # Answerer-closes hint, printed at exactly the moment an answer gets written:
   # the send that answers a listed decision also closes it, so closure never
   # depends on the busy worker writing a matching resolved line (contract:
   # bin/fm-send.sh header).
-  printf "OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'\n" || return 1
+  block="${block}OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+"
+  hash=$(fm_wake_section_hash "$block")
+  if [ "${FM_WAKE_DRAIN_FULL:-0}" != 1 ] && fm_wake_section_unchanged open-decisions "$hash"; then
+    printf 'OPEN DECISIONS: %d still open, unchanged since the last drain (set FM_WAKE_DRAIN_FULL=1 to reprint)\n' \
+      $((shown + omitted)) || return 1
+    return 0
+  fi
+  ABSORB_NEEDS_BRAIN=1
+  SECTION_RECORD_NAME="open-decisions"
+  SECTION_RECORD_HASH=$hash
+  printf '%s\n' "${block%$'\n'}" || return 1
+}
+
+# Apply the section-gate bookkeeping once the prepared presentation reached its
+# consumer, so a drain whose output was lost never consumes the gate.
+commit_section_gate() {
+  if [ -n "$SECTION_RECORD_NAME" ]; then
+    fm_wake_section_record "$SECTION_RECORD_NAME" "$SECTION_RECORD_HASH" || true
+  elif [ "$SECTION_FORGET" -eq 1 ]; then
+    fm_wake_section_forget open-decisions || true
+  fi
 }
 
 # Print the RECORD DIVERGENCE section: every captain call whose two records
@@ -536,6 +593,7 @@ $diverged
 EOF
 
   [ "$shown" -gt 0 ] || [ "$omitted" -gt 0 ] || return 0
+  ABSORB_NEEDS_BRAIN=1
   printf 'RECORD DIVERGENCE (answered in the status log, still held in the backlog - nothing was closed automatically):\n' || return 1
   printf '%s' "$output" || return 1
   if [ "$omitted" -gt 0 ]; then
@@ -566,7 +624,14 @@ print_status_sections() {
   # Prepare every section before presentation, but do not commit its receipt
   # until the prepared bytes reach stdout. If the consumer closes or fails,
   # leave the receipt behind so the next drain can recover the presentation.
-  if ! command cat "$prepared"; then
+  # An absorb decision never prints: anything the brain would have to read
+  # refuses it before any receipt moves.
+  if [ "$DRAIN_MODE" = absorb ]; then
+    if [ "$ABSORB_NEEDS_BRAIN" -eq 1 ]; then
+      rm -f -- "$prepared"
+      return 3
+    fi
+  elif ! command cat "$prepared"; then
     rm -f -- "$prepared"
     return 1
   fi
@@ -574,6 +639,7 @@ print_status_sections() {
     rm -f -- "$prepared"
     return 1
   fi
+  commit_section_gate
   rm -f -- "$prepared"
 }
 
@@ -597,14 +663,21 @@ print_status_presentation() {  # [<deduped-raw-rows>]
     printf 'STATUS PRESENTATION INCOMPLETE: status snapshot could not be read.\n'
     rc=1
   }
+  # Classify only after the snapshot is fixed: a line appended later is past the
+  # snapshot endpoint, so the cursor commit below can never mark it presented.
+  if [ "$rc" -eq 0 ] && [ "$DRAIN_MODE" = absorb ]; then
+    if [ -s "$ABSORB_ROWS" ]; then
+      fm_wake_rows_all_record_only "$ABSORB_ROWS" || rc=3
+    fi
+  fi
   if [ "$rc" -eq 0 ] && [ -n "$rows" ]; then
-    fm_wake_print_annotations "$rows" "$snapshot" || rc=1
+    if [ "$DRAIN_MODE" != absorb ]; then fm_wake_print_annotations "$rows" "$snapshot" || rc=1; fi
     if [ "$rc" -eq 0 ]; then
       annotation_manifest=$(fm_wake_annotation_manifest "$rows") || rc=1
       fully_presented=$(printf '%s\n' "$annotation_manifest" | awk -F '\t' '$2 == "direct" { sub(/\.status$/, "", $1); print $1 }') || rc=1
     fi
   fi
-  if [ "$rc" -eq 0 ] && [ -n "$snapshot" ]; then print_status_sections "$snapshot" "$fully_presented" || rc=1; fi
+  if [ "$rc" -eq 0 ] && [ -n "$snapshot" ]; then print_status_sections "$snapshot" "$fully_presented" || rc=$?; fi
   fm_lock_release "$lock"
   return "$rc"
 }
@@ -623,6 +696,61 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+# Consume queued rows that need no brain, without printing anything. Exit 0 only
+# when every queued row is record-only and a dry presentation finds nothing new
+# for the brain; every other outcome returns 1 with the queue, recovery marker
+# and presentation cursors exactly as they were.
+absorb_record_only() {
+  local rows_text seqs held_lock="$FM_WAKE_QUEUE_LOCK" rc=0 remaining token
+  [ "$ACTOR" = main ] || return 1
+  fm_lock_acquire_wait_bounded "$held_lock" "$PRESENTATION_LOCK_TIMEOUT" || return 1
+  DRAIN_LOCK_HELD=true
+  if [ -e "$ELIGIBLE_ROWS_FILE" ] || [ -L "$ELIGIBLE_ROWS_FILE" ]; then
+    return 1
+  fi
+  ABSORB_ROWS=$(mktemp "$STATE/.wake-queue.absorb.XXXXXX") || return 1
+  DRAIN_VIEW_TMP=$ABSORB_ROWS
+  if [ ! -f "$FM_WAKE_QUEUE" ]; then
+    : > "$FM_WAKE_QUEUE" || return 1
+  fi
+  awk -F '\t' 'NF >= 5 && $2 ~ /^[0-9]+$/' "$FM_WAKE_QUEUE" > "$ABSORB_ROWS" || return 1
+  fm_lock_release "$held_lock"
+  DRAIN_LOCK_HELD=false
+  rows_text=$(command cat "$ABSORB_ROWS") || return 1
+  seqs=$(awk -F '\t' '{ print $2 }' "$ABSORB_ROWS") || return 1
+  (print_status_presentation "$rows_text") || return 1
+
+  fm_lock_acquire_wait "$held_lock" || return 1
+  DRAIN_LOCK_HELD=true
+  DRAIN_TMP=$(mktemp "$STATE/.wake-queue.absorb-ack.XXXXXX") || return 1
+  awk -F '\t' -v seqs="$seqs" '
+    BEGIN { n = split(seqs, list, "\n"); for (i = 1; i <= n; i++) gone[list[i]] = 1 }
+    NF < 5 || !($2 in gone) { print }
+  ' "$FM_WAKE_QUEUE" > "$DRAIN_TMP" || return 1
+  remaining=$(awk 'END { print NR }' "$DRAIN_TMP")
+  if [ "$remaining" -eq 0 ]; then
+    fm_recovery_marker_snapshot "$RECOVERY_MARKER" || true
+    token=$FM_RECOVERY_MARKER_TOKEN
+    case "$token" in
+      pending:*|announced:*)
+        fm_recovery_marker_ack "$RECOVERY_MARKER" "${token##*:}" || rc=1
+        ;;
+    esac
+    [ "$rc" -eq 0 ] || return 1
+  fi
+  _fm_atomic_replace "$DRAIN_TMP" "$FM_WAKE_QUEUE" || return 1
+  DRAIN_TMP=
+  fm_lock_release "$held_lock"
+  DRAIN_LOCK_HELD=false
+  fm_wake_absorb_log absorbed "rows=$(printf '%s' "$seqs" | awk 'NF { n++ } END { print n + 0 }')" "remaining=$remaining"
+  return 0
+}
+
+if [ "$DRAIN_MODE" = absorb ]; then
+  absorb_record_only
+  exit $?
+fi
 
 if [ -n "$ACK_THROUGH" ]; then
   fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK"
@@ -735,6 +863,7 @@ if [ -n "$ACK_THROUGH" ]; then
   fi
   fm_lock_release "$FM_WAKE_QUEUE_LOCK"
   DRAIN_LOCK_HELD=false
+  [ "$ACTOR" != main ] || fm_wake_delivered_drop_through "$ACK_THROUGH" || true
   if [ "$ACK_REMOVED" -eq 0 ] && [ "$PRESENTED_MAX" -gt "$ACK_THROUGH" ]; then
     # Nothing at or below the cutoff was this actor's to consume, while a
     # presented row above it is still waiting: the caller acknowledged an
@@ -780,6 +909,7 @@ if [ ! -s "$FM_WAKE_QUEUE" ]; then
   (print_status_presentation) || true
   if [ "$RECOVERY_ACK_REQUIRED" = true ]; then
     printf 'WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 0 --recovery-generation %s\n' "${RECOVERY_MARKER_TOKEN##*:}" >&2
+    [ "$ACTOR" != main ] || fm_wake_delivered_write 0 "${RECOVERY_MARKER_TOKEN##*:}" || true
   fi
   assert_watcher_liveness
   exit 0
@@ -859,6 +989,7 @@ fm_lock_release "$FM_WAKE_QUEUE_LOCK"
 DRAIN_LOCK_HELD=false
 printf 'WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through %s --recovery-generation %s\n' \
   "$ACK_THROUGH" "${RECOVERY_MARKER_TOKEN##*:}" >&2
+[ "$ACTOR" != main ] || fm_wake_delivered_write "$ACK_THROUGH" "${RECOVERY_MARKER_TOKEN##*:}" || true
 
 (print_status_presentation "$RAW_ROWS") || true
 assert_watcher_liveness

@@ -1,0 +1,870 @@
+# episode	kind	key	payload	verbs   (one row per queue row; "-" kind = an episode whose queue was empty)
+# Source: structure of the 541 fm-wake-drain.sh presentations the brain received 2026-10-04 to 2026-10-05; names and texts replaced.
+E0001	signal	t1_0.status	signal: state/t1_0.status	working
+E0002	check	inbox:20	check: captain inbox note 20 - buzz #brain event (top-level)	-
+E0002	check	inbox:21	check: captain inbox note 21 - buzz #brain event (top-level)	-
+E0003	signal	t3_0.status	signal: state/t3_0.status	done,working,done,done,working
+E0004	-	-	-	-
+E0005	check	inbox:50	check: captain inbox note 50 - buzz #brain event (top-level)	-
+E0006	signal	t6_0.status	signal: state/t6_0.status	done
+E0007	check	inbox:70	check: captain inbox note 70 - buzz #brain event (top-level)	-
+E0008	check	inbox:80	check: captain inbox note 80 - buzz #brain event (top-level)	-
+E0008	check	inbox:81	check: captain inbox note 81 - buzz #brain event (top-level)	-
+E0009	-	-	-	-
+E0010	check	other-check-0	check: other-check 0	-
+E0011	check	inbox:110	check: captain inbox note 110 - buzz #brain event (top-level)	-
+E0011	check	inbox:111	check: captain inbox note 111 - buzz #brain event (top-level)	-
+E0011	check	inbox:112	check: captain inbox note 112 - buzz #brain event (top-level)	-
+E0012	-	-	-	-
+E0013	signal	t13_0.status	signal: state/t13_0.status	working,done,done,working
+E0014	check	inbox:140	check: captain inbox note 140 - buzz #brain event (top-level)	-
+E0015	-	-	-	-
+E0016	check	inbox:160	check: captain inbox note 160 - buzz #brain event (top-level)	-
+E0016	check	inbox:161	check: captain inbox note 161 - buzz #brain event (top-level)	-
+E0016	signal	t16_0.status	needs-decision: state/t16_0.status	needs-decision,done,working
+E0017	-	-	-	-
+E0018	signal	t18_0.status	signal: state/t18_0.status	working
+E0019	check	inbox:190	check: captain inbox note 190 - buzz #brain event (top-level)	-
+E0019	check	inbox:191	check: captain inbox note 191 - buzz #brain event (top-level)	-
+E0020	check	inbox:200	check: captain inbox note 200 - buzz #brain event (top-level)	-
+E0020	check	inbox:201	check: captain inbox note 201 - buzz #brain event (top-level)	-
+E0020	check	inbox:202	check: captain inbox note 202 - buzz #brain event (top-level)	-
+E0021	check	inbox:210	check: captain inbox note 210 - buzz #brain event (top-level)	-
+E0022	-	-	-	-
+E0023	signal	t23_0.status	needs-decision: state/t23_0.status	done,done,needs-decision,done
+E0024	-	-	-	-
+E0025	signal	t25_0.status	signal: state/t25_0.status	resolved,working
+E0025	check	inbox:251	check: captain inbox note 251 - buzz #brain event (top-level)	-
+E0026	-	-	-	-
+E0027	signal	t27_0.status	needs-decision: state/t27_0.status	needs-decision,done
+E0028	-	-	-	-
+E0029	check	inbox:290	check: captain inbox note 290 - buzz #brain event (top-level)	-
+E0030	signal	t30_0.status	signal: state/t30_0.status	resolved,done
+E0031	check	inbox:310	check: captain inbox note 310 - buzz #brain event (top-level)	-
+E0031	signal	t31_0.status	needs-decision: state/t31_0.status	needs-decision
+E0032	signal	t32_0.status	needs-decision: state/t32_0.status	needs-decision
+E0033	-	-	-	-
+E0034	signal	t34_0.status	signal: state/t34_0.status	resolved,resolved
+E0035	signal	t35_0.status	signal: state/t35_0.status	done
+E0036	check	inbox:360	check: captain inbox note 360 - buzz #brain event (top-level)	-
+E0037	signal	t37_0.status	needs-decision: state/t37_0.status	done,working,needs-decision,done
+E0038	-	-	-	-
+E0039	signal	t39_0.status	signal: state/t39_0.status	resolved,done,resolved,done,working
+E0040	signal	t40_0.status	needs-decision: state/t40_0.status	needs-decision
+E0041	check	inbox:410	check: captain inbox note 410 - buzz #brain event (top-level)	-
+E0041	check	inbox:411	check: captain inbox note 411 - buzz #brain event (top-level)	-
+E0042	check	inbox:420	check: captain inbox note 420 - buzz #brain event (top-level)	-
+E0042	check	inbox:421	check: captain inbox note 421 - buzz #brain event (top-level)	-
+E0042	check	inbox:422	check: captain inbox note 422 - buzz #brain event (top-level)	-
+E0043	check	inbox:430	check: captain inbox note 430 - buzz #brain event (top-level)	-
+E0043	check	inbox:431	check: captain inbox note 431 - buzz #brain event (top-level)	-
+E0043	check	inbox:432	check: captain inbox note 432 - buzz #brain event (top-level)	-
+E0044	check	inbox:440	check: captain inbox note 440 - buzz #brain event (top-level)	-
+E0044	check	inbox:441	check: captain inbox note 441 - buzz #brain event (top-level)	-
+E0044	check	inbox:442	check: captain inbox note 442 - buzz #brain event (top-level)	-
+E0044	check	inbox:443	check: captain inbox note 443 - buzz #brain event (top-level)	-
+E0045	check	inbox:450	check: captain inbox note 450 - buzz #brain event (top-level)	-
+E0046	signal	t46_0.status	signal: state/t46_0.status	done,resolved,resolved,done,working
+E0047	check	inbox:470	check: captain inbox note 470 - buzz #brain event (top-level)	-
+E0048	signal	t48_0.status	signal: state/t48_0.status	working
+E0049	signal	t49_0.status	signal: state/t49_0.status	done,done
+E0050	check	other-check-0	check: other-check 0	-
+E0051	signal	t51_0.status	signal: state/t51_0.status	working,done
+E0052	check	inbox:520	check: captain inbox note 520 - buzz #brain event (top-level)	-
+E0053	signal	t53_0.status	signal: state/t53_0.status	done,done,done
+E0054	signal	t54_0.status	signal: state/t54_0.status	working
+E0055	signal	t55_0.status	signal: state/t55_0.status	working,working
+E0056	signal	t56_0.status	signal: state/t56_0.status	paused,paused,done
+E0057	check	inbox:570	check: captain inbox note 570 - buzz #brain event (top-level)	-
+E0058	signal	t58_0.status	signal: state/t58_0.status	done,done
+E0059	signal	t59_0.status	signal: state/t59_0.status	paused
+E0060	stale	win60_0	stale: win60_0 (idle)	-
+E0061	signal	t61_0.status	signal: state/t61_0.status	done
+E0062	signal	t62_0.status	needs-decision: state/t62_0.status	needs-decision
+E0063	stale	win63_0	stale: win63_0 (idle)	-
+E0064	-	-	-	-
+E0065	check	inbox:650	check: captain inbox note 650 - buzz #brain event (top-level)	-
+E0066	-	-	-	-
+E0067	signal	t67_0.turn-ended	signal: state/t67_0.turn-ended	-
+E0068	signal	t68_0.status	signal: state/t68_0.status	working,blocked
+E0068	signal	t68_0.turn-ended	signal: state/t68_0.turn-ended	-
+E0068	signal	t68_1.status	signal: state/t68_1.status	done
+E0069	signal	t69_0.status	signal: state/t69_0.status	resolved,done
+E0069	signal	t69_0.turn-ended	signal: state/t69_0.turn-ended	-
+E0070	signal	t70_0.status	signal: state/t70_0.status	-
+E0070	signal	t70_0.turn-ended	signal: state/t70_0.turn-ended	-
+E0070	check	inbox:702	check: captain inbox note 702 - buzz #brain event (top-level)	-
+E0070	check	merged-m703-https://example.invalid/pr/3	check: merge landed: m703 https://example.invalid/pr/3	meta-present
+E0070	check	inbox:704	check: captain inbox note 704 - buzz #brain event (top-level)	-
+E0071	check	inbox:710	check: captain inbox note 710 - buzz #brain event (top-level)	-
+E0072	check	inbox:720	check: captain inbox note 720 - buzz #brain event (top-level)	-
+E0072	check	inbox:721	check: captain inbox note 721 - buzz #brain event (top-level)	-
+E0073	check	inbox:730	check: captain inbox note 730 - buzz #brain event (top-level)	-
+E0074	signal	t74_0.status	needs-decision: state/t74_0.status	done,needs-decision,done,done,needs-decision,done,working
+E0075	signal	t75_0.status	signal: state/t75_0.status	working,working,working
+E0076	-	-	-	-
+E0077	signal	t77_0.status	signal: state/t77_0.status	done
+E0078	signal	t78_0.status	signal: state/t78_0.status	done
+E0079	check	inbox:790	check: captain inbox note 790 - buzz #brain event (top-level)	-
+E0079	check	inbox:791	check: captain inbox note 791 - buzz #brain event (top-level)	-
+E0080	check	other-check-0	check: other-check 0	-
+E0081	signal	t81_0.status	signal: state/t81_0.status	done
+E0081	signal	t81_1.status	needs-decision: state/t81_1.status	done,done,resolved,resolved,working,working,needs-decision,done,done
+E0081	signal	t81_0.turn-ended	signal: state/t81_0.turn-ended	-
+E0082	check	inbox:820	check: captain inbox note 820 - buzz #brain event (top-level)	-
+E0082	check	inbox:821	check: captain inbox note 821 - buzz #brain event (top-level)	-
+E0083	stale	win83_0	stale: win83_0 (idle)	-
+E0084	check	inactive-outcome:840	inactive terminal outcome awaiting captain presentation: child=c84 state=done	-
+E0085	stale	win85_0	stale: win85_0 (idle)	-
+E0086	-	-	-	-
+E0087	signal	t87_0.status	signal: state/t87_0.status	done
+E0087	signal	t87_0.turn-ended	signal: state/t87_0.turn-ended	-
+E0088	signal	t88_0.status	signal: state/t88_0.status	-
+E0088	signal	t88_0.turn-ended	signal: state/t88_0.turn-ended	-
+E0088	stale	win88_2	stale: win88_2 (idle)	-
+E0089	check	merged-m890-https://example.invalid/pr/0	check: merge landed: m890 https://example.invalid/pr/0	meta-present
+E0090	check	merged-m900-https://example.invalid/pr/0	check: merge landed: m900 https://example.invalid/pr/0	meta-present
+E0091	signal	t91_0.status	signal: state/t91_0.status	resolved,done,done,done,done,done
+E0092	check	inbox:920	check: captain inbox note 920 - buzz #brain event (top-level)	-
+E0093	signal	t93_0.status	signal: state/t93_0.status	resolved,working,working,working,working
+E0094	-	-	-	-
+E0095	check	inbox:950	check: captain inbox note 950 - buzz #brain event (top-level)	-
+E0096	check	inbox:960	check: captain inbox note 960 - buzz #brain event (top-level)	-
+E0096	check	inbox:961	check: captain inbox note 961 - buzz #brain event (top-level)	-
+E0097	check	other-check-0	check: other-check 0	-
+E0098	signal	t98_0.status	signal: state/t98_0.status	working,done
+E0098	signal	t98_0.turn-ended	signal: state/t98_0.turn-ended	-
+E0099	stale	win99_0	stale: win99_0 (idle)	-
+E0100	stale	win100_0	stale: win100_0 (idle)	-
+E0101	check	merged-m1010-https://example.invalid/pr/0	check: merge landed: m1010 https://example.invalid/pr/0	meta-present
+E0102	stale	win102_0	stale: win102_0 (idle)	-
+E0103	stale	win103_0	stale: win103_0 (idle)	-
+E0104	stale	win104_0	stale: win104_0 (idle)	-
+E0105	stale	win105_0	stale: win105_0 (idle)	-
+E0106	-	-	-	-
+E0107	-	-	-	-
+E0108	stale	win108_0	stale: win108_0 (idle)	-
+E0109	stale	win109_0	stale: win109_0 (idle)	-
+E0110	-	-	-	-
+E0111	signal	t111_0.status	signal: state/t111_0.status	working,done
+E0111	signal	t111_0.turn-ended	signal: state/t111_0.turn-ended	-
+E0112	signal	t112_0.status	signal: state/t112_0.status	-
+E0112	signal	t112_0.turn-ended	signal: state/t112_0.turn-ended	-
+E0112	check	merged-m1122-https://example.invalid/pr/2	check: merge landed: m1122 https://example.invalid/pr/2	meta-present
+E0113	signal	t113_0.status	signal: state/t113_0.status	working
+E0113	signal	t113_1.status	signal: state/t113_1.status	done
+E0113	signal	t113_1.turn-ended	signal: state/t113_1.turn-ended	-
+E0114	check	merged-m1140-https://example.invalid/pr/0	check: merge landed: m1140 https://example.invalid/pr/0	meta-present
+E0115	stale	win115_0	stale: win115_0 (idle)	-
+E0116	-	-	-	-
+E0117	signal	t117_0.status	signal: state/t117_0.status	done
+E0117	signal	t117_0.turn-ended	signal: state/t117_0.turn-ended	-
+E0118	check	merged-m1180-https://example.invalid/pr/0	check: merge landed: m1180 https://example.invalid/pr/0	meta-present
+E0119	signal	t119_0.status	signal: state/t119_0.status	done
+E0119	signal	t119_1.status	needs-decision: state/t119_1.status	blocked
+E0119	signal	t119_0.turn-ended	signal: state/t119_0.turn-ended	-
+E0120	signal	t120_0.status	signal: state/t120_0.status	-
+E0120	signal	t120_1.status	needs-decision: state/t120_1.status	-
+E0120	signal	t120_0.turn-ended	signal: state/t120_0.turn-ended	-
+E0120	check	merged-m1203-https://example.invalid/pr/3	check: merge landed: m1203 https://example.invalid/pr/3	meta-present
+E0121	-	-	-	-
+E0122	stale	win122_0	stale: win122_0 (idle)	-
+E0123	signal	t123_0.status	signal: state/t123_0.status	done,done
+E0123	signal	t123_0.turn-ended	signal: state/t123_0.turn-ended	-
+E0124	stale	win124_0	stale: win124_0 (idle)	-
+E0125	check	other-check-0	check: other-check 0	-
+E0126	signal	t126_0.status	signal: state/t126_0.status	done
+E0126	signal	t126_0.turn-ended	signal: state/t126_0.turn-ended	-
+E0127	signal	t127_0.status	signal: state/t127_0.status	done
+E0127	signal	t127_0.turn-ended	signal: state/t127_0.turn-ended	-
+E0128	check	merged-m1280-https://example.invalid/pr/0	check: merge landed: m1280 https://example.invalid/pr/0	meta-present
+E0129	check	merged-m1290-https://example.invalid/pr/0	check: merge landed: m1290 https://example.invalid/pr/0	meta-present
+E0130	signal	t130_0.status	signal: state/t130_0.status	done
+E0130	signal	t130_1.status	signal: state/t130_1.status	failed,done,done,done
+E0130	signal	t130_0.turn-ended	signal: state/t130_0.turn-ended	-
+E0131	check	merged-m1310-https://example.invalid/pr/0	check: merge landed: m1310 https://example.invalid/pr/0	meta-present
+E0132	signal	t132_0.status	signal: state/t132_0.status	ack,resolved,done,done,done,done,done,done
+E0133	signal	t133_0.status	signal: state/t133_0.status	done,done
+E0134	signal	t134_0.status	signal: state/t134_0.status	done
+E0135	signal	t135_0.status	signal: state/t135_0.status	done
+E0136	signal	t136_0.status	signal: state/t136_0.status	ack
+E0137	stale	win137_0	stale: win137_0 (idle)	-
+E0138	stale	win138_0	stale: win138_0 (idle)	-
+E0139	stale	win139_0	stale: win139_0 (idle)	-
+E0140	stale	win140_0	stale: win140_0 (idle)	-
+E0141	-	-	-	-
+E0142	-	-	-	-
+E0143	signal	t143_0.status	signal: state/t143_0.status	done
+E0143	signal	t143_0.turn-ended	signal: state/t143_0.turn-ended	-
+E0144	-	-	-	-
+E0145	-	-	-	-
+E0146	-	-	-	-
+E0147	-	-	-	-
+E0148	-	-	-	-
+E0149	signal	t149_0.status	signal: state/t149_0.status	working
+E0150	signal	t150_0.status	signal: state/t150_0.status	ack,resolved
+E0151	signal	t151_0.status	signal: state/t151_0.status	done
+E0152	-	-	-	-
+E0153	signal	t153_0.status	signal: state/t153_0.status	done,done
+E0154	check	inbox:1540	check: captain inbox note 1540 - buzz #brain event (top-level)	-
+E0154	check	inbox:1541	check: captain inbox note 1541 - buzz #brain event (top-level)	-
+E0155	signal	t155_0.status	signal: state/t155_0.status	working,done
+E0155	signal	t155_0.turn-ended	signal: state/t155_0.turn-ended	-
+E0156	check	merged-m1560-https://example.invalid/pr/0	check: merge landed: m1560 https://example.invalid/pr/0	meta-present
+E0157	signal	t157_0.status	signal: state/t157_0.status	done
+E0157	signal	t157_0.turn-ended	signal: state/t157_0.turn-ended	-
+E0158	signal	t158_0.status	signal: state/t158_0.status	done
+E0158	signal	t158_0.turn-ended	signal: state/t158_0.turn-ended	-
+E0159	-	-	-	-
+E0160	check	merged-m1600-https://example.invalid/pr/0	check: merge landed: m1600 https://example.invalid/pr/0	meta-present
+E0161	signal	t161_0.status	signal: state/t161_0.status	paused,ack,ack
+E0162	signal	t162_0.status	signal: state/t162_0.status	done
+E0163	signal	t163_0.status	signal: state/t163_0.status	resolved,done,working
+E0164	signal	t164_0.status	needs-decision: state/t164_0.status	needs-decision,needs-decision
+E0165	signal	t165_0.status	signal: state/t165_0.status	done
+E0166	check	inbox:1660	check: captain inbox note 1660 - buzz #brain event (top-level)	-
+E0167	signal	t167_0.status	signal: state/t167_0.status	resolved,working,done,resolved
+E0168	signal	t168_0.status	signal: state/t168_0.status	working,captain
+E0169	check	inbox:1690	check: captain inbox note 1690 - buzz #brain event (top-level)	-
+E0169	signal	t169_0.status	signal: state/t169_0.status	blocked
+E0170	signal	t170_0.status	signal: state/t170_0.status	working
+E0170	signal	t170_1.status	signal: state/t170_1.status	resolved,---,PARENT-REPLIES,Processed,-,-,Added
+E0171	check	inbox:1710	check: captain inbox note 1710 - buzz #brain event (top-level)	-
+E0172	-	-	-	-
+E0173	check	other-check-0	check: other-check 0	-
+E0174	check	merged-m1740-https://example.invalid/pr/0	check: merge landed: m1740 https://example.invalid/pr/0	meta-present
+E0175	signal	t175_0.status	signal: state/t175_0.status	done
+E0175	signal	t175_1.status	signal: state/t175_1.status	done
+E0175	signal	t175_0.turn-ended	signal: state/t175_0.turn-ended	-
+E0175	signal	t175_1.turn-ended	signal: state/t175_1.turn-ended	-
+E0176	check	merged-m1760-https://example.invalid/pr/0	check: merge landed: m1760 https://example.invalid/pr/0	meta-present
+E0177	signal	t177_0.status	needs-decision: state/t177_0.status	CAPTAIN,TEMPORARY,SESSION,PROGRESS,✓,✓,✓,✓,✓,STATUS:,-,-,-,-,NEXT,-,-,TECH,-,-,done,done,working,working,done,paused,paused,working,needs-decision
+E0178	-	-	-	-
+E0179	-	-	-	-
+E0180	-	-	-	-
+E0181	check	inbox:1810	check: captain inbox note 1810 - buzz #brain event (top-level)	-
+E0182	check	inbox:1820	check: captain inbox note 1820 - buzz #brain event (top-level)	-
+E0182	check	inbox:1821	check: captain inbox note 1821 - buzz #brain event (top-level)	-
+E0183	check	inbox:1830	check: captain inbox note 1830 - buzz #brain event (top-level)	-
+E0184	check	inbox:1840	check: captain inbox note 1840 - buzz #brain event (top-level)	-
+E0185	-	-	-	-
+E0186	check	inbox:1860	check: captain inbox note 1860 - buzz #brain event (top-level)	-
+E0187	-	-	-	-
+E0188	check	inbox:1880	check: captain inbox note 1880 - buzz #brain event (top-level)	-
+E0189	-	-	-	-
+E0190	stale	win190_0	stale: win190_0 (idle)	-
+E0191	check	inbox:1910	check: captain inbox note 1910 - buzz #brain event (top-level)	-
+E0191	check	inbox:1911	check: captain inbox note 1911 - buzz #brain event (top-level)	-
+E0192	-	-	-	-
+E0193	check	merged-m1930-https://example.invalid/pr/0	check: merge landed: m1930 https://example.invalid/pr/0	meta-present
+E0193	check	inbox:1931	check: captain inbox note 1931 - buzz #brain event (top-level)	-
+E0194	check	inbox:1940	check: captain inbox note 1940 - buzz #brain event (top-level)	-
+E0194	check	inbox:1941	check: captain inbox note 1941 - buzz #brain event (top-level)	-
+E0194	check	procevent-src2	check: process-event result captured: procevent:src2	-
+E0195	-	-	-	-
+E0196	check	other-check-0	check: other-check 0	-
+E0197	check	inbox:1970	check: captain inbox note 1970 - buzz #brain event (top-level)	-
+E0198	-	-	-	-
+E0199	-	-	-	-
+E0200	-	-	-	-
+E0201	-	-	-	-
+E0202	-	-	-	-
+E0203	check	merged-m2030-https://example.invalid/pr/0	check: merge landed: m2030 https://example.invalid/pr/0	meta-present
+E0203	check	inbox:2031	check: captain inbox note 2031 - buzz #brain event (top-level)	-
+E0204	check	inbox:2040	check: captain inbox note 2040 - buzz #brain event (top-level)	-
+E0204	check	inbox:2041	check: captain inbox note 2041 - buzz #brain event (top-level)	-
+E0205	-	-	-	-
+E0206	-	-	-	-
+E0207	check	inbox:2070	check: captain inbox note 2070 - buzz #brain event (top-level)	-
+E0208	check	inbox:2080	check: captain inbox note 2080 - buzz #brain event (top-level)	-
+E0208	check	inbox:2081	check: captain inbox note 2081 - buzz #brain event (top-level)	-
+E0209	-	-	-	-
+E0210	check	inbox:2100	check: captain inbox note 2100 - buzz #brain event (top-level)	-
+E0211	-	-	-	-
+E0212	-	-	-	-
+E0213	check	inbox:2130	check: captain inbox note 2130 - buzz #brain event (top-level)	-
+E0214	check	inbox:2140	check: captain inbox note 2140 - buzz #brain event (top-level)	-
+E0215	-	-	-	-
+E0216	-	-	-	-
+E0217	check	inbox:2170	check: captain inbox note 2170 - buzz #brain event (top-level)	-
+E0218	-	-	-	-
+E0219	-	-	-	-
+E0220	check	inbox:2200	check: captain inbox note 2200 - buzz #brain event (top-level)	-
+E0221	-	-	-	-
+E0222	check	inbox:2220	check: captain inbox note 2220 - buzz #brain event (top-level)	-
+E0223	check	inbox:2230	check: captain inbox note 2230 - buzz #brain event (top-level)	-
+E0224	check	inbox:2240	check: captain inbox note 2240 - buzz #brain event (top-level)	-
+E0224	check	inbox:2241	check: captain inbox note 2241 - buzz #brain event (top-level)	-
+E0225	-	-	-	-
+E0226	check	inbox:2260	check: captain inbox note 2260 - buzz #brain event (top-level)	-
+E0227	check	inbox:2270	check: captain inbox note 2270 - buzz #brain event (top-level)	-
+E0228	check	inbox:2280	check: captain inbox note 2280 - buzz #brain event (top-level)	-
+E0229	-	-	-	-
+E0230	check	inbox:2300	check: captain inbox note 2300 - buzz #brain event (top-level)	-
+E0231	-	-	-	-
+E0232	-	-	-	-
+E0233	check	merged-m2330-https://example.invalid/pr/0	check: merge landed: m2330 https://example.invalid/pr/0	meta-present
+E0234	check	merged-m2340-https://example.invalid/pr/0	check: merge landed: m2340 https://example.invalid/pr/0	meta-present
+E0234	signal	t234_0.status	signal: state/t234_0.status	done
+E0234	signal	t234_0.turn-ended	signal: state/t234_0.turn-ended	-
+E0234	signal	t234_1.status	signal: state/t234_1.status	done,paused
+E0234	signal	t234_1.turn-ended	signal: state/t234_1.turn-ended	-
+E0235	check	merged-m2350-https://example.invalid/pr/0	check: merge landed: m2350 https://example.invalid/pr/0	meta-present
+E0235	signal	t235_0.status	signal: state/t235_0.status	-
+E0235	signal	t235_0.turn-ended	signal: state/t235_0.turn-ended	-
+E0235	signal	t235_1.status	signal: state/t235_1.status	-
+E0235	signal	t235_1.turn-ended	signal: state/t235_1.turn-ended	-
+E0235	check	inbox:2355	check: captain inbox note 2355 - buzz #brain event (top-level)	-
+E0235	check	inbox:2356	check: captain inbox note 2356 - buzz #brain event (top-level)	-
+E0235	check	inbox:2357	check: captain inbox note 2357 - buzz #brain event (top-level)	-
+E0235	check	inbox:2358	check: captain inbox note 2358 - buzz #brain event (top-level)	-
+E0235	check	inbox:2359	check: captain inbox note 2359 - buzz #brain event (top-level)	-
+E0235	check	merged-m23510-https://example.invalid/pr/10	check: merge landed: m23510 https://example.invalid/pr/10	meta-present
+E0235	check	merged-m23511-https://example.invalid/pr/11	check: merge landed: m23511 https://example.invalid/pr/11	meta-present
+E0235	check	inbox:23512	check: captain inbox note 23512 - buzz #brain event (top-level)	-
+E0235	check	inbox:23513	check: captain inbox note 23513 - buzz #brain event (top-level)	-
+E0235	check	inbox:23514	check: captain inbox note 23514 - buzz #brain event (top-level)	-
+E0235	check	inbox:23515	check: captain inbox note 23515 - buzz #brain event (top-level)	-
+E0236	check	inbox:2360	check: captain inbox note 2360 - buzz #brain event (top-level)	-
+E0236	check	inbox:2361	check: captain inbox note 2361 - buzz #brain event (top-level)	-
+E0237	check	merged-m2370-https://example.invalid/pr/0	check: merge landed: m2370 https://example.invalid/pr/0	meta-present
+E0237	check	inbox:2371	check: captain inbox note 2371 - buzz #brain event (top-level)	-
+E0237	check	inbox:2372	check: captain inbox note 2372 - buzz #brain event (top-level)	-
+E0237	check	inbox:2373	check: captain inbox note 2373 - buzz #brain event (top-level)	-
+E0238	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0238	check	inbox:2381	check: captain inbox note 2381 - buzz #brain event (top-level)	-
+E0238	check	inbox:2382	check: captain inbox note 2382 - buzz #brain event (top-level)	-
+E0238	check	inbox:2383	check: captain inbox note 2383 - buzz #brain event (top-level)	-
+E0238	check	inbox:2384	check: captain inbox note 2384 - buzz #brain event (top-level)	-
+E0238	check	inbox:2385	check: captain inbox note 2385 - buzz #brain event (top-level)	-
+E0238	check	merged-m2386-https://example.invalid/pr/6	check: merge landed: m2386 https://example.invalid/pr/6	meta-present
+E0239	check	merged-m2390-https://example.invalid/pr/0	check: merge landed: m2390 https://example.invalid/pr/0	meta-present
+E0239	check	inbox:2391	check: captain inbox note 2391 - buzz #brain event (top-level)	-
+E0240	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0240	signal	t240_0.status	signal: state/t240_0.status	-
+E0240	signal	t240_1.status	signal: state/t240_1.status	-
+E0240	signal	t240_2.status	signal: state/t240_2.status	captain-held,working,needs-decision,done,working,needs-decision,done,working,needs-decision
+E0240	signal	t240_3.status	needs-decision: state/t240_3.status	resolved,resolved,resolved,resolved,needs-decision,needs-decision,needs-decision,needs-decision,needs-decision,needs-decision,needs-decision,needs-decision
+E0240	signal	t240_0.turn-ended	signal: state/t240_0.turn-ended	-
+E0240	signal	t240_4.turn-ended	signal: state/t240_4.turn-ended	-
+E0240	signal	t240_2.turn-ended	signal: state/t240_2.turn-ended	-
+E0241	signal	t241_0.status	signal: state/t241_0.status	resolved,resolved,resolved,resolved,needs-decision,needs-decision,needs-decision,needs-decision,needs-decision
+E0241	signal	t241_1.turn-ended	signal: state/t241_1.turn-ended	-
+E0242	check	inbox:2420	check: captain inbox note 2420 - buzz #brain event (top-level)	-
+E0243	signal	t243_0.status	signal: state/t243_0.status	-
+E0243	signal	t243_1.status	signal: state/t243_1.status	-
+E0243	signal	t243_2.status	signal: state/t243_2.status	-
+E0243	signal	t243_0.turn-ended	signal: state/t243_0.turn-ended	-
+E0243	signal	t243_1.turn-ended	signal: state/t243_1.turn-ended	-
+E0243	signal	t243_2.turn-ended	signal: state/t243_2.turn-ended	-
+E0244	signal	t244_0.status	signal: state/t244_0.status	-
+E0244	signal	t244_1.status	needs-decision: state/t244_1.status	-
+E0244	signal	t244_2.status	signal: state/t244_2.status	-
+E0244	signal	t244_0.turn-ended	signal: state/t244_0.turn-ended	-
+E0244	signal	t244_2.turn-ended	signal: state/t244_2.turn-ended	-
+E0245	signal	t245_0.status	signal: state/t245_0.status	-
+E0245	signal	t245_0.turn-ended	signal: state/t245_0.turn-ended	-
+E0246	signal	t246_0.status	signal: state/t246_0.status	-
+E0246	signal	t246_0.turn-ended	signal: state/t246_0.turn-ended	-
+E0247	signal	t247_0.status	signal: state/t247_0.status	-
+E0247	signal	t247_1.status	needs-decision: state/t247_1.status	-
+E0247	signal	t247_1.turn-ended	signal: state/t247_1.turn-ended	-
+E0248	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0248	stale	win248_1	stale: win248_1 (idle)	-
+E0249	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0249	check	procevent-src1	check: process-event result captured: procevent:src1	-
+E0249	check	inbox:2492	check: captain inbox note 2492 - buzz #brain event (top-level)	-
+E0249	signal	t249_0.status	signal: state/t249_0.status	-
+E0249	signal	t249_1.status	signal: state/t249_1.status	-
+E0249	signal	t249_2.status	signal: state/t249_2.status	-
+E0249	signal	t249_1.turn-ended	signal: state/t249_1.turn-ended	-
+E0250	check	inbox:2500	check: captain inbox note 2500 - buzz #brain event (top-level)	-
+E0250	check	inbox:2501	check: captain inbox note 2501 - buzz #brain event (top-level)	-
+E0250	check	merged-m2502-https://example.invalid/pr/2	check: merge landed: m2502 https://example.invalid/pr/2	meta-present
+E0251	-	-	-	-
+E0252	check	inbox:2520	check: captain inbox note 2520 - buzz #brain event (top-level)	-
+E0253	-	-	-	-
+E0254	-	-	-	-
+E0255	-	-	-	-
+E0256	signal	t256_0.status	signal: state/t256_0.status	done
+E0256	signal	t256_0.turn-ended	signal: state/t256_0.turn-ended	-
+E0256	signal	t256_1.status	needs-decision: state/t256_1.status	resolved,needs-decision
+E0256	signal	t256_1.turn-ended	signal: state/t256_1.turn-ended	-
+E0257	check	merged-m2570-https://example.invalid/pr/0	check: merge landed: m2570 https://example.invalid/pr/0	meta-present
+E0257	check	inbox:2571	check: captain inbox note 2571 - buzz #brain event (top-level)	-
+E0258	stale	win258_0	stale: win258_0 (idle)	-
+E0259	signal	t259_0.status	signal: state/t259_0.status	working,done
+E0259	signal	t259_0.turn-ended	signal: state/t259_0.turn-ended	-
+E0260	stale	win260_0	stale: win260_0 (idle)	-
+E0261	check	inbox:2610	check: captain inbox note 2610 - buzz #brain event (top-level)	-
+E0261	stale	win261_1	stale: win261_1 (idle)	-
+E0262	check	merged-m2620-https://example.invalid/pr/0	check: merge landed: m2620 https://example.invalid/pr/0	meta-present
+E0262	check	merged-m2621-https://example.invalid/pr/1	check: merge landed: m2621 https://example.invalid/pr/1	meta-present
+E0262	check	inbox:2622	check: captain inbox note 2622 - buzz #brain event (top-level)	-
+E0262	check	inbox:2623	check: captain inbox note 2623 - buzz #brain event (top-level)	-
+E0263	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0264	-	-	-	-
+E0265	check	merged-m2650-https://example.invalid/pr/0	check: merge landed: m2650 https://example.invalid/pr/0	meta-present
+E0266	check	merged-m2660-https://example.invalid/pr/0	check: merge landed: m2660 https://example.invalid/pr/0	meta-present
+E0267	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0268	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0268	signal	t268_0.status	signal: state/t268_0.status	working
+E0268	signal	t268_1.status	signal: state/t268_1.status	working,working,working,done,working,needs-decision,resolved,resolved
+E0268	signal	t268_2.status	signal: state/t268_2.status	done,done,done
+E0268	signal	t268_3.status	needs-decision: state/t268_3.status	working,done,needs-decision,resolved
+E0268	signal	t268_4.status	signal: state/t268_4.status	working
+E0268	signal	t268_5.status	signal: state/t268_5.status	done,done,done,working,done,done,done,done,done,working,done
+E0268	signal	t268_6.status	signal: state/t268_6.status	needs-decision,resolved,done,done,done,done,done,done
+E0268	signal	t268_1.turn-ended	signal: state/t268_1.turn-ended	-
+E0268	signal	t268_7.turn-ended	signal: state/t268_7.turn-ended	-
+E0268	signal	t268_2.turn-ended	signal: state/t268_2.turn-ended	-
+E0268	signal	t268_3.turn-ended	signal: state/t268_3.turn-ended	-
+E0269	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0270	-	-	-	-
+E0271	heartbeat	hb	heartbeat	-
+E0272	-	-	-	-
+E0273	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0274	-	-	-	-
+E0275	-	-	-	-
+E0276	-	-	-	-
+E0277	check	inactive-outcome:2770	inactive terminal outcome awaiting captain presentation: child=c277 state=done	-
+E0278	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0279	check	inbox:2790	check: captain inbox note 2790 - buzz #brain event (top-level)	-
+E0280	-	-	-	-
+E0281	-	-	-	-
+E0282	signal	t282_0.status	signal: state/t282_0.status	-
+E0282	signal	t282_1.status	signal: state/t282_1.status	-
+E0282	signal	t282_0.turn-ended	signal: state/t282_0.turn-ended	-
+E0283	signal	t283_0.status	signal: state/t283_0.status	done
+E0283	signal	t283_1.status	needs-decision: state/t283_1.status	needs-decision
+E0283	signal	t283_2.status	needs-decision: state/t283_2.status	needs-decision,http://lavish-homelab.sys/session/a628e20d7806bfda
+E0283	signal	t283_3.status	needs-decision: state/t283_3.status	needs-decision
+E0283	signal	t283_4.status	signal: state/t283_4.status	working,done,done,working
+E0283	signal	t283_0.turn-ended	signal: state/t283_0.turn-ended	-
+E0283	signal	t283_1.turn-ended	signal: state/t283_1.turn-ended	-
+E0283	signal	t283_2.turn-ended	signal: state/t283_2.turn-ended	-
+E0283	signal	t283_3.turn-ended	signal: state/t283_3.turn-ended	-
+E0284	signal	t284_0.status	signal: state/t284_0.status	resolved,resolved
+E0284	signal	t284_1.status	signal: state/t284_1.status	resolved,resolved
+E0284	signal	t284_2.status	signal: state/t284_2.status	done,done
+E0284	signal	t284_3.status	signal: state/t284_3.status	done,done
+E0285	check	inactive-outcome:2850	inactive terminal outcome awaiting captain presentation: child=c285 state=done	-
+E0286	check	merged-m2860-https://example.invalid/pr/0	check: merge landed: m2860 https://example.invalid/pr/0	meta-present
+E0286	check	inbox:2861	check: captain inbox note 2861 - buzz #brain event (top-level)	-
+E0287	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0288	-	-	-	-
+E0289	check	inbox:2890	check: captain inbox note 2890 - buzz #brain event (top-level)	-
+E0289	check	inbox:2891	check: captain inbox note 2891 - buzz #brain event (top-level)	-
+E0290	check	merged-m2900-https://example.invalid/pr/0	check: merge landed: m2900 https://example.invalid/pr/0	meta-present
+E0291	-	-	-	-
+E0292	stale	win292_0	stale: win292_0 (idle)	-
+E0293	check	inbox:2930	check: captain inbox note 2930 - buzz #brain event (top-level)	-
+E0294	stale	win294_0	stale: win294_0 (idle)	-
+E0295	-	-	-	-
+E0296	-	-	-	-
+E0297	-	-	-	-
+E0298	check	inbox:2980	check: captain inbox note 2980 - buzz #brain event (top-level)	-
+E0299	check	inbox:2990	check: captain inbox note 2990 - buzz #brain event (top-level)	-
+E0299	check	inbox:2991	check: captain inbox note 2991 - buzz #brain event (top-level)	-
+E0300	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0301	stale	win301_0	stale: win301_0 (idle)	-
+E0302	stale	win302_0	stale: win302_0 (idle)	-
+E0303	-	-	-	-
+E0304	check	merged-m3040-https://example.invalid/pr/0	check: merge landed: m3040 https://example.invalid/pr/0	meta-present
+E0305	-	-	-	-
+E0306	heartbeat	hb	heartbeat	-
+E0307	check	inbox:3070	check: captain inbox note 3070 - buzz #brain event (top-level)	-
+E0308	-	-	-	-
+E0309	-	-	-	-
+E0310	heartbeat	hb	heartbeat	-
+E0311	-	-	-	-
+E0312	-	-	-	-
+E0313	check	inbox:3130	check: captain inbox note 3130 - buzz #brain event (top-level)	-
+E0313	check	merged-m3131-https://example.invalid/pr/1	check: merge landed: m3131 https://example.invalid/pr/1	meta-present
+E0313	check	procevent-src2	check: process-event result captured: procevent:src2	-
+E0314	-	-	-	-
+E0315	-	-	-	-
+E0316	signal	t316_0.status	signal: state/t316_0.status	working,resolved,done
+E0316	signal	t316_0.turn-ended	signal: state/t316_0.turn-ended	-
+E0316	signal	t316_1.status	signal: state/t316_1.status	done
+E0316	signal	t316_2.status	signal: state/t316_2.status	done,working,done,done
+E0316	signal	t316_1.turn-ended	signal: state/t316_1.turn-ended	-
+E0317	signal	t317_0.status	signal: state/t317_0.status	working
+E0317	signal	t317_1.status	signal: state/t317_1.status	working
+E0318	check	inbox:3180	check: captain inbox note 3180 - buzz #brain event (top-level)	-
+E0318	signal	t318_0.status	signal: state/t318_0.status	working
+E0318	check	inbox:3182	check: captain inbox note 3182 - buzz #brain event (top-level)	-
+E0319	check	inbox:3190	check: captain inbox note 3190 - buzz #brain event (top-level)	-
+E0319	check	procevent-src1	check: process-event result captured: procevent:src1	-
+E0320	-	-	-	-
+E0321	-	-	-	-
+E0322	-	-	-	-
+E0323	-	-	-	-
+E0324	-	-	-	-
+E0325	stale	win325_0	stale: win325_0 (idle)	-
+E0326	-	-	-	-
+E0327	-	-	-	-
+E0328	check	inbox:3280	check: captain inbox note 3280 - buzz #brain event (top-level)	-
+E0329	check	inbox:3290	check: captain inbox note 3290 - buzz #brain event (top-level)	-
+E0329	check	inbox:3291	check: captain inbox note 3291 - buzz #brain event (top-level)	-
+E0329	check	inbox:3292	check: captain inbox note 3292 - buzz #brain event (top-level)	-
+E0330	check	inbox:3300	check: captain inbox note 3300 - buzz #brain event (top-level)	-
+E0331	check	inbox:3310	check: captain inbox note 3310 - buzz #brain event (top-level)	-
+E0331	check	inbox:3311	check: captain inbox note 3311 - buzz #brain event (top-level)	-
+E0332	check	inbox:3320	check: captain inbox note 3320 - buzz #brain event (top-level)	-
+E0333	check	inbox:3330	check: captain inbox note 3330 - buzz #brain event (top-level)	-
+E0333	check	inbox:3331	check: captain inbox note 3331 - buzz #brain event (top-level)	-
+E0333	check	inbox:3332	check: captain inbox note 3332 - buzz #brain event (top-level)	-
+E0334	check	inbox:3340	check: captain inbox note 3340 - buzz #brain event (top-level)	-
+E0335	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0336	check	inbox:3360	check: captain inbox note 3360 - buzz #brain event (top-level)	-
+E0337	check	inbox:3370	check: captain inbox note 3370 - buzz #brain event (top-level)	-
+E0338	check	inbox:3380	check: captain inbox note 3380 - buzz #brain event (top-level)	-
+E0338	check	inbox:3381	check: captain inbox note 3381 - buzz #brain event (top-level)	-
+E0338	check	inbox:3382	check: captain inbox note 3382 - buzz #brain event (top-level)	-
+E0338	check	merged-m3383-https://example.invalid/pr/3	check: merge landed: m3383 https://example.invalid/pr/3	meta-present
+E0338	check	procevent-src4	check: process-event result captured: procevent:src4	-
+E0339	check	inbox:3390	check: captain inbox note 3390 - buzz #brain event (top-level)	-
+E0340	check	inbox:3400	check: captain inbox note 3400 - buzz #brain event (top-level)	-
+E0340	check	inbox:3401	check: captain inbox note 3401 - buzz #brain event (top-level)	-
+E0340	check	merged-m3402-https://example.invalid/pr/2	check: merge landed: m3402 https://example.invalid/pr/2	meta-present
+E0341	check	inbox:3410	check: captain inbox note 3410 - buzz #brain event (top-level)	-
+E0341	check	inbox:3411	check: captain inbox note 3411 - buzz #brain event (top-level)	-
+E0341	check	inbox:3412	check: captain inbox note 3412 - buzz #brain event (top-level)	-
+E0341	check	procevent-src3	check: process-event result captured: procevent:src3	-
+E0342	check	inbox:3420	check: captain inbox note 3420 - buzz #brain event (top-level)	-
+E0342	check	inbox:3421	check: captain inbox note 3421 - buzz #brain event (top-level)	-
+E0342	check	inbox:3422	check: captain inbox note 3422 - buzz #brain event (top-level)	-
+E0342	check	inbox:3423	check: captain inbox note 3423 - buzz #brain event (top-level)	-
+E0342	check	merged-m3424-https://example.invalid/pr/4	check: merge landed: m3424 https://example.invalid/pr/4	meta-present
+E0343	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0344	signal	t344_0.status	needs-decision: state/t344_0.status	working,done,working,needs-decision,resolved,needs-decision
+E0345	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0345	signal	t345_0.status	needs-decision: state/t345_0.status	needs-decision
+E0346	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0347	-	-	-	-
+E0348	-	-	-	-
+E0349	check	inactive-outcome:3490	inactive terminal outcome awaiting captain presentation: child=c349 state=done	-
+E0350	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0351	-	-	-	-
+E0352	-	-	-	-
+E0353	-	-	-	-
+E0354	-	-	-	-
+E0355	signal	t355_0.status	needs-decision: state/t355_0.status	resolved,needs-decision
+E0356	-	-	-	-
+E0357	-	-	-	-
+E0358	heartbeat	hb	heartbeat	-
+E0359	signal	t359_0.status	needs-decision: state/t359_0.status	needs-decision
+E0360	-	-	-	-
+E0361	signal	t361_0.status	signal: state/t361_0.status	resolved,working
+E0361	signal	t361_1.status	signal: state/t361_1.status	done
+E0362	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0362	signal	t362_0.status	signal: state/t362_0.status	working
+E0362	signal	t362_1.status	signal: state/t362_1.status	done,done
+E0362	signal	t362_2.status	signal: state/t362_2.status	working,done,working
+E0363	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0363	signal	t363_0.status	signal: state/t363_0.status	done
+E0363	signal	t363_1.status	signal: state/t363_1.status	done
+E0363	signal	t363_2.turn-ended	signal: state/t363_2.turn-ended	-
+E0364	signal	t364_0.status	signal: state/t364_0.status	resolved,blocked
+E0364	signal	t364_0.turn-ended	signal: state/t364_0.turn-ended	-
+E0365	signal	t365_0.status	signal: state/t365_0.status	-
+E0365	signal	t365_0.turn-ended	signal: state/t365_0.turn-ended	-
+E0365	check	merged-m3652-https://example.invalid/pr/2	check: merge landed: m3652 https://example.invalid/pr/2	meta-present
+E0366	signal	t366_0.status	signal: state/t366_0.status	paused
+E0366	signal	t366_1.status	signal: state/t366_1.status	blocked
+E0366	signal	t366_2.status	signal: state/t366_2.status	working
+E0366	signal	t366_1.turn-ended	signal: state/t366_1.turn-ended	-
+E0367	-	-	-	-
+E0368	-	-	-	-
+E0369	-	-	-	-
+E0370	-	-	-	-
+E0371	-	-	-	-
+E0372	stale	win372_0	stale: win372_0 (idle)	-
+E0373	check	merged-m3730-https://example.invalid/pr/0	check: merge landed: m3730 https://example.invalid/pr/0	meta-present
+E0373	check	merged-m3731-https://example.invalid/pr/1	check: merge landed: m3731 https://example.invalid/pr/1	meta-present
+E0374	-	-	-	-
+E0375	check	merged-m3750-https://example.invalid/pr/0	check: merge landed: m3750 https://example.invalid/pr/0	meta-present
+E0376	-	-	-	-
+E0377	-	-	-	-
+E0378	-	-	-	-
+E0379	stale	win379_0	stale: win379_0 (idle)	-
+E0380	stale	win380_0	stale: win380_0 (idle)	-
+E0381	-	-	-	-
+E0382	-	-	-	-
+E0383	stale	win383_0	stale: win383_0 (idle)	-
+E0384	-	-	-	-
+E0385	check	merged-m3850-https://example.invalid/pr/0	check: merge landed: m3850 https://example.invalid/pr/0	meta-present
+E0386	-	-	-	-
+E0387	-	-	-	-
+E0388	-	-	-	-
+E0389	-	-	-	-
+E0390	check	merged-m3900-https://example.invalid/pr/0	check: merge landed: m3900 https://example.invalid/pr/0	meta-present
+E0390	check	merged-m3901-https://example.invalid/pr/1	check: merge landed: m3901 https://example.invalid/pr/1	meta-present
+E0391	-	-	-	-
+E0392	-	-	-	-
+E0393	check	merged-m3930-https://example.invalid/pr/0	check: merge landed: m3930 https://example.invalid/pr/0	meta-present
+E0394	-	-	-	-
+E0395	-	-	-	-
+E0396	-	-	-	-
+E0397	-	-	-	-
+E0398	-	-	-	-
+E0399	-	-	-	-
+E0400	-	-	-	-
+E0401	-	-	-	-
+E0402	-	-	-	-
+E0403	-	-	-	-
+E0404	stale	win404_0	stale: win404_0 (idle)	-
+E0405	stale	win405_0	stale: win405_0 (idle)	-
+E0406	-	-	-	-
+E0407	stale	win407_0	stale: win407_0 (idle)	-
+E0408	-	-	-	-
+E0409	check	merged-m4090-https://example.invalid/pr/0	check: merge landed: m4090 https://example.invalid/pr/0	meta-present
+E0410	stale	win410_0	stale: win410_0 (idle)	-
+E0411	-	-	-	-
+E0412	-	-	-	-
+E0413	-	-	-	-
+E0414	-	-	-	-
+E0415	check	merged-m4150-https://example.invalid/pr/0	check: merge landed: m4150 https://example.invalid/pr/0	meta-present
+E0416	check	inbox:4160	check: captain inbox note 4160 - buzz #brain event (top-level)	-
+E0417	-	-	-	-
+E0418	check	inbox:4180	check: captain inbox note 4180 - buzz #brain event (top-level)	-
+E0418	check	inbox:4181	check: captain inbox note 4181 - buzz #brain event (top-level)	-
+E0419	-	-	-	-
+E0420	check	inbox:4200	check: captain inbox note 4200 - buzz #brain event (top-level)	-
+E0421	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0421	check	inbox:4211	check: captain inbox note 4211 - buzz #brain event (top-level)	-
+E0422	check	inbox:4220	check: captain inbox note 4220 - buzz #brain event (top-level)	-
+E0422	check	inbox:4221	check: captain inbox note 4221 - buzz #brain event (top-level)	-
+E0422	check	merged-m4222-https://example.invalid/pr/2	check: merge landed: m4222 https://example.invalid/pr/2	meta-present
+E0423	check	inbox:4230	check: captain inbox note 4230 - buzz #brain event (top-level)	-
+E0423	check	inbox:4231	check: captain inbox note 4231 - buzz #brain event (top-level)	-
+E0423	check	merged-m4232-https://example.invalid/pr/2	check: merge landed: m4232 https://example.invalid/pr/2	meta-present
+E0423	check	merged-m4233-https://example.invalid/pr/3	check: merge landed: m4233 https://example.invalid/pr/3	meta-present
+E0424	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0424	check	procevent-src1	check: process-event result captured: procevent:src1	-
+E0424	check	procevent-src2	check: process-event result captured: procevent:src2	-
+E0424	signal	t424_0.status	signal: state/t424_0.status	working
+E0424	signal	t424_1.status	signal: state/t424_1.status	working,done
+E0424	signal	t424_2.status	signal: state/t424_2.status	working
+E0424	signal	t424_3.status	signal: state/t424_3.status	done
+E0424	signal	t424_4.status	needs-decision: state/t424_4.status	needs-decision
+E0424	signal	t424_5.status	signal: state/t424_5.status	blocked
+E0424	signal	t424_1.turn-ended	signal: state/t424_1.turn-ended	-
+E0424	signal	t424_3.turn-ended	signal: state/t424_3.turn-ended	-
+E0425	check	merged-m4250-https://example.invalid/pr/0	check: merge landed: m4250 https://example.invalid/pr/0	meta-present
+E0426	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0427	-	-	-	-
+E0428	signal	t428_0.status	signal: state/t428_0.status	-
+E0428	signal	t428_0.turn-ended	signal: state/t428_0.turn-ended	-
+E0429	-	-	-	-
+E0430	-	-	-	-
+E0431	-	-	-	-
+E0432	-	-	-	-
+E0433	-	-	-	-
+E0434	-	-	-	-
+E0435	-	-	-	-
+E0436	-	-	-	-
+E0437	stale	win437_0	stale: win437_0 (idle)	-
+E0438	-	-	-	-
+E0439	signal	t439_0.status	needs-decision: state/t439_0.status	-
+E0439	signal	t439_0.turn-ended	signal: state/t439_0.turn-ended	-
+E0439	stale	win439_2	stale: win439_2 (idle)	-
+E0440	-	-	-	-
+E0441	stale	win441_0	stale: win441_0 (idle)	-
+E0442	-	-	-	-
+E0443	-	-	-	-
+E0444	check	merged-m4440-https://example.invalid/pr/0	check: merge landed: m4440 https://example.invalid/pr/0	meta-present
+E0444	check	inbox:4441	check: captain inbox note 4441 - buzz #brain event (top-level)	-
+E0444	check	inbox:4442	check: captain inbox note 4442 - buzz #brain event (top-level)	-
+E0445	-	-	-	-
+E0446	-	-	-	-
+E0447	stale	win447_0	stale: win447_0 (idle)	-
+E0448	check	inbox:4480	check: captain inbox note 4480 - buzz #brain event (top-level)	-
+E0449	check	inbox:4490	check: captain inbox note 4490 - buzz #brain event (top-level)	-
+E0449	signal	t449_0.status	signal: state/t449_0.status	resolved,done
+E0449	signal	t449_0.turn-ended	signal: state/t449_0.turn-ended	-
+E0450	check	inbox:4500	check: captain inbox note 4500 - buzz #brain event (top-level)	-
+E0450	check	inbox:4501	check: captain inbox note 4501 - buzz #brain event (top-level)	-
+E0451	signal	t451_0.status	signal: state/t451_0.status	paused,done
+E0452	check	inbox:4520	check: captain inbox note 4520 - buzz #brain event (top-level)	-
+E0452	check	inbox:4521	check: captain inbox note 4521 - buzz #brain event (top-level)	-
+E0453	-	-	-	-
+E0454	signal	t454_0.status	signal: state/t454_0.status	working,working
+E0454	signal	t454_1.status	signal: state/t454_1.status	working
+E0454	signal	t454_2.status	signal: state/t454_2.status	resolved
+E0455	heartbeat	hb	heartbeat	-
+E0456	check	inbox:4560	check: captain inbox note 4560 - buzz #brain event (top-level)	-
+E0456	check	merged-m4561-https://example.invalid/pr/1	check: merge landed: m4561 https://example.invalid/pr/1	meta-present
+E0456	check	inbox:4562	check: captain inbox note 4562 - buzz #brain event (top-level)	-
+E0456	check	procevent-src3	check: process-event result captured: procevent:src3	-
+E0457	signal	t457_0.status	signal: state/t457_0.status	working
+E0457	signal	t457_1.status	signal: state/t457_1.status	done,done
+E0457	signal	t457_2.status	signal: state/t457_2.status	done
+E0458	signal	t458_0.status	signal: state/t458_0.status	done
+E0458	signal	t458_0.turn-ended	signal: state/t458_0.turn-ended	-
+E0459	signal	t459_0.status	signal: state/t459_0.status	done
+E0459	signal	t459_0.turn-ended	signal: state/t459_0.turn-ended	-
+E0460	check	inbox:4600	check: captain inbox note 4600 - buzz #brain event (top-level)	-
+E0461	check	inbox:4610	check: captain inbox note 4610 - buzz #brain event (top-level)	-
+E0462	check	inbox:4620	check: captain inbox note 4620 - buzz #brain event (top-level)	-
+E0462	check	inbox:4621	check: captain inbox note 4621 - buzz #brain event (top-level)	-
+E0462	check	inbox:4622	check: captain inbox note 4622 - buzz #brain event (top-level)	-
+E0463	-	-	-	-
+E0464	check	inbox:4640	check: captain inbox note 4640 - buzz #brain event (top-level)	-
+E0465	check	inbox:4650	check: captain inbox note 4650 - buzz #brain event (top-level)	-
+E0466	check	inactive-outcome:4660	inactive terminal outcome awaiting captain presentation: child=c466 state=done	-
+E0467	check	inbox:4670	check: captain inbox note 4670 - buzz #brain event (top-level)	-
+E0467	check	inbox:4671	check: captain inbox note 4671 - buzz #brain event (top-level)	-
+E0468	check	inbox:4680	check: captain inbox note 4680 - buzz #brain event (top-level)	-
+E0468	check	inbox:4681	check: captain inbox note 4681 - buzz #brain event (top-level)	-
+E0469	check	inbox:4690	check: captain inbox note 4690 - buzz #brain event (top-level)	-
+E0469	check	inbox:4691	check: captain inbox note 4691 - buzz #brain event (top-level)	-
+E0470	check	merged-m4700-https://example.invalid/pr/0	check: merge landed: m4700 https://example.invalid/pr/0	meta-present
+E0470	check	inbox:4701	check: captain inbox note 4701 - buzz #brain event (top-level)	-
+E0470	check	inbox:4702	check: captain inbox note 4702 - buzz #brain event (top-level)	-
+E0471	-	-	-	-
+E0472	-	-	-	-
+E0473	-	-	-	-
+E0474	check	inbox:4740	check: captain inbox note 4740 - buzz #brain event (top-level)	-
+E0474	check	inbox:4741	check: captain inbox note 4741 - buzz #brain event (top-level)	-
+E0475	-	-	-	-
+E0476	check	inbox:4760	check: captain inbox note 4760 - buzz #brain event (top-level)	-
+E0476	check	inbox:4761	check: captain inbox note 4761 - buzz #brain event (top-level)	-
+E0477	-	-	-	-
+E0478	-	-	-	-
+E0479	-	-	-	-
+E0480	-	-	-	-
+E0481	check	merged-m4810-https://example.invalid/pr/0	check: merge landed: m4810 https://example.invalid/pr/0	meta-present
+E0482	stale	win482_0	stale: win482_0 (idle)	-
+E0483	-	-	-	-
+E0484	check	inbox:4840	check: captain inbox note 4840 - buzz #brain event (top-level)	-
+E0485	-	-	-	-
+E0486	-	-	-	-
+E0487	check	inbox:4870	check: captain inbox note 4870 - buzz #brain event (top-level)	-
+E0487	check	inbox:4871	check: captain inbox note 4871 - buzz #brain event (top-level)	-
+E0488	-	-	-	-
+E0489	-	-	-	-
+E0490	signal	t490_0.status	signal: state/t490_0.status	done,working,done
+E0490	signal	t490_1.status	signal: state/t490_1.status	done
+E0490	signal	t490_2.status	signal: state/t490_2.status	working
+E0490	signal	t490_3.status	signal: state/t490_3.status	paused
+E0490	signal	t490_4.status	signal: state/t490_4.status	working
+E0490	signal	t490_5.status	signal: state/t490_5.status	working
+E0490	signal	t490_0.turn-ended	signal: state/t490_0.turn-ended	-
+E0490	signal	t490_1.turn-ended	signal: state/t490_1.turn-ended	-
+E0490	signal	t490_3.turn-ended	signal: state/t490_3.turn-ended	-
+E0491	check	merged-m4910-https://example.invalid/pr/0	check: merge landed: m4910 https://example.invalid/pr/0	meta-present
+E0492	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0492	check	inactive-outcome:4921	inactive terminal outcome awaiting captain presentation: child=c492 state=done	-
+E0493	-	-	-	-
+E0494	check	merged-m4940-https://example.invalid/pr/0	check: merge landed: m4940 https://example.invalid/pr/0	meta-present
+E0495	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0496	-	-	-	-
+E0497	check	merged-m4970-https://example.invalid/pr/0	check: merge landed: m4970 https://example.invalid/pr/0	meta-present
+E0498	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0498	check	procevent-src1	check: process-event result captured: procevent:src1	-
+E0499	check	inbox:4990	check: captain inbox note 4990 - buzz #brain event (top-level)	-
+E0499	check	inbox:4991	check: captain inbox note 4991 - buzz #brain event (top-level)	-
+E0499	check	procevent-src2	check: process-event result captured: procevent:src2	-
+E0499	check	procevent-src3	check: process-event result captured: procevent:src3	-
+E0499	check	procevent-src4	check: process-event result captured: procevent:src4	-
+E0499	check	procevent-src5	check: process-event result captured: procevent:src5	-
+E0499	check	inbox:4996	check: captain inbox note 4996 - buzz #brain event (top-level)	-
+E0499	check	procevent-src7	check: process-event result captured: procevent:src7	-
+E0500	check	inbox:5000	check: captain inbox note 5000 - buzz #brain event (top-level)	-
+E0500	check	inbox:5001	check: captain inbox note 5001 - buzz #brain event (top-level)	-
+E0500	check	procevent-src2	check: process-event result captured: procevent:src2	-
+E0500	check	procevent-src3	check: process-event result captured: procevent:src3	-
+E0500	check	procevent-src4	check: process-event result captured: procevent:src4	-
+E0500	check	procevent-src5	check: process-event result captured: procevent:src5	-
+E0500	check	inbox:5006	check: captain inbox note 5006 - buzz #brain event (top-level)	-
+E0500	check	procevent-src7	check: process-event result captured: procevent:src7	-
+E0501	check	inbox:5010	check: captain inbox note 5010 - buzz #brain event (top-level)	-
+E0501	check	inbox:5011	check: captain inbox note 5011 - buzz #brain event (top-level)	-
+E0501	check	procevent-src2	check: process-event result captured: procevent:src2	-
+E0501	check	procevent-src3	check: process-event result captured: procevent:src3	-
+E0501	check	procevent-src4	check: process-event result captured: procevent:src4	-
+E0501	check	procevent-src5	check: process-event result captured: procevent:src5	-
+E0501	check	inbox:5016	check: captain inbox note 5016 - buzz #brain event (top-level)	-
+E0501	check	procevent-src7	check: process-event result captured: procevent:src7	-
+E0502	check	inactive-outcome:5020	inactive terminal outcome awaiting captain presentation: child=c502 state=done	-
+E0502	check	inactive-outcome:5021	inactive terminal outcome awaiting captain presentation: child=c502 state=done	-
+E0503	check	merged-m5030-https://example.invalid/pr/0	check: merge landed: m5030 https://example.invalid/pr/0	meta-present
+E0503	check	inbox:5031	check: captain inbox note 5031 - buzz #brain event (top-level)	-
+E0504	check	other-check-0	check: other-check 0	-
+E0505	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0506	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0506	check	merged-m5061-https://example.invalid/pr/1	check: merge landed: m5061 https://example.invalid/pr/1	meta-present
+E0507	check	inbox:5070	check: captain inbox note 5070 - buzz #brain event (top-level)	-
+E0508	check	inbox:5080	check: captain inbox note 5080 - buzz #brain event (top-level)	-
+E0509	check	inbox:5090	check: captain inbox note 5090 - buzz #brain event (top-level)	-
+E0509	check	inbox:5091	check: captain inbox note 5091 - buzz #brain event (top-level)	-
+E0510	check	inbox:5100	check: captain inbox note 5100 - buzz #brain event (top-level)	-
+E0510	check	inbox:5101	check: captain inbox note 5101 - buzz #brain event (top-level)	-
+E0510	check	inbox:5102	check: captain inbox note 5102 - buzz #brain event (top-level)	-
+E0510	check	inbox:5103	check: captain inbox note 5103 - buzz #brain event (top-level)	-
+E0510	check	inbox:5104	check: captain inbox note 5104 - buzz #brain event (top-level)	-
+E0510	check	inbox:5105	check: captain inbox note 5105 - buzz #brain event (top-level)	-
+E0510	check	inbox:5106	check: captain inbox note 5106 - buzz #brain event (top-level)	-
+E0510	check	inbox:5107	check: captain inbox note 5107 - buzz #brain event (top-level)	-
+E0510	check	procevent-src8	check: process-event result captured: procevent:src8	-
+E0510	check	procevent-src9	check: process-event result captured: procevent:src9	-
+E0511	-	-	-	-
+E0512	heartbeat	hb	heartbeat	-
+E0513	check	inbox:5130	check: captain inbox note 5130 - buzz #brain event (top-level)	-
+E0513	check	procevent-src1	check: process-event result captured: procevent:src1	-
+E0514	-	-	-	-
+E0515	-	-	-	-
+E0516	-	-	-	-
+E0517	check	inbox:5170	check: captain inbox note 5170 - buzz #brain event (top-level)	-
+E0517	check	inbox:5171	check: captain inbox note 5171 - buzz #brain event (top-level)	-
+E0517	check	inbox:5172	check: captain inbox note 5172 - buzz #brain event (top-level)	-
+E0518	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0518	check	inbox:5181	check: captain inbox note 5181 - buzz #brain event (top-level)	-
+E0518	check	inbox:5182	check: captain inbox note 5182 - buzz #brain event (top-level)	-
+E0519	check	inactive-outcome:5190	inactive terminal outcome awaiting captain presentation: child=c519 state=done	-
+E0520	signal	t520_0.status	signal: state/t520_0.status	working,working
+E0520	signal	t520_1.status	signal: state/t520_1.status	paused
+E0520	signal	t520_2.status	signal: state/t520_2.status	working,done
+E0520	signal	t520_3.status	signal: state/t520_3.status	done
+E0520	signal	t520_4.status	signal: state/t520_4.status	working,working
+E0520	signal	t520_5.status	signal: state/t520_5.status	resolved,done,done
+E0520	signal	t520_6.status	needs-decision: state/t520_6.status	done,done,done,done,working,working,done,done,done,done,working,paused,needs-decision
+E0520	signal	t520_1.turn-ended	signal: state/t520_1.turn-ended	-
+E0520	signal	t520_3.turn-ended	signal: state/t520_3.turn-ended	-
+E0520	signal	t520_4.turn-ended	signal: state/t520_4.turn-ended	-
+E0520	signal	t520_2.turn-ended	signal: state/t520_2.turn-ended	-
+E0521	check	inbox:5210	check: captain inbox note 5210 - buzz #brain event (top-level)	-
+E0521	check	inbox:5211	check: captain inbox note 5211 - buzz #brain event (top-level)	-
+E0521	check	inbox:5212	check: captain inbox note 5212 - buzz #brain event (top-level)	-
+E0522	check	inbox:5220	check: captain inbox note 5220 - buzz #brain event (top-level)	-
+E0522	check	inbox:5221	check: captain inbox note 5221 - buzz #brain event (top-level)	-
+E0523	check	inbox:5230	check: captain inbox note 5230 - buzz #brain event (top-level)	-
+E0523	check	inbox:5231	check: captain inbox note 5231 - buzz #brain event (top-level)	-
+E0523	check	inbox:5232	check: captain inbox note 5232 - buzz #brain event (top-level)	-
+E0523	check	inbox:5233	check: captain inbox note 5233 - buzz #brain event (top-level)	-
+E0524	check	procevent-src0	check: process-event result captured: procevent:src0	-
+E0524	check	inactive-outcome:5241	inactive terminal outcome awaiting captain presentation: child=c524 state=done	-
+E0525	check	inbox:5250	check: captain inbox note 5250 - buzz #brain event (top-level)	-
+E0525	check	merged-m5251-https://example.invalid/pr/1	check: merge landed: m5251 https://example.invalid/pr/1	meta-present
+E0526	check	merged-m5260-https://example.invalid/pr/0	check: merge landed: m5260 https://example.invalid/pr/0	meta-present
+E0526	check	inbox:5261	check: captain inbox note 5261 - buzz #brain event (top-level)	-
+E0527	check	other-check-0	check: other-check 0	-
+E0528	-	-	-	-
+E0529	check	inbox:5290	check: captain inbox note 5290 - buzz #brain event (top-level)	-
+E0529	check	inbox:5291	check: captain inbox note 5291 - buzz #brain event (top-level)	-
+E0530	check	inactive-outcome:5300	inactive terminal outcome awaiting captain presentation: child=c530 state=done	-
+E0531	-	-	-	-
+E0532	-	-	-	-
+E0533	-	-	-	-
+E0534	check	inbox:5340	check: captain inbox note 5340 - buzz #brain event (top-level)	-
+E0534	check	inbox:5341	check: captain inbox note 5341 - buzz #brain event (top-level)	-
+E0535	-	-	-	-
+E0536	check	inbox:5360	check: captain inbox note 5360 - buzz #brain event (top-level)	-
+E0537	check	inbox:5370	check: captain inbox note 5370 - buzz #brain event (top-level)	-
+E0537	check	inbox:5371	check: captain inbox note 5371 - buzz #brain event (top-level)	-
+E0538	check	merged-m5380-https://example.invalid/pr/0	check: merge landed: m5380 https://example.invalid/pr/0	meta-present
+E0539	-	-	-	-
+E0540	-	-	-	-
+E0541	check	inactive-outcome:5410	inactive terminal outcome awaiting captain presentation: child=c541 state=done	-
