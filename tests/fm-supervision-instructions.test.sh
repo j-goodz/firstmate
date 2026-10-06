@@ -218,6 +218,34 @@ test_pi_snippet_uses_effective_extension_path() {
   pass "pi supervision snippet renders the effective extension path"
 }
 
+test_compact_claude_block_keeps_state_and_core_rules_and_stays_small() {
+  local out full
+  out=$("$RENDER" --harness claude --afk 1 --compact)
+  full=$("$RENDER" --harness claude)
+  assert_contains "$out" "SUPERVISION OPERATING INSTRUCTIONS - primary harness: claude" "compact heading missing"
+  assert_contains "$out" "- Lock: held by this session" "compact dropped the lock state"
+  assert_contains "$out" "- Away mode: active" "compact dropped the away state"
+  assert_contains "$out" "- Ordinary wake: the Stop-owned auto-arm" "compact dropped the ordinary-wake rule"
+  assert_contains "$out" "bin/fm-wake-drain.sh" "compact dropped the drain-first rule"
+  assert_contains "$out" "WAKE_ACK_REQUIRED" "compact dropped the acknowledgement rule"
+  assert_contains "$out" "never run \`bin/fm-watch-arm.sh\`" "compact dropped the no-manual-arm rule"
+  assert_contains "$out" "docs/supervision-protocols/claude.md" "compact lost the pointer to the full protocol"
+  assert_not_contains "$out" "Treat \`watcher: started" "compact still carries the full protocol body"
+  [ "${#out}" -le 2000 ] || fail "compact claude block is ${#out} chars, over 2000"
+  [ "${#out}" -lt "${#full}" ] || fail "compact claude block is not smaller than the full one"
+  pass "compact claude block keeps current state and core rules, points at the full protocol"
+}
+
+test_compact_leaves_harnesses_that_arm_themselves_in_full() {
+  local compact full h
+  for h in codex grok unknown; do
+    compact=$("$RENDER" --harness "$h" --compact)
+    full=$("$RENDER" --harness "$h")
+    [ "$compact" = "$full" ] || fail "--compact changed the $h block, whose arm instructions the model must read in full"
+  done
+  pass "--compact leaves codex, grok and unknown blocks unchanged"
+}
+
 test_selected_harness_block_only
 test_unknown_fallback
 test_conditional_stanzas
@@ -228,3 +256,5 @@ test_pi_signed_preserves_identity_with_pi_supervision_protocol
 test_grok_is_background_notify
 test_grok_command_sources_effective_config
 test_pi_snippet_uses_effective_extension_path
+test_compact_claude_block_keeps_state_and_core_rules_and_stays_small
+test_compact_leaves_harnesses_that_arm_themselves_in_full

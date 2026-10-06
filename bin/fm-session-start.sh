@@ -207,6 +207,10 @@
 #             same-session Claude id as its own, so the re-emit proceeds, while
 #             a lock another live session took meanwhile still produces the
 #             ordinary read-only path.
+#             The re-emitted digest is compact: counts and ids for the
+#             backlog, at most FM_SESSION_START_REEMIT_TASKS (default 12) task
+#             rows, size pointers instead of full context files, and, on
+#             Claude, the --compact supervision block.
 #
 #   --source  The native session-open source, supplied only by
 #             fm-sessionstart-run.sh. A genuine `startup` that owns the active
@@ -537,6 +541,105 @@ print_status_tail() {
   done < <(tail -n "$STATUS_TAIL" "$status")
 }
 
+# --- compact re-emit helpers -------------------------------------------------
+# A --reemit digest is read by a session that just lost its context, and every
+# byte of it is re-read from cache on every later call of that session, so it
+# is held to FM_SESSION_START_REEMIT_TASKS task lines plus counts and pointers
+# instead of the full listings a first startup prints. The wake drain and the
+# lock/bootstrap diagnostics are NOT compacted (this turn's work queue and its
+# safety contract); the supervision block keeps its state and core rules and
+# points at the full protocol (fm-supervision-instructions.sh --compact).
+REEMIT_TASK_LIMIT=${FM_SESSION_START_REEMIT_TASKS:-12}
+case "$REEMIT_TASK_LIMIT" in ''|*[!0-9]*|0) REEMIT_TASK_LIMIT=12 ;; esac
+REEMIT_STATUS_CAP=80
+
+# print_backlog_reemit_summary <path> <label>: group counts and task ids from
+# the same compact listing a full startup prints, never the rows or titles.
+print_backlog_reemit_summary() {
+  local path=$1 label=$2 compact
+  subsection "$label"
+  if [ ! -f "$path" ]; then
+    printf 'ABSENT\n'
+    return 0
+  fi
+  if [ ! -s "$path" ]; then
+    printf '(present, empty)\n'
+    return 0
+  fi
+  compact=$(print_backlog_compact "$path" "$label")
+  printf '%s\n' "$compact" | awk '
+    function add(group, id) { ids[group] = ids[group] (ids[group] == "" ? "" : " ") id; shown[group]++ }
+    /^in flight:/ { group = "in flight"; matched = 1; next }
+    /^held \(/ { group = "held"; matched = 1; next }
+    /^blocked queued:/ { group = "blocked queued"; matched = 1; next }
+    /^ready queued/ { group = "ready queued"; matched = 1; next }
+    group != "" && /^count: / { count[group] = $2; next }
+    group != "" && group != "ready queued" && /^  [^ ]/ {
+      id = $0; sub(/^ +/, "", id); sub(/,.*/, "", id)
+      if (shown[group] < 10) add(group, id)
+      next
+    }
+    END {
+      if (!matched) { exit 3 }
+      n = split("in flight|held|blocked queued|ready queued", order, "|")
+      for (i = 1; i <= n; i++) {
+        g = order[i]
+        line = g " (" (count[g] == "" ? 0 : count[g]) ")"
+        if (ids[g] != "") line = line ": " ids[g]
+        if (count[g] > shown[g] && g != "ready queued") line = line " +" (count[g] - shown[g]) " more"
+        print line
+      }
+    }
+  ' || {
+    printf '%s\n' "$compact" | head -n 10 | while IFS= read -r line; do fm_cap_line "$line" 100; done
+  }
+  printf 'Task titles and bodies: bin/fm-tasks-axi.sh show <id> --full, or data/backlog.md by line range.\n'
+}
+
+# print_reemit_tasks: one bounded line per live task, never the raw meta file.
+print_reemit_tasks() {
+  local meta id kind window target backend alive last total=0 listed=0
+  for meta in "$STATE"/*.meta; do
+    [ -f "$meta" ] || continue
+    total=$((total + 1))
+    [ "$listed" -lt "$REEMIT_TASK_LIMIT" ] || continue
+    listed=$((listed + 1))
+    id=$(basename "$meta" .meta)
+    kind=$(fm_meta_get "$meta" kind)
+    window=$(fm_meta_get "$meta" window)
+    alive=unknown
+    if [ -n "$window" ]; then
+      target=$(fm_backend_target_of_meta "$meta")
+      backend=$(fm_backend_of_meta "$meta")
+      if fm_backend_target_exists "$backend" "${target:-$window}" "fm-$id"; then alive=alive; else alive=dead; fi
+    fi
+    last=
+    [ -f "$STATE/$id.status" ] && last=$(tail -n 1 "$STATE/$id.status" 2>/dev/null)
+    fm_cap_line_var "$last" "$REEMIT_STATUS_CAP"
+    printf '%s %s endpoint=%s | %s\n' "$id" "${kind:-task}" "$alive" "$FM_LINE_CAP_LINE"
+  done
+  if [ "$total" -eq 0 ]; then
+    printf '(none)\n'
+  elif [ "$total" -gt "$listed" ]; then
+    printf '(%s more tasks - state/<id>.meta, bin/fm-crew-state.sh <id>)\n' "$((total - listed))"
+  fi
+  printf 'Full status log of any task: state/<id>.status (read by line range). Current state: bin/fm-crew-state.sh <id>.\n'
+}
+
+# print_context_pointer <path> <label>: size and line count in place of the file.
+print_context_pointer() {
+  local path=$1 label=$2 bytes lines
+  if [ ! -f "$path" ]; then
+    printf '%s: ABSENT\n' "$label"
+  elif [ ! -s "$path" ]; then
+    printf '%s: (present, empty)\n' "$label"
+  else
+    bytes=$(wc -c < "$path" | tr -d ' ')
+    lines=$(wc -l < "$path" | tr -d ' ')
+    printf '%s: %s bytes, %s lines\n' "$label" "$bytes" "$lines"
+  fi
+}
+
 hash_file_sha256() {
   local file=$1 digest
   [ -f "$file" ] || return 1
@@ -617,11 +720,10 @@ fi
 if [ "$REEMIT" -eq 1 ]; then
   section "SESSION START (CONTEXT RE-EMIT) - $FM_HOME"
   printf 'This session already took the helm at its own startup and has only lost its\n'
-  printf 'context. Lock ownership is re-verified and the durable records below are\n'
-  printf 'reprinted, but the sweeps startup already reconciled - project clone refresh,\n'
-  printf 'secondmate convergence and liveness, pending remote handoff\n'
-  printf 'retry, X-mode artifact writes, and stale Herdr child cleanup - are NOT repeated.\n'
-  printf 'Queued wakes ARE still drained: they arrived after startup and are this turn work.\n'
+  printf 'context. Lock ownership is re-verified and the durable records are summarized\n'
+  printf 'below as counts and pointers. The sweeps startup already reconciled (clone\n'
+  printf 'refresh, secondmate convergence and liveness, handoff retry, X-mode artifacts,\n'
+  printf 'Herdr cleanup) are NOT repeated. Queued wakes ARE still drained.\n'
 else
   section "SESSION START - $FM_HOME"
 fi
@@ -787,12 +889,15 @@ if [ "$PRIMARY_HARNESS" = omp ]; then
     printf 'OMP_WATCH_EXTENSION: not loaded - restart omp with this home as its working directory so %s and %s auto-load from .omp/extensions/ for turn-end guard and background wake coverage; pass -e %s -e %s only when omp must start from another directory, never together with auto-discovery (omp loads a file named both ways twice)\n' "$OMP_TURNEND_EXT" "$OMP_EXT" "$OMP_TURNEND_EXT" "$OMP_EXT"
   fi
 fi
+SUPERVISION_COMPACT=
+[ "$REEMIT" -ne 1 ] || SUPERVISION_COMPACT=--compact
 "$SCRIPT_DIR/fm-supervision-instructions.sh" \
   --harness "$PRIMARY_HARNESS" \
   --read-only "$READ_ONLY" \
   --afk "$AFK_PRESENT" \
   --afk-mode "$AFK_MODE" \
-  --x-mode "$X_MODE_PRESENT"
+  --x-mode "$X_MODE_PRESENT" \
+  ${SUPERVISION_COMPACT:+"$SUPERVISION_COMPACT"}
 
 # --- 5. read-once contract -------------------------------------------------
 # Ahead of the two digests it governs, not after them: a truncated tail is
@@ -802,6 +907,16 @@ fi
 # a stage that never ran, which the truncation banner names by stage.
 stage read-once
 section "READ-ONCE CONTRACT"
+if [ "$REEMIT" -eq 1 ]; then
+  cat <<'EOF'
+This re-emit is compact: fleet state is one line per task, the backlog is counts
+and ids, and each context file is a pointer with its size. Never read a saved
+hook printout, the backlog, a status log or a context file whole: use grep or an
+exact line range (sed -n 'A,Bp'). Go to a source only when this digest flagged it
+ABSENT, it looked corrupt, a STARTUP TRUNCATED banner named its stage, or this
+turn needs it (the head of data/captain.md holds the captain's ranked goals).
+EOF
+else
 cat <<'EOF'
 Everything below is printed in full for this session start: every state/*.meta,
 a compact data/backlog.md listing, a bounded tail of every state/*.status,
@@ -824,12 +939,25 @@ Go to a source directly only when:
   - or a STARTUP TRUNCATED banner named the stage that would have printed it, in
     which case that stage's sources were never emitted and must be reconciled.
 EOF
+fi
 
 # --- 6. fleet-state digest ---------------------------------------------
 # Before CONTEXT: see this file's ORDERING note. Live fleet identity is what a
 # truncated tail must never take.
 stage fleet-state
 section "FLEET STATE"
+if [ "$REEMIT" -eq 1 ]; then
+  print_backlog_reemit_summary "$DATA/backlog.md" "data/backlog.md"
+  subsection "Work under way (state/*.meta)"
+  print_reemit_tasks
+  subsection "Orphan status logs (state/*.status without matching .meta)"
+  ORPHAN_COUNT=0
+  for status in "$STATE"/*.status; do
+    [ -f "$status" ] || continue
+    [ -f "$STATE/$(basename "$status" .status).meta" ] || ORPHAN_COUNT=$((ORPHAN_COUNT + 1))
+  done
+  printf '%s\n' "$ORPHAN_COUNT"
+else
 print_backlog_compact "$DATA/backlog.md" "data/backlog.md"
 
 subsection "Work under way (state/*.meta)"
@@ -874,6 +1002,7 @@ for status in "$STATE"/*.status; do
   print_status_tail "$status"
 done
 [ "$ORPHAN_STATUS_FOUND" -eq 1 ] || printf '(none)\n'
+fi
 
 subsection "AFK"
 # The away posture is the record (bin/fm-afk-contract.sh); the legacy flag
@@ -944,11 +1073,19 @@ fi
 # take (see this file's ORDERING note).
 stage context
 section "CONTEXT"
-print_file_or_absent "$DATA/projects.md" "data/projects.md"
-print_file_or_absent "$DATA/secondmates.md" "data/secondmates.md"
-print_file_or_absent "$DATA/captain.md" "data/captain.md"
-print_file_or_absent "$DATA/captain-shared.md" "data/captain-shared.md (shared, main-authoritative, read-only in secondmate homes)"
-print_file_or_absent "$DATA/learnings.md" "data/learnings.md"
+if [ "$REEMIT" -eq 1 ]; then
+  print_context_pointer "$DATA/projects.md" "data/projects.md"
+  print_context_pointer "$DATA/secondmates.md" "data/secondmates.md"
+  print_context_pointer "$DATA/captain.md" "data/captain.md"
+  print_context_pointer "$DATA/captain-shared.md" "data/captain-shared.md"
+  print_context_pointer "$DATA/learnings.md" "data/learnings.md"
+else
+  print_file_or_absent "$DATA/projects.md" "data/projects.md"
+  print_file_or_absent "$DATA/secondmates.md" "data/secondmates.md"
+  print_file_or_absent "$DATA/captain.md" "data/captain.md"
+  print_file_or_absent "$DATA/captain-shared.md" "data/captain-shared.md (shared, main-authoritative, read-only in secondmate homes)"
+  print_file_or_absent "$DATA/learnings.md" "data/learnings.md"
+fi
 
 # --- 9. closing reminder -----------------------------------------------
 stage next-step

@@ -2143,6 +2143,212 @@ EOF
   pass "--reemit reprints the digest without repeating startup's mutating sweeps and still drains queued wakes"
 }
 
+test_reemit_digest_is_capped_at_8kb_with_pointers_for_context() {
+  local rec root home fakebin reemit captain_file learnings_file projects_file captain_shared_file
+  local captain_bytes captain_lines projects_bytes projects_lines learnings_bytes learnings_lines
+  local i task_id status_file out_size
+  rec=$(new_world reemit-capped)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf '%s\n' manual > "$home/config/backlog-backend"
+
+  # data/backlog.md with 30 queued items
+  {
+    printf '# Backlog\n\n## In flight\n\n## Queued\n'
+    i=1
+    while [ "$i" -le 30 ]; do
+      printf -- '- queued-item-%s: queued task %s\n' "$i" "$i"
+      i=$((i + 1))
+    done
+  } > "$home/data/backlog.md"
+
+  # data/captain.md ~40 KB (600 lines)
+  captain_file="$home/data/captain.md"
+  i=1
+  while [ "$i" -le 600 ]; do
+    printf 'captain line %s padding padding padding padding padding padding\n' "$i" >> "$captain_file"
+    i=$((i + 1))
+  done
+
+  # data/learnings.md ~20 KB
+  learnings_file="$home/data/learnings.md"
+  i=1
+  while [ "$i" -le 300 ]; do
+    printf 'learning line %s padding padding padding padding padding\n' "$i" >> "$learnings_file"
+    i=$((i + 1))
+  done
+
+  # data/projects.md ~4 KB
+  projects_file="$home/data/projects.md"
+  i=1
+  while [ "$i" -le 50 ]; do
+    printf 'project line %s padding padding\n' "$i" >> "$projects_file"
+    i=$((i + 1))
+  done
+
+  # data/captain-shared.md present but empty
+  captain_shared_file="$home/data/captain-shared.md"
+  : > "$captain_shared_file"
+
+  # data/secondmates.md ABSENT (do not create)
+
+  # 14 tasks t1..t14 with meta + status (20 lines each, last line 400 chars)
+  i=1
+  while [ "$i" -le 14 ]; do
+    task_id="t$i"
+    printf 'window=firstmate:fm-%s\nkind=ship\n' "$task_id" > "$home/state/$task_id.meta"
+    status_file="$home/state/$task_id.status"
+    j=1
+    while [ "$j" -le 19 ]; do
+      printf 'working: step %s\n' "$j" >> "$status_file"
+      j=$((j + 1))
+    done
+    {
+      printf 'working [at=1]: '
+      awk 'BEGIN { while (i++ < 400) printf "x" }'
+      printf '\n'
+    } >> "$status_file"
+    i=$((i + 1))
+  done
+
+  # Empty wake queue
+  : > "$home/state/.wake-queue"
+
+  reemit=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" FM_FAKE_HARNESS_PID=$$ PATH="$fakebin:$BASE_PATH" \
+    env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
+    "$SESSION_START" --reemit)
+
+  out_size=$(printf '%s' "$reemit" | wc -c | tr -d ' ')
+  [ "$out_size" -le 8192 ] || fail "re-emit output is $out_size bytes, exceeds 8192 cap"
+
+  assert_contains "$reemit" "SESSION START (CONTEXT RE-EMIT)" "missing SESSION START (CONTEXT RE-EMIT) heading"
+  assert_contains "$reemit" "WAKE QUEUE" "missing WAKE QUEUE heading"
+  assert_contains "$reemit" "SUPERVISION OPERATING INSTRUCTIONS" "missing SUPERVISION OPERATING INSTRUCTIONS heading"
+  assert_contains "$reemit" "READ-ONCE CONTRACT" "missing READ-ONCE CONTRACT heading"
+  assert_contains "$reemit" "FLEET STATE" "missing FLEET STATE heading"
+  assert_contains "$reemit" "CONTEXT" "missing CONTEXT heading"
+  assert_contains "$reemit" "NEXT STEP" "missing NEXT STEP heading"
+
+  captain_bytes=$(wc -c < "$captain_file" | tr -d ' ')
+  captain_lines=$(wc -l < "$captain_file" | tr -d ' ')
+  assert_contains "$reemit" "data/captain.md: $captain_bytes bytes, $captain_lines lines" "captain.md pointer line missing or incorrect"
+
+  projects_bytes=$(wc -c < "$projects_file" | tr -d ' ')
+  projects_lines=$(wc -l < "$projects_file" | tr -d ' ')
+  assert_contains "$reemit" "data/projects.md: $projects_bytes bytes, $projects_lines lines" "projects.md pointer line missing or incorrect"
+
+  learnings_bytes=$(wc -c < "$learnings_file" | tr -d ' ')
+  learnings_lines=$(wc -l < "$learnings_file" | tr -d ' ')
+  assert_contains "$reemit" "data/learnings.md: $learnings_bytes bytes, $learnings_lines lines" "learnings.md pointer line missing or incorrect"
+
+  assert_contains "$reemit" "data/secondmates.md: ABSENT" "secondmates.md ABSENT marker missing"
+  assert_contains "$reemit" "data/captain-shared.md: (present, empty)" "captain-shared.md empty marker missing"
+
+  assert_not_contains "$reemit" "captain line 300" "full captain.md content leaked into re-emit"
+
+  assert_contains "$reemit" "t1 ship endpoint=" "t1 fleet line missing"
+  assert_contains "$reemit" "t12 ship endpoint=" "t12 fleet line missing"
+  assert_contains "$reemit" "more task" "more task disclosure missing"
+
+  pass "re-emit digest is capped at 8KB with pointer lines for context files"
+}
+
+test_reemit_never_drops_or_caps_queued_wake_rows() {
+  local rec root home fakebin reemit i
+  rec=$(new_world reemit-wake-rows)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf '%s\n' manual > "$home/config/backlog-backend"
+
+  # Seed 40 wake rows
+  i=1
+  while [ "$i" -le 40 ]; do
+    append_wake "$home/state" signal "task-w$i" "done: row-$i" || fail "seed wake $i failed"
+    i=$((i + 1))
+  done
+
+  reemit=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" FM_FAKE_HARNESS_PID=$$ PATH="$fakebin:$BASE_PATH" \
+    env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
+    "$SESSION_START" --reemit)
+
+  i=1
+  while [ "$i" -le 40 ]; do
+    assert_contains "$reemit" "done: row-$i" "wake row $i missing from re-emit"
+    i=$((i + 1))
+  done
+  assert_contains "$reemit" "WAKE_ACK_REQUIRED:" "WAKE_ACK_REQUIRED line missing"
+
+  pass "re-emit passes all queued wake rows verbatim without capping"
+}
+
+test_reemit_task_listing_is_bounded_and_discloses_the_remainder() {
+  local rec root home fakebin reemit i task_id out_size listed
+  rec=$(new_world reemit-task-bound)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf '%s\n' manual > "$home/config/backlog-backend"
+
+  # 40 tasks t1..t40 with meta (kind=scout) and one-line status
+  i=1
+  while [ "$i" -le 40 ]; do
+    task_id="t$i"
+    printf 'window=firstmate:fm-%s\nkind=scout\n' "$task_id" > "$home/state/$task_id.meta"
+    printf 'working: only line\n' > "$home/state/$task_id.status"
+    i=$((i + 1))
+  done
+
+  # Empty wake queue
+  : > "$home/state/.wake-queue"
+
+  reemit=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" FM_FAKE_HARNESS_PID=$$ PATH="$fakebin:$BASE_PATH" \
+    env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
+    "$SESSION_START" --reemit)
+
+  out_size=$(printf '%s' "$reemit" | wc -c | tr -d ' ')
+  [ "$out_size" -le 8192 ] || fail "re-emit output is $out_size bytes, exceeds 8192 cap"
+
+  listed=$(printf '%s\n' "$reemit" | grep -c ' scout endpoint=') || true
+  [ "$listed" -eq 12 ] || fail "re-emit listed $listed task lines, expected exactly 12"
+  assert_contains "$reemit" "28 more task" "remainder disclosure missing or incorrect"
+
+  pass "re-emit task listing is bounded to 12 lines and discloses the remainder"
+}
+
+test_full_startup_still_prints_context_files_in_full() {
+  local rec root home fakebin startup reemit
+  rec=$(new_world full-startup-context)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf '%s\n' manual > "$home/config/backlog-backend"
+
+  printf 'UNIQUE-CAPTAIN-MARKER-9137\n' > "$home/data/captain.md"
+
+  # Full startup
+  startup=$(FM_FAKE_HARNESS_PID=$$ run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_contains "$startup" "UNIQUE-CAPTAIN-MARKER-9137" "full startup did not print captain.md in full"
+
+  # Re-emit
+  reemit=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" FM_FAKE_HARNESS_PID=$$ PATH="$fakebin:$BASE_PATH" \
+    env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
+    "$SESSION_START" --reemit)
+  assert_not_contains "$reemit" "UNIQUE-CAPTAIN-MARKER-9137" "re-emit leaked full captain.md content"
+  assert_contains "$reemit" "data/captain.md: " "re-emit missing captain.md pointer line"
+
+  pass "full startup prints context files in full; re-emit uses pointers"
+}
+
 test_agents_baseline_stays_at_true_start_and_reemits_on_every_drifted_pi_compact() {
   local rec root home fakebin startup compact_equal compact_first compact_second clear_out resume_out reset_out baseline baseline_after expected_hash refresh_line bootstrap_line
   rec=$(new_world agents-refresh)
@@ -2749,6 +2955,10 @@ test_portable_timeout_escalates_term_resistant_process
 test_runtime_bound_leaves_a_healthy_digest_untouched
 test_runtime_bound_leaves_harness_ancestry_headroom
 test_reemit_skips_startup_sweeps_but_keeps_the_wake_drain
+test_reemit_digest_is_capped_at_8kb_with_pointers_for_context
+test_reemit_never_drops_or_caps_queued_wake_rows
+test_reemit_task_listing_is_bounded_and_discloses_the_remainder
+test_full_startup_still_prints_context_files_in_full
 test_agents_baseline_stays_at_true_start_and_reemits_on_every_drifted_pi_compact
 test_read_only_pi_compact_refreshes_against_its_own_session_identity
 test_codex_unreachable_reset_sources_do_not_claim_instruction_refresh

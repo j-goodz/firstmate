@@ -17,15 +17,19 @@ AFK_MODE=away
 X_MODE=0
 REPAIR_LINE=0
 QUEUE_PENDING=0
+COMPACT=0
 
 usage() {
   cat <<'EOF'
-Usage: fm-supervision-instructions.sh [--harness <name>] [--read-only 0|1] [--afk 0|1] [--afk-mode away|quiet] [--x-mode 0|1] [--repair-line] [--queue-pending 0|1]
+Usage: fm-supervision-instructions.sh [--harness <name>] [--read-only 0|1] [--afk 0|1] [--afk-mode away|quiet] [--x-mode 0|1] [--repair-line] [--queue-pending 0|1] [--compact]
 
 Print the current primary harness's supervision operating instructions.
 With --repair-line, print one concise repair instruction for guard and hook messages.
 --afk-mode only matters when --afk 1 (present); it selects the away-mode vs
 quiet-mode (kunchenguid/firstmate#2356) wording, and defaults to away.
+--compact (a context re-emit): for claude, whose watcher the Stop hook arms, print the
+current state, the core rules and a pointer to the full protocol instead of the whole
+protocol. Every other harness prints in full, because its model must read the arm steps.
 EOF
 }
 
@@ -73,6 +77,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --repair-line)
       REPAIR_LINE=1
+      shift
+      ;;
+    --compact)
+      COMPACT=1
       shift
       ;;
     -h|--help)
@@ -240,5 +248,16 @@ else
 fi
 ordinary_wake_line
 printf '\n'
-render_snippet
+if [ "$COMPACT" -eq 1 ] && [ "$HARNESS" = claude ]; then
+  cat <<'EOF'
+Mode: Claude Stop-hook-owned supervision (compact; full protocol: docs/supervision-protocols/claude.md, read by line range when a wake needs it).
+- Drain first with `bin/fm-wake-drain.sh` on every wake. After handling all emitted wakes, open decisions and unread status lines, run the exact `--ack-through` command printed as `WAKE_ACK_REQUIRED`.
+- The Stop `asyncRewake` hook (`bin/fm-claude-stop-autoarm.sh`) arms the watcher at every turn end; never run `bin/fm-watch-arm.sh` after an ordinary wake and never turn an auto-arm failure notice into a manual-arm loop.
+- A `Stop hook feedback` wake (`signal:`, `stale:`, `check:`, `heartbeat`): drain, then act only on real wake rows, `OPEN DECISIONS`, `UNREAD STATUS` or a real watcher reason line.
+- If the Stop hook does not claim the home or reports an exhausted failure, inspect its registration and watcher startup path before ending blind.
+- Waiting on the hook-owned cycle is silent. Never stop watchers with a broad process pattern.
+EOF
+else
+  render_snippet
+fi
 printf '\n'
