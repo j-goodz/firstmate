@@ -23,7 +23,14 @@
 # name, still requires every other check green, and still binds the head. It is
 # refused while the away-posture record exists, and it never
 # applies on GitLab, where a merge already requires the head pipeline to have
-# succeeded. After gh returns success, GitHub's live state is read back and
+# succeeded. A GitHub merge is also refused when the pull request's live base
+# branch is not the repository's live default branch, because a stacked pull
+# request whose base was already merged away lands on a dead branch and never
+# reaches the default branch; the refusal names both branches and, when cheap to
+# read, the already-merged pull request of the base branch. An attended
+# --allow-non-default-base merges into such a base deliberately; it is refused
+# while the away-posture record exists and does not apply on GitLab, where the
+# target branch is not checked. After gh returns success, GitHub's live state is read back and
 # accepted only when the pull request is merged or in the merge queue. gh's
 # GraphQL API supplies that queue-aware read; when that read fails, gh-axi's
 # own view still proves a landed merge, and every outcome it cannot prove
@@ -100,7 +107,7 @@
 # explicit captain instruction and never skips the live green check, the
 # away-record read, or a captain hold.
 #
-# Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [-- <extra forge merge args>]
+# Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [--allow-non-default-base] [-- <extra forge merge args>]
 #
 # On GitLab, this script confirms the MR is actually merged before reporting it;
 # an auto-merge-queued or unconfirmed request leaves the poll armed and records
@@ -149,6 +156,7 @@ PROJECT_URL="https://$FM_PR_HOST/$FM_PR_PATH"
 shift 2
 ATTENDED_OVERRIDE=false
 ALLOW_RED=()
+ALLOW_NON_DEFAULT_BASE=false
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --attended-override)
@@ -169,12 +177,24 @@ while [ "$#" -gt 0 ]; do
       echo "error: --allow-red requires a separate check name argument" >&2
       exit 2
       ;;
+    --allow-non-default-base)
+      ALLOW_NON_DEFAULT_BASE=true
+      shift
+      ;;
+    --allow-non-default-base=*)
+      echo "error: --allow-non-default-base takes no value" >&2
+      exit 2
+      ;;
     --) shift; break ;;
     *) break ;;
   esac
 done
 if [ "${#ALLOW_RED[@]}" -gt 0 ] && [ "$PROVIDER" = gitlab ]; then
   echo "error: --allow-red does not apply to GitLab, where a merge already requires the head pipeline to have succeeded" >&2
+  exit 2
+fi
+if [ "$ALLOW_NON_DEFAULT_BASE" = true ] && [ "$PROVIDER" = gitlab ]; then
+  echo "error: --allow-non-default-base does not apply to GitLab, where the target branch is not checked" >&2
   exit 2
 fi
 
@@ -572,7 +592,7 @@ github_checks_not_green() {
 # Pre-merge conditions for a GitHub pull request, read from one live view.
 # Sets FM_PR_MERGE_HEAD to the verified head on success.
 github_verify_mergeable() {
-  local json fields line red name covered
+  local json fields line red name covered default_branch base_pr
   local total=0 named=0 refusals=''
   local state='' draft='' mergeable='' merge_state='' live_head='' base=''
 
@@ -639,6 +659,20 @@ FIELDS
   [ "$merge_state" != DIRTY ] \
     || refusals="$refusals  - mergeStateStatus is DIRTY (conflicts)
 "
+
+  if [ "$ALLOW_NON_DEFAULT_BASE" != true ]; then
+    default_branch=$(gh repo view "$PR_OWNER/$PR_REPO" --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || true)
+    if [ -z "$default_branch" ]; then
+      echo "error: could not read the repository default branch before merging" >&2
+      return 1
+    fi
+    if [ "$base" != "$default_branch" ]; then
+      base_pr=$(gh pr list --repo "$PR_OWNER/$PR_REPO" --head "$base" --state merged --limit 1 \
+        --json url --jq '.[0].url // empty' 2>/dev/null || true)
+      refusals="$refusals  - the base branch is \"$base\", not the default branch \"$default_branch\"${base_pr:+ (the pull request of $base is already merged: $base_pr)}; pass --allow-non-default-base to merge there deliberately
+"
+    fi
+  fi
 
   uncovered=''
   while IFS= read -r name; do
@@ -935,6 +969,10 @@ require_current_away_authority() {
   resolve_merge_authority || return 1
   if [ "$FM_PR_AWAY_POSTURE" = true ] && [ "${#ALLOW_RED[@]}" -gt 0 ]; then
     echo "error: --allow-red is attended-only; while the away-posture record exists the green check is absolute" >&2
+    return 2
+  fi
+  if [ "$FM_PR_AWAY_POSTURE" = true ] && [ "$ALLOW_NON_DEFAULT_BASE" = true ]; then
+    echo "error: --allow-non-default-base is attended-only; while the away-posture record exists the default-branch check is absolute" >&2
     return 2
   fi
 }

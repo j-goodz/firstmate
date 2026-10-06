@@ -163,6 +163,14 @@ case "${1:-} ${2:-}" in
         ;;
     esac
     ;;
+  "repo view")
+    cat "${FM_TEST_GH_DEFAULT_BRANCH_FILE:-/dev/null}" 2>/dev/null || printf 'main\n'
+    exit 0
+    ;;
+  "pr list")
+    cat "${FM_TEST_GH_BASE_PR_FILE:-/dev/null}" 2>/dev/null || true
+    exit 0
+    ;;
   "pr merge")
     if [ -n "${FM_TEST_META_AT_MERGE:-}" ] && [ -f "${FM_STATE_OVERRIDE:-}/task-x1.meta" ]; then
       cat "$FM_STATE_OVERRIDE/task-x1.meta" > "$FM_TEST_META_AT_MERGE"
@@ -389,6 +397,8 @@ run_pr_merge() {
   FM_TEST_GH_RULES="$case_dir/github-rules" \
   FM_TEST_GH_VIEW_JSON="$case_dir/github-view.json" \
   FM_TEST_GH_HEAD="$case_dir/github-head" \
+  FM_TEST_GH_DEFAULT_BRANCH_FILE="$case_dir/github-default-branch" \
+  FM_TEST_GH_BASE_PR_FILE="$case_dir/github-base-pr" \
   FM_TEST_GH_MERGE_RC_FILE="$case_dir/github-merge-rc" \
   FM_TEST_GH_MERGE_OUTPUT="$(cat "$case_dir/github-merge-output" 2>/dev/null || true)" \
   FM_TEST_GH_GRAPHQL_FAIL="$case_dir/github-graphql-fail" \
@@ -2722,6 +2732,66 @@ test_allow_red_is_refused_while_away() {
   pass "fm-pr-merge rechecks away presence before an attended red merge"
 }
 
+# A pull request whose base is not the default branch lands on a dead branch
+# when its parent was already merged, so the merge refuses unless an attended
+# caller passes --allow-non-default-base.
+test_non_default_base_refuses_unless_allowed() {
+  local case_dir rc head
+  head=acacacacacacacacacacacacacacacacacacacac
+
+  case_dir=$(make_case github-base-default)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/90 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" || fail "github-base-default: base equal to default should merge"
+  assert_logged_gh_merge "$case_dir" 90 example/repo --squash
+
+  case_dir=$(make_case github-base-differs)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  printf 'trunk\n' > "$case_dir/github-default-branch"
+  printf 'https://github.com/example/repo/pull/80\n' > "$case_dir/github-base-pr"
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/91 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "github-base-differs: a non-default base must refuse"
+  assert_grep 'the base branch is "main", not the default branch "trunk"' "$case_dir/stderr" \
+    "github-base-differs: refusal did not name both branches"
+  assert_grep 'already merged: https://github.com/example/repo/pull/80' "$case_dir/stderr" \
+    "github-base-differs: refusal did not name the merged base pull request"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "github-base-differs: gh pr merge ran on a non-default base"
+
+  case_dir=$(make_case github-base-differs-allowed)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  printf 'trunk\n' > "$case_dir/github-default-branch"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/92 \
+    --allow-non-default-base \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" || fail "github-base-differs-allowed: the flag should merge"
+  assert_logged_gh_merge "$case_dir" 92 example/repo --squash
+
+  case_dir=$(make_case github-base-differs-away)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  printf 'trunk\n' > "$case_dir/github-default-branch"
+  write_away_record "$case_dir" --words 'merge task-x1 when green'
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/93 \
+    --allow-non-default-base \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "github-base-differs-away: the flag must be refused while away"
+  assert_grep '--allow-non-default-base is attended-only' "$case_dir/stderr" \
+    "github-base-differs-away: refusal did not name attended-only"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "github-base-differs-away: gh pr merge ran despite the away flag"
+  pass "fm-pr-merge refuses a non-default GitHub base unless an attended flag allows it"
+}
+
 test_allow_red_requires_one_separate_name() {
   local case_dir rc head
   head=afafafafafafafafafafafafafafafafafafafaf
@@ -3245,6 +3315,7 @@ test_supersession_never_crosses_check_names
 test_undated_runs_never_supersede
 test_allow_red_still_waives_only_the_current_failure
 test_allow_red_is_refused_while_away
+test_non_default_base_refuses_unless_allowed
 test_allow_red_requires_one_separate_name
 test_away_record_permits_any_green_merge_under_away_authority
 test_away_branch_actor_merges_green_under_the_record
