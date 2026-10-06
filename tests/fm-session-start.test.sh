@@ -2206,9 +2206,11 @@ EOF
       printf 'working: step %s\n' "$j" >> "$status_file"
       j=$((j + 1))
     done
-    printf 'working [at=1]: ' >> "$status_file"
-    awk 'BEGIN { while (i++ < 400) printf "x" }' >> "$status_file"
-    printf '\n' >> "$status_file"
+    {
+      printf 'working [at=1]: '
+      awk 'BEGIN { while (i++ < 400) printf "x" }'
+      printf '\n'
+    } >> "$status_file"
     i=$((i + 1))
   done
 
