@@ -1,0 +1,16 @@
+## no ceiling (incident: account-3 wins at 70% 5h)
+account=account-3
+config_dir=/home/justin/.cache/tmp/tmp.zCQgNAQwLj/account-3
+reason=account-3: 60% weekly left, resets in 24h (2.5%/h), 5h 70%; others: account-1 eligible 0.5%/h
+exit 0
+## ceiling account-3 60
+account=account-1
+config_dir=/home/justin/.cache/tmp/tmp.zCQgNAQwLj/account-1
+reason=account-1: 60% weekly left, resets in 120h (0.5%/h), 5h 5%; others: account-3 excluded-ceiling 5h 70% >= 60%
+exit 0
+## both over ceiling
+error: fm-account-pick.sh: refusing: no eligible account (account-1 excluded-ceiling 5h 5% >= 3%, account-3 excluded-ceiling 5h 70% >= 60%) and the fallback, the current account account-3, is at its 5h ceiling (70% of 60%)
+exit 3
+## bad ceiling
+error: /home/justin/.cache/tmp/tmp.zCQgNAQwLj/conf: line 4: ceiling percent '150' is not an integer from 1 to 100 (expected '# comment', 'snapshot <absolute path>', 'account <label> <absolute store dir> [<absolute sign-in file>]', 'reserve <label> <HH:MM> <HH:MM>', 'reserve-file <absolute path>', or 'ceiling <label> <pct>')
+exit 2
