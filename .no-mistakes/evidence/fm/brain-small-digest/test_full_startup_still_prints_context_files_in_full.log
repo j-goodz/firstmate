@@ -1,0 +1,6 @@
+ok - full startup prints context files in full; re-emit uses pointers
+# fm-session-start.test.sh: all assertions passed
+
+real	0m10.299s
+user	0m2.305s
+sys	0m8.046s
