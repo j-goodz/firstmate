@@ -16,11 +16,13 @@
 #   account <label> <absolute store dir> [<absolute sign-in file>]   one or more
 #   reserve <label> <HH:MM> <HH:MM>                          optional, repeatable
 #   reserve-file <absolute path>                             optional, at most once
+#   ceiling <label> <pct>                                    optional, at most once per label
 # <label> is [A-Za-z0-9._-]+, unique, and must match a key under the snapshot's
 # "accounts" object. Paths may not contain whitespace. Any other line, a
 # relative path, a duplicate label, a second snapshot line, or no account line
 # is malformed. A reserve line must name a configured label and two distinct
-# 24-hour times (00:00 to 23:59).
+# 24-hour times (00:00 to 23:59). A ceiling line must name a configured label
+# and an integer percent from 1 to 100, once per label.
 #
 # Reserves keep an account out of every pick, fallback included:
 #   reserve        Monday to Friday, from the first time until before the second,
@@ -36,6 +38,15 @@
 #                  stderr warning and reserves nothing.
 # When several reserves cover one account, the one that ends last applies.
 # A reserve gates new launches only and does not stop workers already running.
+#
+# A ceiling keeps an account's 5-hour window from being filled by Firstmate's own
+# launches: an account whose five_hour_pct is at or above its ceiling is excluded
+# from every pick, fallback included (status excluded-ceiling). The intended use
+# is `ceiling account-3 60`, so the marketwatch account keeps 5-hour headroom for
+# the trading desk. When every signed-in, unreserved account is over its ceiling
+# the script refuses with exit 3 and one stderr line naming each account and its
+# ceiling. A ceiling is judged on fresh readings only, so a stale or failed
+# reading stays unknown-* and never counts as over the ceiling.
 #
 # Snapshot: a JSON object whose "accounts" maps each label to a reading with
 # numeric five_hour_pct and weekly_pct, weekly_resets_at (ISO-8601 or epoch),
@@ -53,6 +64,7 @@
 #   unknown-stale     fetched_at is missing or older than MAX_AGE_S (900s, the
 #                     same freshness bound nexus usage_snapshot.is_usable uses)
 #   unknown-incomplete  a percent or the weekly reset is missing or unparseable
+#   excluded-ceiling  five_hour_pct at or above the account's ceiling
 #   excluded-5h       five_hour_pct above FIVE_HOUR_MAX (85)
 #   excluded-weekly   weekly_pct at or above WEEKLY_MAX (98)
 #   eligible          score = (100 - weekly_pct) / hours until weekly reset
@@ -94,7 +106,7 @@
 # account: label,
 # config_dir, signin, status, reserved, reserve_until (epoch or
 # null), reserve_until_local (Toronto time or null), reserve_source ("window" or
-# "file" or null), five_hour_pct, weekly_pct, weekly_resets_at,
+# "file" or null), ceiling (the configured percent or null), five_hour_pct, weekly_pct, weekly_resets_at,
 # hours_to_weekly_reset, age_s, and score. A refusal is logged with chosen null. Credential contents are never read into output or the log; the
 # sign-in test is a jq -e predicate. A failed log write is one stderr warning
 # and never changes the pick.
@@ -144,7 +156,7 @@ if [ ! -e "$CONFIG_FILE" ] && [ ! -L "$CONFIG_FILE" ]; then
 fi
 
 malformed() {
-  echo "error: $CONFIG_FILE: $1 (expected '# comment', 'snapshot <absolute path>', 'account <label> <absolute store dir> [<absolute sign-in file>]', 'reserve <label> <HH:MM> <HH:MM>', or 'reserve-file <absolute path>')" >&2
+  echo "error: $CONFIG_FILE: $1 (expected '# comment', 'snapshot <absolute path>', 'account <label> <absolute store dir> [<absolute sign-in file>]', 'reserve <label> <HH:MM> <HH:MM>', 'reserve-file <absolute path>', or 'ceiling <label> <pct>')" >&2
   exit 2
 }
 
@@ -167,6 +179,9 @@ WINDOW_LABELS=()
 WINDOW_STARTS=()
 WINDOW_ENDS=()
 WINDOW_LINES=()
+CEILING_LABELS=()
+CEILING_PCTS=()
+CEILING_LINES=()
 lineno=0
 while IFS= read -r line || [ -n "$line" ]; do
   lineno=$((lineno + 1))
@@ -214,6 +229,20 @@ while IFS= read -r line || [ -n "$line" ]; do
     RESERVE_FILE=${words[1]}
     RESERVE_FILE_SET=1
     ;;
+  ceiling)
+    [ "${#words[@]}" -eq 3 ] || malformed "line $lineno: ceiling takes a label and a percent"
+    case "${words[2]}" in
+    '' | *[!0-9]*) malformed "line $lineno: ceiling percent '${words[2]}' is not an integer from 1 to 100" ;;
+    esac
+    { [ "$((10#${words[2]}))" -ge 1 ] && [ "$((10#${words[2]}))" -le 100 ]; } ||
+      malformed "line $lineno: ceiling percent '${words[2]}' is not an integer from 1 to 100"
+    for existing in ${CEILING_LABELS[@]+"${CEILING_LABELS[@]}"}; do
+      [ "$existing" != "${words[1]}" ] || malformed "line $lineno: duplicate ceiling for '${words[1]}'"
+    done
+    CEILING_LABELS+=("${words[1]}")
+    CEILING_PCTS+=("$((10#${words[2]}))")
+    CEILING_LINES+=("$lineno")
+    ;;
   *) malformed "line $lineno: unknown keyword '${words[0]}'" ;;
   esac
 done <"$CONFIG_FILE"
@@ -234,6 +263,12 @@ for i in "${!WINDOW_LABELS[@]}"; do
   label_index "${WINDOW_LABELS[$i]}" >/dev/null ||
     malformed "line ${WINDOW_LINES[$i]}: reserve names '${WINDOW_LABELS[$i]}', which no account line defines"
 done
+for i in ${CEILING_LABELS[@]+"${!CEILING_LABELS[@]}"}; do
+  label_index "${CEILING_LABELS[$i]}" >/dev/null ||
+    malformed "line ${CEILING_LINES[$i]}: ceiling names '${CEILING_LABELS[$i]}', which no account line defines"
+done
+CEILING_CONFIGURED=0
+[ "${#CEILING_LABELS[@]}" -eq 0 ] || CEILING_CONFIGURED=1
 RESERVE_CONFIGURED=0
 [ "${#WINDOW_LABELS[@]}" -eq 0 ] && [ "$RESERVE_FILE_SET" -eq 0 ] || RESERVE_CONFIGURED=1
 
@@ -253,6 +288,8 @@ refuse() {  # <one line>
 if ! command -v jq >/dev/null 2>&1; then
   [ "$RESERVE_CONFIGURED" -eq 0 ] ||
     refuse "jq is not installed, so the configured account reserve cannot be honored; refusing rather than risk launching on a reserved account"
+  [ "$CEILING_CONFIGURED" -eq 0 ] ||
+    refuse "jq is not installed, so the configured account ceiling cannot be honored; refusing rather than risk launching on an account over its ceiling"
   echo "warning: fm-account-pick.sh: jq is not installed, so usage cannot be read; keeping the current account" >&2
   emit inherited "$CURRENT" "fallback: jq is not installed; kept the current account"
   exit 0
@@ -322,6 +359,12 @@ RESERVES_JSON=$(TZ=America/Toronto jq -nc --argjson windows "$WINDOWS_JSON" --ar
   | map({key: .label, value: .}) | from_entries
 ')
 
+CEILINGS_JSON='{}'
+for i in ${CEILING_LABELS[@]+"${!CEILING_LABELS[@]}"}; do
+  CEILINGS_JSON=$(jq -c --arg label "${CEILING_LABELS[$i]}" --argjson pct "${CEILING_PCTS[$i]}" \
+    '. + {($label): $pct}' <<<"$CEILINGS_JSON")
+done
+
 # Store paths compare after resolving symlinks and trailing slashes.
 canon_dir() {
   local d=$1
@@ -355,6 +398,7 @@ RESULT=$(jq -nc \
   --argjson accounts "$ACCOUNTS_JSON" \
   --argjson snap "$SNAPSHOT_JSON" \
   --argjson reserves "$RESERVES_JSON" \
+  --argjson ceilings "$CEILINGS_JSON" \
   --arg reserve_file "$RESERVE_FILE" \
   --argjson now "$NOW" \
   --argjson five_max "$FIVE_HOUR_MAX" \
@@ -388,12 +432,14 @@ RESULT=$(jq -nc \
       | (if $r == null then null else ($r.weekly_resets_at | epoch) end) as $reset
       | (if $reset == null then null else (($reset - $now) / 3600) end) as $hours
       | ($reserves[$a.label] // null) as $res
+      | ($ceilings[$a.label] // null) as $ceiling
       | (if $res != null then "excluded-reserve"
          elif $a.signin | not then "excluded-signin"
          elif $r == null then "unknown-missing"
          elif ($r.outcome != null) and ($r.outcome != "ok") then "unknown-failed"
          elif $age == null or $age > $max_age then "unknown-stale"
          elif $five == null or $weekly == null or $hours == null then "unknown-incomplete"
+         elif $ceiling != null and $five >= $ceiling then "excluded-ceiling"
          elif $five > $five_max then "excluded-5h"
          elif $weekly >= $weekly_max then "excluded-weekly"
          else "eligible" end) as $status
@@ -402,6 +448,7 @@ RESULT=$(jq -nc \
          reserve_until: ($res | if . == null then null else .until end),
          reserve_until_local: ($res | if . == null then null else .until_local end),
          reserve_source: ($res | if . == null then null else .source end),
+         ceiling: $ceiling,
          five_hour_pct: $five, weekly_pct: $weekly,
          weekly_resets_at: (if $r == null then null else $r.weekly_resets_at end),
          hours_to_weekly_reset: (if $hours == null then null else ($hours | r2) end),
@@ -411,9 +458,12 @@ RESULT=$(jq -nc \
                  else null end)} ] as $rows
   | ([ $rows[] | select(.status == "eligible") ] | sort_by([-.score, .five_hour_pct, .idx])) as $ranked
   | ($ranked[0] // null) as $pick
-  | ([ $rows[] | select(.current and .reserved) ][0] // null) as $reserved_current
-  | ([ $rows[] | select(.signin and (.reserved | not)) ][0] // null) as $unreserved
-  | ([ $rows[] | select(.signin and (.reserved | not)) ]) as $usable
+  | def barred: .reserved or .status == "excluded-ceiling";
+    def why: if .reserved then "reserved until \(.reserve_until_local)" else "at its 5h ceiling (\(.five_hour_pct)% of \(.ceiling)%)" end;
+    ([ $rows[] | select(.current and barred) ][0] // null) as $reserved_current
+  | ([ $rows[] | select(.signin and (barred | not)) ][0] // null) as $unreserved
+  | ([ $rows[] | select(.signin and (barred | not)) ]) as $usable
+  | ([ $rows[] | select(.status == "excluded-ceiling") ]) as $ceilinged
   | ([ $rows[] | select(.current) ][0] // null) as $current_row
   | (($usable | length) > 0 and ($usable | all(.status == "unknown-stale"))) as $stale_all
   | ([ $usable[]
@@ -422,13 +472,16 @@ RESULT=$(jq -nc \
             then (([100 - .weekly_pct, 0] | max) / ([.hours_to_weekly_reset, 0.1] | max))
             else -1 end)} ]
      | sort_by([-.stale_score, (.five_hour_pct // 999), .idx]) | .[0] // null) as $stale_pick
-  | def brief: "\(.label) \(.status)\(if .status == "eligible" then " \(.score | r2)%/h" elif .reserved then " until \(.reserve_until_local)" else "" end)";
+  | def brief: "\(.label) \(.status)\(if .status == "eligible" then " \(.score | r2)%/h" elif .reserved then " until \(.reserve_until_local)" elif .status == "excluded-ceiling" then " 5h \(.five_hour_pct)% >= \(.ceiling)%" else "" end)";
     (if $pick == null and $reserved_current != null and $unreserved != null then
       {chosen: $unreserved.label, config_dir: $unreserved.config_dir, fallback: true, refused: false,
-       reason: ("fallback: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + ") and the current account \($reserved_current.label) is reserved until \($reserved_current.reserve_until_local); took the first signed-in unreserved account \($unreserved.label)")}
+       reason: ("fallback: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + ") and the current account \($reserved_current.label) is \($reserved_current | why); took the first signed-in unreserved account \($unreserved.label)")}
     elif $pick == null and $reserved_current != null then
       {chosen: null, config_dir: null, fallback: true, refused: true,
-       reason: ("refusing: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + ") and the fallback, the current account \($reserved_current.label), is reserved until \($reserved_current.reserve_until_local) by its \($reserved_current.reserve_source) reserve")}
+       reason: ("refusing: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + ") and the fallback, the current account \($reserved_current.label), is \($reserved_current | why)\(if $reserved_current.reserved then " by its \($reserved_current.reserve_source) reserve" else "" end)")}
+    elif $pick == null and ($ceilinged | length) > 0 and ($usable | length) == 0 then
+      {chosen: null, config_dir: null, fallback: true, refused: true,
+       reason: ("refusing: no eligible account (" + ([ $rows[] | brief ] | join(", ")) + ") and every signed-in account is over its 5h ceiling (" + ([ $ceilinged[] | "\(.label) \(.five_hour_pct)% >= \(.ceiling)%" ] | join(", ")) + ")")}
     elif $pick == null then
       if $stale_all then
         (if $current == "" then

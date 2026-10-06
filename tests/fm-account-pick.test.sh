@@ -532,6 +532,106 @@ test_stale_and_five_hour_excluded_is_not_stale_fallback() {
   pass "stale and five hour excluded is not stale fallback"
 }
 
+test_ceiling_excludes_an_account_over_its_ceiling() {
+  new_case ceiling-exclude
+  printf 'ceiling account-3 60\n' >> "$CONF"
+  write_snapshot "$(account_json 13 50 96 30)" "$(account_json 61 50 24 30)"
+  run_pick
+  expect_code 0 "$STATUS" "pick must succeed"
+  assert_equals account-1 "$(field account)" "account over ceiling must be skipped"
+  assert_equals "$CASE/account-1" "$(field config_dir)" "config_dir must be the chosen account's store"
+  assert_equals '"excluded-ceiling"' "$(last_account account-3 status)" "log must name the ceiling exclusion"
+  assert_equals 60 "$(last_account account-3 ceiling)" "log must carry the ceiling value"
+  assert_equals null "$(last_account account-1 ceiling)" "log must carry null ceiling when none configured"
+  assert_contains "$(field reason)" "excluded-ceiling" "reason must mention ceiling exclusion"
+  pass "an account at or above its ceiling is excluded"
+}
+
+test_ceiling_is_inclusive_and_below_it_competes() {
+  new_case ceiling-inclusive
+  printf 'ceiling account-3 60\n' >> "$CONF"
+  write_snapshot "$(account_json 13 50 96 30)" "$(account_json 60 50 24 30)"
+  run_pick
+  assert_equals account-1 "$(field account)" "exactly at ceiling must be excluded"
+  assert_equals '"excluded-ceiling"' "$(last_account account-3 status)" "log must name the ceiling exclusion"
+  write_snapshot "$(account_json 13 50 96 30)" "$(account_json 59 50 24 30)"
+  run_pick
+  assert_equals account-3 "$(field account)" "below ceiling must compete normally"
+  assert_equals '"eligible"' "$(last_account account-3 status)" "log must say eligible below ceiling"
+  pass "ceiling is inclusive and below it competes normally"
+}
+
+test_every_account_over_its_ceiling_refuses() {
+  new_case ceiling-refuse
+  printf 'ceiling account-1 60\n' >> "$CONF"
+  printf 'ceiling account-3 60\n' >> "$CONF"
+  write_snapshot "$(account_json 70 50 96 30)" "$(account_json 61 50 24 30)"
+  run_pick
+  expect_code 3 "$STATUS" "every account over ceiling must refuse"
+  assert_equals "" "$OUT" "refusal must print no pick"
+  local err
+  err=$(cat "$CASE/stderr")
+  assert_contains "$err" "ceiling" "refusal must mention ceiling"
+  assert_contains "$err" "account-3" "refusal must name the account"
+  assert_equals 1 "$(printf '%s\n' "$err" | grep -c .)" "refusal must be exactly one stderr line"
+  assert_equals true "$(tail -n 1 "$LOG" | jq .refused)" "refusal must be logged"
+  assert_equals null "$(tail -n 1 "$LOG" | jq .chosen)" "refusal must log null chosen"
+  pass "when every account is over its ceiling the pick refuses"
+}
+
+test_ceilinged_current_account_is_never_the_fallback() {
+  new_case ceiling-fallback
+  printf 'ceiling account-3 60\n' >> "$CONF"
+  write_snapshot "$(account_json 10 50 96 1200)" "$(account_json 70 50 24 30)"
+  run_pick "$CASE/account-3"
+  expect_code 0 "$STATUS" "pick must succeed"
+  assert_equals account-1 "$(field account)" "ceilinged current must not be kept"
+  assert_equals true "$(tail -n 1 "$LOG" | jq .fallback)" "pick must be logged as fallback"
+  pass "a ceiling-excluded current account is never the fallback"
+}
+
+test_ceiling_does_nothing_when_under_it_or_absent() {
+  new_case ceiling-absent
+  write_snapshot "$(account_json 13 50 96 30)" "$(account_json 80 50 24 30)"
+  run_pick
+  assert_equals account-3 "$(field account)" "no ceiling configured, normal pick"
+  assert_equals '"eligible"' "$(last_account account-3 status)" "status must be eligible"
+  assert_equals null "$(last_account account-3 ceiling)" "log must carry null ceiling"
+  pass "ceiling does nothing when absent or under it"
+}
+
+test_ceiling_config_is_validated() {
+  local bad
+  for bad in 'ceiling account-9 60' 'ceiling account-3 0' 'ceiling account-3 101' \
+    'ceiling account-3 abc' 'ceiling account-3' 'ceiling account-3 60 70'; do
+    new_case ceiling-malformed
+    printf '%s\n' "$bad" >> "$CONF"
+    "$PICK" --check --config "$CONF" >/dev/null 2>&1
+    expect_code 2 "$?" "--check must refuse '$bad'"
+  done
+  new_case ceiling-duplicate
+  printf 'ceiling account-3 60\n' >> "$CONF"
+  printf 'ceiling account-3 70\n' >> "$CONF"
+  "$PICK" --check --config "$CONF" >/dev/null 2>&1
+  expect_code 2 "$?" "--check must refuse a duplicate ceiling line"
+  new_case ceiling-valid
+  printf 'ceiling account-3 60\n' >> "$CONF"
+  "$PICK" --check --config "$CONF" >/dev/null 2>&1 || fail "--check must accept valid ceiling line"
+  pass "ceiling lines are validated with the rest of the config"
+}
+
+test_ceiling_without_jq_refuses() {
+  new_case ceiling-nojq
+  printf 'ceiling account-3 60\n' >> "$CONF"
+  mkdir -p "$CASE/bin"
+  local tool
+  for tool in bash date; do ln -s "$(command -v "$tool")" "$CASE/bin/$tool"; done
+  OUT=$(PATH="$CASE/bin" FM_ACCOUNT_PICK_NOW=$NOW "$PICK" --config "$CONF" --task t-1 --current "$CASE/account-1" 2>"$CASE/stderr")
+  expect_code 3 "$?" "with a ceiling configured and no jq, the pick must refuse"
+  assert_equals "" "$OUT" "the refusal must print no pick"
+  pass "a configured ceiling that cannot be evaluated refuses rather than falling back"
+}
+
 test_absent_config_is_a_noop
 test_sooner_weekly_reset_wins_at_equal_remaining
 test_spend_rate_ranks_remaining_over_hours
@@ -563,5 +663,12 @@ test_fresh_snapshot_is_unchanged_by_stale_fallback
 test_stale_fallback_with_unknown_parent_warns
 test_stale_fallback_with_unconfigured_parent_keeps_its_store
 test_stale_and_five_hour_excluded_is_not_stale_fallback
+test_ceiling_excludes_an_account_over_its_ceiling
+test_ceiling_is_inclusive_and_below_it_competes
+test_every_account_over_its_ceiling_refuses
+test_ceilinged_current_account_is_never_the_fallback
+test_ceiling_does_nothing_when_under_it_or_absent
+test_ceiling_config_is_validated
+test_ceiling_without_jq_refuses
 
 echo "# all fm-account-pick tests passed"
