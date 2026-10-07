@@ -233,6 +233,126 @@ fm_procevent_launch_confirm_seconds() {
   printf '%s\n' "$value"
 }
 
+# Bounded immediate re-arm. When an adapter says a captured result only means the poll
+# ended while its source is still live, the runner relaunches that source itself instead of
+# waiting for the next reconcile pass. The bound is FM_PROCEVENT_REARM_MAX re-arms per
+# FM_PROCEVENT_REARM_WINDOW_SECONDS. The delay before the k-th re-arm of a window is 0 for
+# k=1 and FM_PROCEVENT_REARM_BACKOFF_SECONDS * 2^(k-2) (capped at 60) after that. One private
+# record per source holds the accounting, so a restart cannot reset the bound.
+FM_PROCEVENT_REARM_MAX_DEFAULT=5
+FM_PROCEVENT_REARM_MAX_MIN=1
+FM_PROCEVENT_REARM_MAX_MAX=20
+
+FM_PROCEVENT_REARM_WINDOW_DEFAULT_SECONDS=600
+FM_PROCEVENT_REARM_WINDOW_MIN_SECONDS=1
+FM_PROCEVENT_REARM_WINDOW_MAX_SECONDS=86400
+
+FM_PROCEVENT_REARM_BACKOFF_DEFAULT_SECONDS=2
+FM_PROCEVENT_REARM_BACKOFF_MIN_SECONDS=1
+FM_PROCEVENT_REARM_BACKOFF_MAX_SECONDS=60
+
+fm_procevent_rearm_max() {
+  local value=${FM_PROCEVENT_REARM_MAX-}
+  if [ -z "$value" ]; then
+    printf '%s\n' "$FM_PROCEVENT_REARM_MAX_DEFAULT"
+    return 0
+  fi
+  case "$value" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$value" -ge "$FM_PROCEVENT_REARM_MAX_MIN" ] || return 1
+  [ "$value" -le "$FM_PROCEVENT_REARM_MAX_MAX" ] || return 1
+  printf '%s\n' "$value"
+}
+
+fm_procevent_rearm_window_seconds() {
+  local value=${FM_PROCEVENT_REARM_WINDOW_SECONDS-}
+  if [ -z "$value" ]; then
+    printf '%s\n' "$FM_PROCEVENT_REARM_WINDOW_DEFAULT_SECONDS"
+    return 0
+  fi
+  case "$value" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$value" -ge "$FM_PROCEVENT_REARM_WINDOW_MIN_SECONDS" ] || return 1
+  [ "$value" -le "$FM_PROCEVENT_REARM_WINDOW_MAX_SECONDS" ] || return 1
+  printf '%s\n' "$value"
+}
+
+fm_procevent_rearm_backoff_seconds() {
+  local value=${FM_PROCEVENT_REARM_BACKOFF_SECONDS-}
+  if [ -z "$value" ]; then
+    printf '%s\n' "$FM_PROCEVENT_REARM_BACKOFF_DEFAULT_SECONDS"
+    return 0
+  fi
+  case "$value" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$value" -ge "$FM_PROCEVENT_REARM_BACKOFF_MIN_SECONDS" ] || return 1
+  [ "$value" -le "$FM_PROCEVENT_REARM_BACKOFF_MAX_SECONDS" ] || return 1
+  printf '%s\n' "$value"
+}
+
+fm_procevent_rearm_delay() {  # <k> <base>: whole seconds to wait before the k-th re-arm
+  local k=$1 base=$2 delay
+  case "$k" in ''|*[!0-9]*) return 1 ;; esac
+  case "$base" in ''|*[!0-9]*) return 1 ;; esac
+  if [ "$k" -eq 1 ]; then
+    printf '0\n'
+    return 0
+  fi
+  delay=$((10#$base * (10#1 << (10#$k - 10#2))))
+  if [ "$delay" -gt 60 ]; then
+    delay=60
+  fi
+  printf '%s\n' "$delay"
+}
+
+fm_procevent_rearm_file() {  # <state-root> <source-id>
+  printf '%s/.%s.rearm\n' "$(fm_procevent_registry_dir "$1")" "$2"
+}
+
+# Spend one re-arm from the source's window; the caller holds the source lock. The record is one
+# line, `<window-start-epoch> <count> <gave-up-epoch>`, and a missing or malformed one starts a
+# fresh window. Prints `rearm <count> <delay>` and returns 0 while budget remains, `gaveup <count>
+# new|again` and returns 1 once it is spent (`new` only on the call that records the give-up), and
+# returns 2 when the limits or the record cannot be used.
+fm_procevent_rearm_take() {  # <state-root> <source-id> <now-epoch>
+  local state=$1 id=$2 now=$3 file max window backoff window_start=0 count=0 gave_up=0 delay tmp verdict status
+  file=$(fm_procevent_rearm_file "$state" "$id") || return 2
+  max=$(fm_procevent_rearm_max) || return 2
+  window=$(fm_procevent_rearm_window_seconds) || return 2
+  backoff=$(fm_procevent_rearm_backoff_seconds) || return 2
+  [ ! -L "$file" ] || return 2
+  if [ -f "$file" ]; then
+    read -r window_start count gave_up < "$file" 2>/dev/null || true
+    case "${window_start:+w}${count:+c}${gave_up:+g}" in
+      wcg) ;;
+      *) window_start=0 count=0 gave_up=0 ;;
+    esac
+    case "$window_start$count$gave_up" in
+      *[!0-9]*) window_start=0 count=0 gave_up=0 ;;
+    esac
+  fi
+  if [ "$count" -eq 0 ] || [ $((now - window_start)) -ge "$window" ]; then
+    window_start=$now count=0 gave_up=0
+  fi
+  if [ "$count" -ge "$max" ]; then
+    verdict="gaveup $count again"
+    status=1
+    if [ "$gave_up" -eq 0 ]; then
+      gave_up=$now
+      verdict="gaveup $count new"
+    fi
+  else
+    count=$((count + 1))
+    delay=$(fm_procevent_rearm_delay "$count" "$backoff") || return 2
+    verdict="rearm $count $delay"
+    status=0
+  fi
+  tmp=$(umask 077; mktemp "$(fm_procevent_registry_dir "$state")/.$id.rearm.XXXXXX") || return 2
+  if ! printf '%s %s %s\n' "$window_start" "$count" "$gave_up" > "$tmp" || ! mv -f -- "$tmp" "$file"; then
+    rm -f -- "$tmp"
+    return 2
+  fi
+  printf '%s\n' "$verdict"
+  return "$status"
+}
+
 # The one place the launch-pacing stamp's name is constructed. Every writer,
 # pruner and reader goes through here so the naming rule is stated once.
 fm_procevent_launch_floor_stamp_path() {  # <state-root> <source-id> <registration-identity>

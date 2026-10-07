@@ -68,7 +68,8 @@ ra_wait_polls() {
   local tries="${2:-100}"
   local i=0
   while [ "$i" -lt "$tries" ]; do
-    local polls=$(ra_polls)
+    local polls
+    polls=$(ra_polls)
     if [ "$polls" -ge "$n" ]; then
       return 0
     fi
@@ -187,13 +188,13 @@ printf 'garbage\n' > "$home/unknown.result"
 printf 'error: Lavish Editor poll response was interrupted\ncode: SERVER_ERROR\n' > "$home/error.result"
 
 # Test rearm command
-FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/disconnect.result" && pass "disconnect rearm exits 0" || fail "disconnect rearm should exit 0"
-FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/missing.result" && pass "missing rearm exits 0" || fail "missing rearm should exit 0"
-FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/feedback.result" && fail "feedback rearm should exit non-zero" || pass "feedback rearm exits non-zero"
-FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/ended.result" && fail "ended rearm should exit non-zero" || pass "ended rearm exits non-zero"
-FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/waiting.result" && fail "waiting rearm should exit non-zero" || pass "waiting rearm exits non-zero"
-FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/unknown.result" && fail "unknown rearm should exit non-zero" || pass "unknown rearm exits non-zero"
-FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/error.result" && fail "error rearm should exit non-zero" || pass "error rearm exits non-zero"
+if FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/disconnect.result"; then pass "disconnect rearm exits 0"; else fail "disconnect rearm should exit 0"; fi
+if FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/missing.result"; then pass "missing rearm exits 0"; else fail "missing rearm should exit 0"; fi
+if FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/feedback.result"; then fail "feedback rearm should exit non-zero"; else pass "feedback rearm exits non-zero"; fi
+if FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/ended.result"; then fail "ended rearm should exit non-zero"; else pass "ended rearm exits non-zero"; fi
+if FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/waiting.result"; then fail "waiting rearm should exit non-zero"; else pass "waiting rearm exits non-zero"; fi
+if FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/unknown.result"; then fail "unknown rearm should exit non-zero"; else pass "unknown rearm exits non-zero"; fi
+if FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" rearm "$home/error.result"; then fail "error rearm should exit non-zero"; else pass "error rearm exits non-zero"; fi
 
 # --- S2 disconnected re-arms at once ---------------------------------------
 # --- end-user-aligned regression: S2 disconnected re-arms at once
@@ -207,7 +208,7 @@ export FM_PROCEVENT_REARM_MAX=5
 export FM_PROCEVENT_REARM_WINDOW_SECONDS=600
 
 PATH="$REARM2_BIN:$PATH" FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" arm "$art"
-id=$(ls "$home/state/procevent"/*.source | head -1 | xargs basename | sed 's/\.source//')
+id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$art")
 
 PATH="$REARM2_BIN:$PATH" pe "$home" reconcile >/dev/null 2>&1 &
 ra_wait_polls 2 || fail "S2: poll count did not reach 2"
@@ -240,7 +241,7 @@ export FM_PROCEVENT_REARM_MAX=5
 export FM_PROCEVENT_REARM_WINDOW_SECONDS=600
 
 PATH="$REARM2_BIN:$PATH" FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" arm "$art"
-id=$(ls "$home/state/procevent"/*.source | head -1 | xargs basename | sed 's/\.source//')
+id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$art")
 
 PATH="$REARM2_BIN:$PATH" pe "$home" reconcile >/dev/null 2>&1 &
 ra_wait_polls 2 || fail "S3: poll count did not reach 2"
@@ -273,7 +274,7 @@ export FM_PROCEVENT_REARM_MAX=5
 export FM_PROCEVENT_REARM_WINDOW_SECONDS=600
 
 PATH="$REARM2_BIN:$PATH" FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" arm "$art"
-id=$(ls "$home/state/procevent"/*.source | head -1 | xargs basename | sed 's/\.source//')
+id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$art")
 
 PATH="$REARM2_BIN:$PATH" pe "$home" reconcile >/dev/null 2>&1 &
 wait_for "$home/state/.wake-queue" || fail "S4a: wake queue not created"
@@ -294,7 +295,7 @@ ra_reset "s4b"
 export RA_SCRIPT="ended block"
 
 PATH="$REARM2_BIN:$PATH" FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" arm "$art"
-id=$(ls "$home/state/procevent"/*.source | head -1 | xargs basename | sed 's/\.source//')
+id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$art")
 
 PATH="$REARM2_BIN:$PATH" pe "$home" reconcile >/dev/null 2>&1 &
 for i in $(seq 1 100); do
@@ -317,7 +318,7 @@ export FM_PROCEVENT_REARM_MAX=3
 export FM_PROCEVENT_REARM_WINDOW_SECONDS=600
 
 PATH="$REARM2_BIN:$PATH" FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" arm "$art"
-id=$(ls "$home/state/procevent"/*.source | head -1 | xargs basename | sed 's/\.source//')
+id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$art")
 
 PATH="$REARM2_BIN:$PATH" pe "$home" reconcile >/dev/null 2>&1 &
 rearm_record="$home/state/procevent/.$id.rearm"
@@ -376,7 +377,7 @@ export FM_PROCEVENT_REARM_MAX=1
 export FM_PROCEVENT_REARM_WINDOW_SECONDS=4
 
 PATH="$REARM2_BIN:$PATH" FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" arm "$art"
-id=$(ls "$home/state/procevent"/*.source | head -1 | xargs basename | sed 's/\.source//')
+id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$art")
 
 PATH="$REARM2_BIN:$PATH" pe "$home" reconcile >/dev/null 2>&1 &
 ra_wait_polls 2 || fail "S6: poll count did not reach 2"
@@ -413,7 +414,7 @@ export FM_PROCEVENT_REARM_MAX=1
 export FM_PROCEVENT_REARM_WINDOW_SECONDS=600
 
 PATH="$REARM2_BIN:$PATH" FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" arm "$art"
-id=$(ls "$home/state/procevent"/*.source | head -1 | xargs basename | sed 's/\.source//')
+id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$art")
 
 PATH="$REARM2_BIN:$PATH" pe "$home" reconcile >/dev/null 2>&1 &
 wait_for "$home/state/.wake-queue" || fail "S7: wake queue not created"
@@ -443,7 +444,7 @@ export FM_PROCEVENT_REARM_MAX=5
 export FM_PROCEVENT_REARM_WINDOW_SECONDS=600
 
 PATH="$REARM2_BIN:$PATH" FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" arm "$art" --for worker-ra
-id=$(ls "$home/state/procevent"/*.source | head -1 | xargs basename | sed 's/\.source//')
+id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$art")
 
 cp "$home/state/procevent/$id.source" "$TMP_ROOT/ra-reg-before"
 
@@ -484,7 +485,7 @@ export FM_PROCEVENT_REARM_WINDOW_SECONDS=600
 export FM_PROCEVENT_REARM_BACKOFF_SECONDS=3
 
 PATH="$REARM2_BIN:$PATH" FM_HOME="$home" "$ROOT/bin/fm-procevent-lavish.sh" arm "$art"
-id=$(ls "$home/state/procevent"/*.source | head -1 | xargs basename | sed 's/\.source//')
+id=$("$ROOT/bin/fm-procevent-lavish.sh" source-id "$art")
 
 PATH="$REARM2_BIN:$PATH" pe "$home" reconcile >/dev/null 2>&1 &
 ra_wait_polls 2 || fail "S9: poll count did not reach 2"
