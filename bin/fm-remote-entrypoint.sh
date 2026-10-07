@@ -96,7 +96,13 @@ ENTRYPOINT_PPID=$(ps -o ppid= -p $$ 2>/dev/null | tr -d ' ' || true)
 entrypoint_caller_connected() {
   local current
   case "$ENTRYPOINT_PPID" in ''|*[!0-9]*) return 0 ;; esac
-  current=$(ps -o ppid= -p $$ 2>/dev/null | tr -d ' ' || true)
+  # The probe runs about once a second for the whole wait, so on Linux it reads
+  # the parent from /proc with builtins instead of spawning ps and tr.
+  if [ -r "/proc/$$/stat" ]; then
+    IFS=' ' read -r _ _ _ current _ < "/proc/$$/stat" 2>/dev/null || current=
+  else
+    current=$(ps -o ppid= -p $$ 2>/dev/null | tr -d ' ' || true)
+  fi
   case "$current" in ''|*[!0-9]*) return 0 ;; esac
   [ "$current" = "$ENTRYPOINT_PPID" ]
 }

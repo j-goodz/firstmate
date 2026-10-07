@@ -42,6 +42,14 @@
 # non-destructive and cursor-anchored, so the caller's normal re-arm re-reads
 # the same data and a preempted poll loses nothing.
 #
+# Every wait in this path is event-driven and spawns nothing while idle. The
+# serving loop blocks in the read builtin on the worker.wake FIFO, which stagers,
+# cancels and exiting lanes ring; a lane blocks in wait while a ticker raises a
+# per-second tick and relays pokes from the serving loop; a caller blocks on its
+# job's .notify FIFO, which the worker rings at publication. Polling is only the
+# fallback when a FIFO cannot be created, and it is logged to
+# event-wait-fallback.log in the state root (fm_remote_job_note_fallback).
+#
 # A caller that disconnects before its job completes cancels it instead of
 # abandoning it: fm_remote_job_cancel writes a cancel marker into the record,
 # the worker skips a cancelled queued job and terminates a running cancelled
@@ -88,7 +96,10 @@ FM_REMOTE_JOB_MAX_BYTES=${FM_REMOTE_JOB_MAX_BYTES:-1048576}
 FM_REMOTE_JOB_QUEUE_TIMEOUT=${FM_REMOTE_JOB_QUEUE_TIMEOUT:-360}
 FM_REMOTE_JOB_TIMEOUT=${FM_REMOTE_JOB_TIMEOUT:-360}
 FM_REMOTE_JOB_WAIT_GRACE=${FM_REMOTE_JOB_WAIT_GRACE:-30}
-FM_REMOTE_JOB_POLL_SECONDS=${FM_REMOTE_JOB_POLL_SECONDS:-0.05}
+# Idle waits are event-driven: a blocking read on a FIFO that the producer of
+# each event writes to. FM_REMOTE_JOB_FALLBACK_POLL_SECONDS is used only when no
+# FIFO can be created, and that fallback is logged.
+FM_REMOTE_JOB_FALLBACK_POLL_SECONDS=${FM_REMOTE_JOB_FALLBACK_POLL_SECONDS:-1}
 FM_REMOTE_JOB_REAP_SECONDS=${FM_REMOTE_JOB_REAP_SECONDS:-3600}
 FM_REMOTE_JOB_STAGE_REAP_SECONDS=${FM_REMOTE_JOB_STAGE_REAP_SECONDS:-600}
 FM_REMOTE_JOB_SEQ_CLAIM_REAP_SECONDS=86400
@@ -604,6 +615,7 @@ fm_remote_job_cancel() { # <account-home> <id>
   printf 'cancelled: caller disconnected or abandoned the job\n' > "$tmp" || { rm -f -- "$tmp"; return 1; }
   chmod 600 "$tmp" || { rm -f -- "$tmp"; return 1; }
   mv -f -- "$tmp" "$job/cancel" || return 1
+  fm_remote_job_wake_worker
   state=$(fm_remote_job_read_state "$job" 2>/dev/null || true)
   if [ "$state" = 'done' ]; then
     fm_remote_job_reap "$account_home" "$id" 2>/dev/null || true
@@ -670,14 +682,83 @@ fm_remote_job_stage() { # <account-home> <root> <home> <command> [args...]; stdi
     FM_REMOTE_JOB_ERROR="cannot allocate and publish a remote job staging sequence"
     return 1
   fi
+  fm_remote_job_wake_worker
   # shellcheck disable=SC2034 # Sourceable API consumed by callers that do not use command substitution.
   FM_REMOTE_JOB_ID=$id
   printf '%s\n' "$id"
 }
 
+# Event wake plumbing. A waiter holds a FIFO open read-write and blocks in the
+# `read -t` builtin, so waiting forks nothing; a producer wakes it by writing one
+# line, which also never forks. A FIFO's buffer exists only while some process
+# holds it open, so a wake written while no waiter runs is simply dropped, and
+# every waiter rechecks its state after it starts. The worker's FIFO has a
+# pending flag so producers never queue more than one unread wake, which keeps
+# a stuck worker from ever blocking a producer on a full pipe.
+FM_REMOTE_JOB_FALLBACK_NOTED=' '
+
+# Records, once per process and waiter, that an event wait fell back to polling.
+fm_remote_job_note_fallback() { # <waiter> <reason>
+  local log=${FM_REMOTE_JOB_FALLBACK_LOG:-${FM_REMOTE_JOB_STATE:-${HOME:-/tmp}}/event-wait-fallback.log}
+  case "$FM_REMOTE_JOB_FALLBACK_NOTED" in *" $1 "*) return 0 ;; esac
+  FM_REMOTE_JOB_FALLBACK_NOTED="$FM_REMOTE_JOB_FALLBACK_NOTED$1 "
+  printf '%s fell back to %ss polling: %s\n' "$1" "$FM_REMOTE_JOB_FALLBACK_POLL_SECONDS" "$2" >> "$log" 2>/dev/null || true
+}
+
+fm_remote_job_ensure_fifo() { # <path>; a private FIFO that is not a symlink
+  [ ! -L "$1" ] || return 1
+  [ -p "$1" ] && return 0
+  [ ! -e "$1" ] || return 1
+  (umask 077; mkfifo "$1") 2>/dev/null || [ -p "$1" ]
+}
+
+# Wake whatever holds <fifo> open. Opening it read-write never blocks and the
+# single short write cannot fill the pipe for a one-event-per-publication path.
+fm_remote_job_fifo_wake() { # <fifo>
+  [ -p "$1" ] || return 0
+  printf '.\n' 1<>"$1" 2>/dev/null || true
+}
+
+# Wake the serving loop. The flag is cleared by the worker before every scan and
+# set here after the event is published, so a producer that sees it set knows a
+# scan that starts after its publication is already pending.
+fm_remote_job_wake_worker() {
+  local flag=${FM_REMOTE_JOB_STATE:-}/worker.wakeflag cur=
+  [ -n "${FM_REMOTE_JOB_STATE:-}" ] || return 0
+  [ -p "$FM_REMOTE_JOB_STATE/worker.wake" ] || return 0
+  [ ! -f "$flag" ] || IFS= read -r cur < "$flag" 2>/dev/null || true
+  [ "$cur" != 1 ] || return 0
+  printf '1\n' > "$flag" 2>/dev/null || true
+  fm_remote_job_fifo_wake "$FM_REMOTE_JOB_STATE/worker.wake"
+}
+
+# Wake the caller blocked in fm_remote_job_wait for <job-dir>.
+fm_remote_job_wake_job() { # <job-dir>
+  fm_remote_job_fifo_wake "$1/.notify"
+}
+
 fm_remote_job_wait() { # <account-home> <id>; honors FM_REMOTE_JOB_DISCONNECT_PROBE
+  local account_home=$1 id=$2 job rc
+  FM_REMOTE_JOB_NOTIFY_FD=
+  fm_remote_job_prepare_state "$account_home" || return 1
+  job=$(fm_remote_job_job_dir "$id" 2>/dev/null || true)
+  if [ -n "$job" ] && fm_remote_job_ensure_fifo "$job/.notify" && { exec 187<>"$job/.notify"; } 2>/dev/null; then
+    FM_REMOTE_JOB_NOTIFY_FD=187
+  else
+    fm_remote_job_note_fallback "fm_remote_job_wait" "no wake FIFO for the job record"
+  fi
+  fm_remote_job_wait_loop "$account_home" "$id"
+  rc=$?
+  if [ -n "$FM_REMOTE_JOB_NOTIFY_FD" ]; then
+    exec 187<&-
+    rm -f -- "$job/.notify" 2>/dev/null || true
+  fi
+  return "$rc"
+}
+
+fm_remote_job_wait_loop() { # <account-home> <id>
   local account_home=$1 id=$2 job state queue_deadline execution_timeout wait_deadline exit_value
-  local now next_probe=0
+  local now next_probe=0 timeouts=0 need_read=1 remaining wait_end
   fm_remote_job_prepare_state "$account_home" || return 1
   job=$(fm_remote_job_job_dir "$id") || {
     FM_REMOTE_JOB_ERROR="remote job record disappeared or became unsafe"
@@ -696,7 +777,10 @@ fm_remote_job_wait() { # <account-home> <id>; honors FM_REMOTE_JOB_DISCONNECT_PR
     return 1
   }
   wait_deadline=$((queue_deadline + execution_timeout + FM_REMOTE_JOB_WAIT_GRACE))
+  remaining=$((wait_deadline - $(date +%s)))
+  wait_end=$((SECONDS + remaining))
   while :; do
+    if [ "$need_read" -eq 1 ]; then
     state=$(fm_remote_job_read_state "$job" 2>/dev/null || true)
     case "$state" in
       'done')
@@ -720,8 +804,9 @@ fm_remote_job_wait() { # <account-home> <id>; honors FM_REMOTE_JOB_DISCONNECT_PR
       queued|running) ;;
       *) FM_REMOTE_JOB_ERROR="remote job state is invalid"; return 1 ;;
     esac
-    now=$(date +%s)
-    if [ "$now" -ge "$wait_deadline" ]; then
+    fi
+    now=$SECONDS
+    if [ "$now" -ge "$wait_end" ]; then
       FM_REMOTE_JOB_ERROR="remote job did not complete within its bounded wait"
       return 1
     fi
@@ -733,7 +818,18 @@ fm_remote_job_wait() { # <account-home> <id>; honors FM_REMOTE_JOB_DISCONNECT_PR
         return 1
       fi
     fi
-    sleep "$FM_REMOTE_JOB_POLL_SECONDS"
+    # Block until the worker publishes. The one-second timeout bounds the
+    # disconnect probe and the deadline; the record is reread on every wake and
+    # on every fifth timeout as a safety net for a lost wake.
+    need_read=1
+    if [ -n "$FM_REMOTE_JOB_NOTIFY_FD" ]; then
+      if ! read -r -t 1 -u "$FM_REMOTE_JOB_NOTIFY_FD" _; then
+        timeouts=$((timeouts + 1))
+        [ $((timeouts % 5)) -eq 0 ] || need_read=0
+      fi
+    else
+      sleep "$FM_REMOTE_JOB_FALLBACK_POLL_SECONDS"
+    fi
   done
 }
 
@@ -742,7 +838,7 @@ fm_remote_job_reap() { # <account-home> <id>; only removes an exact completed re
   fm_remote_job_prepare_state "$account_home" || return 1
   job=$(fm_remote_job_job_dir "$id") || return 1
   [ "$(fm_remote_job_read_state "$job")" = 'done' ] || return 1
-  for file in root home queue_deadline timeout deadline seq cancel argv stdin stdout stderr exit state .owner-pid .owner-start; do
+  for file in root home queue_deadline timeout deadline seq cancel argv stdin stdout stderr exit state .notify .owner-pid .owner-start; do
     [ -e "$job/$file" ] || continue
     [ ! -L "$job/$file" ] || return 1
     rm -f -- "$job/$file" || return 1
@@ -809,6 +905,14 @@ fm_remote_job_reap_stale() { # <account-home>
       [ -z "$tmp" ] || rm -f -- "$tmp"
     fi
   fi
+  # A lane that was killed outright leaves its wake FIFO behind.
+  for stage in "$FM_REMOTE_JOB_STATE"/.lane-*.poke; do
+    [ -p "$stage" ] || continue
+    value=${stage##*/.lane-}
+    value=${value%.poke}
+    case "$value" in ''|*[!0-9]*) continue ;; esac
+    kill -0 "$value" 2>/dev/null || rm -f -- "$stage"
+  done
   # Staging litter a killed caller left behind is reaped after its owner is no
   # longer the process that created it and the stage has exceeded the age bound.
   for stage in "$FM_REMOTE_JOB_JOBS"/.stage.*; do

@@ -1459,6 +1459,7 @@ start_owner_guard() {  # <source-id>
 cmd_owner_watchdog() {  # <source-id> <runner-pid> <runner-identity> <ready-file> <state-device> <state-inode>
   local id=${1-} pid=${2-} identity=${3-} ready=${4-} state_device=${5-} state_inode=${6-}
   local lease tick half misses=0 pid_state state_identity current_device current_inode
+  local wait_fd next_check floor_seconds lease_age due state_probe wake
   [ "$#" -eq 6 ] || usage
   fm_procevent_source_id_valid "$id" || die "source id must be path-safe: $id"
   case "$pid" in ''|*[!0-9]*) die "runner pid must be a positive integer: $pid" ;; esac
@@ -1495,8 +1496,43 @@ cmd_owner_watchdog() {  # <source-id> <runner-pid> <runner-identity> <ready-file
     || die "owning home lease is not fresh at owner guard initialization"
   printf 'ready\n' > "$ready" || die "cannot confirm owner guard initialization"
   trap - EXIT
+  # An idle guard spawns nothing. It blocks in the read builtin on a private
+  # FIFO (bash 4 and later take the fractional half interval; older bash falls
+  # back to sleep), tests the runner with the kill builtin on each wake, and runs
+  # the process-table, state-root and lease checks only when they can matter. A
+  # fresh lease cannot lapse before its remaining age runs out, so after a good
+  # check the next one is due then, floored at half a check interval.
+  wait_fd=0
+  if [ "${BASH_VERSINFO[0]:-0}" -ge 4 ] && [ -z "${FM_PROCEVENT_OWNER_WAIT_SLEEP:-}" ] && mkfifo "$REG/.owner-wait.$$" 2>/dev/null; then
+    if { exec 8<>"$REG/.owner-wait.$$"; } 2>/dev/null; then wait_fd=1; fi
+    rm -f -- "$REG/.owner-wait.$$"
+  fi
+  # An open handle on the original state root lets a builtin test notice that the
+  # root was replaced or removed on any wake. A platform whose descriptor paths
+  # do not compare falls back to the full check at half the check interval.
+  state_probe=
+  if { exec 7<"$STATE"; } 2>/dev/null; then
+    for state_probe in /proc/self/fd/7 /dev/fd/7 ''; do
+      [ -n "$state_probe" ] || break
+      [ "$state_probe" -ef "$STATE" ] && break
+    done
+  fi
+  next_check=0
+  floor_seconds=$(((tick + 1) / 2))
   while :; do
-    sleep "$half"
+    # Wake at the next check when it falls inside the half interval, so a lease
+    # that is about to lapse is read at its expiry rather than a whole wake late.
+    wake=$half
+    if [ "$next_check" -gt "$SECONDS" ] && [ $((next_check - SECONDS)) -lt "$floor_seconds" ]; then
+      wake=$((next_check - SECONDS))
+    fi
+    if [ "$wait_fd" -eq 1 ]; then read -r -t "$wake" -u 8 _ || :; else sleep "$wake"; fi
+    # The runner still existing and the next due check not reached means
+    # nothing here can have changed; a missing runner is verified in full.
+    if kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$next_check" ] \
+      && [ -n "$state_probe" ] && [ "$state_probe" -ef "$STATE" ]; then
+      continue
+    fi
     fm_procevent_pid_state "$pid" "$identity"
     pid_state=$?
     case "$pid_state" in
@@ -1511,10 +1547,19 @@ cmd_owner_watchdog() {  # <source-id> <runner-pid> <runner-identity> <ready-file
       || IFS=$'\t' read -r _ current_device current_inode _ _ <<< "$state_identity"
     if [ "$current_device" = "$state_device" ] \
       && [ "$current_inode" = "$state_inode" ] \
-      && fm_procevent_owner_alive "$STATE" "$lease"; then
+      && lease_age=$(fm_procevent_owner_lease_age "$STATE") \
+      && [ "$lease_age" -le "$lease" ]; then
       misses=0
+      due=$((lease - lease_age))
+      [ -n "$state_probe" ] || due=0
+      [ "$due" -ge "$floor_seconds" ] || due=$floor_seconds
+      next_check=$((SECONDS + due))
+      # An interval under five seconds asks for tight detection, so every wake
+      # runs the full check at the half interval, as it always did.
+      [ "$tick" -ge 5 ] || next_check=0
       continue
     fi
+    next_check=0
     # Two consecutive misses, so one unreadable read cannot end a live runner.
     # They are half an interval apart, so requiring the second costs detection
     # time inside the interval already budgeted rather than a second interval.

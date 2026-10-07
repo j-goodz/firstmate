@@ -4122,7 +4122,7 @@ for interval in 08 010; do
   pe_register "$HINTERVAL" lavish "interval-$interval" \
     -- "$QUIET_STUB" "$HINTERVAL/poll" >/dev/null
   PATH="$INTERVAL_BIN:$PATH" INTERVAL_SLEEP_LOG="$HINTERVAL/sleeps" \
-    FM_PROCEVENT_OWNER_CHECK_SECONDS="$interval" \
+    FM_PROCEVENT_OWNER_WAIT_SLEEP=1 FM_PROCEVENT_OWNER_CHECK_SECONDS="$interval" \
     pe "$HINTERVAL" reconcile >/dev/null
   wait_for "$HINTERVAL/poll.descendant" \
     || fail "a zero-prefixed decimal interval ($interval) prevented the listener from starting"
