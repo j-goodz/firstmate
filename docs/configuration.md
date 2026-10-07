@@ -1057,6 +1057,7 @@ That conclude retains the registration it is retiring, removes it, then records 
 An interruption between those two durable steps leaves the board unregistered with its terminal round still open, which nothing relaunches and the same `handled` call finishes.
 It concludes only a round that is still open, so a repeated acknowledgement of an already-closed round reports `already-handled` and never touches whatever registration holds the board by then.
 A second armer is refused with the current owner named, and the source list derives `listening`, `round-open`, or `dead` from the claim and handled captures without a second ownership record.
+Task teardown retires every board the task owns, with its runner and watchdog, through `bin/fm-procevent.sh retire-task <task-id>`; a board with an unacknowledged captured round is kept and reported, because its registration is that round's only ownership evidence, and acknowledging the round with `handled` releases it.
 If the hosting worker cannot be recovered, relaunch a worker to re-host first; guarded firstmate adoption is an explicit last resort only after the old claim is proved dead.
 The cross-home gap between worker rounds remains an accepted residual until lavish-axi's exclusive listener lands.
 The interim crew instruction emitted by `bin/fm-brief.sh` points workers at this arm-and-acknowledge contract.
