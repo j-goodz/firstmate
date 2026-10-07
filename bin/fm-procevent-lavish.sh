@@ -6,6 +6,7 @@
 #   fm-procevent-lavish.sh classify <result-file>
 #   fm-procevent-lavish.sh terminal <result-file>
 #   fm-procevent-lavish.sh silent <result-file>
+#   fm-procevent-lavish.sh rearm <result-file>
 #   fm-procevent-lavish.sh answers <result-file>
 #   fm-procevent-lavish.sh reconciles <result-file>
 #   fm-procevent-lavish.sh read <result-file>
@@ -51,6 +52,19 @@
 #            Task-owned terminal rounds bypass generic silence so their owner
 #            receives the stop-and-conclude instruction.
 #
+# rearm      Exit 0 when the captured result only means the poll ended while its Lavish
+#            session may still be live, so the runner re-arms the same source at once
+#            instead of waiting for the next reconcile pass; any other exit changes
+#            nothing. This is the generic adapter contract bin/fm-procevent.sh calls,
+#            and the only place Lavish's notion of "the poll ended but the board did not"
+#            is decided. Two shapes qualify: `browser_disconnected` (the captain's browser
+#            tab dropped, for example a phone going to the background, while the session
+#            stays open) and a `missing` session (given a bounded chance to reappear).
+#            Everything else, feedback, ended, waiting, unknown and a transient server
+#            error included, is not re-armed. The runner owns the bound (a cap per window,
+#            backoff, and the give-up record); after it gives up, a `missing` result is
+#            announced and retired exactly as before.
+#
 # AN EMPTY BOARD CLOSE IS NOT NEWS, and that is what `silent` exists to say.
 # Closing a review surface that carried nothing is the single most common Lavish
 # result: the captain reads a board, says nothing, and closes it. Announcing that
@@ -78,7 +92,7 @@
 # The published poll vocabulary includes feedback, ended, waiting, and
 # browser_disconnected. A waiting result from this no-timeout poll means a
 # second poller was present; it is not a normal idle round. browser_disconnected
-# means the session remains open and is handled as a silent reconnect wait.
+# means the session remains open: it is recorded silently and the runner re-arms the poll at once (rearm).
 # The poll reads config/lavish-axi-host from FM_HOME before every lavish-axi
 # invocation so firstmate and workers reach the same server.
 #
@@ -530,6 +544,18 @@ cmd_silent() {
   [ "$content_rc" -eq 1 ]
 }
 
+# Whether a captured result only means the poll ended while its session may still be
+# live (see the rearm summary above). Lavish's notion of that lives here and nowhere else.
+cmd_rearm() {
+  local file=${1-}
+  [ -n "$file" ] || usage
+  [ -f "$file" ] && [ ! -L "$file" ] || die "result file does not exist: $file"
+  case "$(cmd_classify "$file")" in
+    disconnected|missing) return 0 ;;
+  esac
+  return 1
+}
+
 # Print `key<TAB>answer<TAB>label[<TAB>mode]` for each non-reconcile structured choice the
 # captain submitted in a captured result; the optional mode column relays the
 # card's declared close mode (`done` or `release`) to the keyed-answer intake. The published response frames queued feedback as
@@ -805,6 +831,7 @@ case "${1-}" in
   classify)  shift; cmd_classify "$@" ;;
   terminal)  shift; cmd_terminal "$@" ;;
   silent)    shift; cmd_silent "$@" ;;
+  rearm)     shift; cmd_rearm "$@" ;;
   answers)   shift; cmd_answers "$@" ;;
   reconciles) shift; cmd_reconciles "$@" ;;
   read)      shift; cmd_read "$@" ;;

@@ -138,6 +138,23 @@
 # condition. For built-ins, silence remains independent of the keyed-answer feed
 # below: suppressing an announcement never suppresses the captain's own answer.
 #
+# Re-arming a poll that merely ended is adapter-owned through the same kind of seam. Some
+# captures say nothing about the source itself: the blocking child returned because its
+# listener was cut off (a browser tab dropped) while the session behind it is still live, and
+# leaving the relaunch to the next reconcile pass leaves nothing listening for as long as that
+# pass takes. So after capture, and before anything is published or retired, this runner asks the
+# immutable captured built-in owner `bin/fm-procevent-<adapter>.sh rearm <result-file>`; exit 0 is
+# the only verdict. On that verdict the capture is recorded handled with no wake and no
+# steering-inbox record, the old runner keeps its claim through a bounded backoff, then releases it and
+# starts a fresh runner for the SAME source, so ownership, registration, owner task and the one-poller
+# guarantee are untouched. The bound is generic: FM_PROCEVENT_REARM_MAX re-arms per
+# FM_PROCEVENT_REARM_WINDOW_SECONDS with FM_PROCEVENT_REARM_BACKOFF_SECONDS doubling (accounting lives in
+# one private record, state/procevent/.<source-id>.rearm). Once the cap is spent the runner stops, keeps the
+# record (its third field is the give-up time) and appends a gave-up line to state/procevent-rearm.jsonl;
+# the capture then takes the ordinary path (silent, announced or terminal exactly as before) and the
+# source stays registered, so the next reconcile pass relaunches it as it always did. Only the
+# adapter's own verdict re-arms anything, and extension sources never re-arm.
+#
 # Applying a built-in result is adapter-owned through the same kind of seam. Some results
 # carry no judgement at all - they must simply be applied idempotently to the
 # home's own durable state - and leaving that to an agent that has to remember
@@ -370,6 +387,55 @@ adapter_result_is_silent() {  # <adapter> <result-file>
   script=$(adapter_script "$1")
   [ -f "$script" ] && [ ! -L "$script" ] || return 1
   "$script" silent "$2" >/dev/null 2>&1
+}
+
+# Ask the source's own adapter whether a captured result only means the poll ended while the
+# source is still live. Exit 0 is the only re-arm verdict; everything else, including a missing
+# adapter command, changes nothing. See the re-arm note in the header: no adapter-specific
+# condition may appear in this runner. Built-in results only.
+adapter_result_wants_rearm() {  # <adapter> <result-file>
+  local script
+  script=$(adapter_script "$1")
+  [ -f "$script" ] && [ ! -L "$script" ] || return 1
+  "$script" rearm "$2" >/dev/null 2>&1
+}
+
+rearm_log() {  # <source-id> <sequence> <action> <count> <delay>
+  printf '{"ts":%s,"source":"%s","sequence":%s,"action":"%s","count":%s,"delay":%s}\n' \
+    "$(date +%s)" "$1" "$2" "$3" "$4" "$5" >> "$STATE/procevent-rearm.jsonl" 2>/dev/null || true
+}
+
+# Decide whether this capture is re-armed. Prints the backoff delay in whole seconds and returns 0
+# only when the adapter asked for it AND the window still has budget; in that case the capture is
+# recorded handled under the source lock, so it neither wakes anyone nor holds a task-owned source
+# back from relaunching. Returns 1 for every other outcome, including an exhausted budget (logged
+# once per window), and the capture then follows the ordinary path.
+rearm_decide() {  # <adapter> <source-id> <result-file>
+  local adapter=$1 id=$2 result=$3 seq verdict take_rc word count extra
+  adapter_result_wants_rearm "$adapter" "$result" || return 1
+  seq=$(fm_procevent_result_sequence "$result") || return 1
+  fm_procevent_source_lock_acquire "$id" || return 1
+  verdict=$(fm_procevent_rearm_take "$STATE" "$id" "$(date +%s)")
+  take_rc=$?
+  read -r word count extra <<< "$verdict"
+  case "$take_rc:$word" in
+    0:rearm)
+      fm_procevent_mark_handled "$STATE" "$id" "$seq"
+      case "$?" in
+        0|1)
+          rearm_log "$id" "$seq" rearmed "$count" "$extra"
+          fm_procevent_source_lock_release "$id"
+          printf '%s\n' "$extra"
+          return 0
+          ;;
+      esac
+      ;;
+    1:gaveup)
+      [ "$extra" != new ] || rearm_log "$id" "$seq" gave-up "$count" 0
+      ;;
+  esac
+  fm_procevent_source_lock_release "$id"
+  return 1
 }
 
 # Ask the adapter whether its autohandled results announce themselves through a
@@ -1242,6 +1308,21 @@ EOF
     printf 'answers-fed: %s\n' "$id"
   fi
 
+  # The adapter says this capture only means its poll ended while the source is live: re-arm the
+  # same source from here, after a bounded backoff, instead of leaving it to the next reconcile
+  # pass (re-arm note in the header). The claim is held through the backoff so a concurrent
+  # reconcile sees a live owner, and a retire during the backoff stops this runner as usual.
+  local rearm_delay=''
+  if [ "$extension_owner" -eq 0 ] && rearm_delay=$(rearm_decide "$adapter" "$id" "$durable"); then
+    rm -f -- "$runner"
+    printf 'rearmed: %s (after %ss)\n' "$id" "$rearm_delay"
+    [ "$rearm_delay" -eq 0 ] || sleep "$rearm_delay"
+    release_start_claim
+    trap - EXIT
+    detach_runner "$id"
+    exit 0
+  fi
+
   # A self-announcing adapter's autohandle announces through its own durable
   # downstream channel, so publication waits until after application and covers
   # only what remains unhandled; every other adapter keeps the strict
@@ -2041,6 +2122,7 @@ cmd_retire() {
   rm -f -- "$(runner_file "$id")"
   rm -f -- "$(stranded_file "$id")"
   rm -f -- "$(launch_failed_file "$id")"
+  rm -f -- "$(fm_procevent_rearm_file "$STATE" "$id")"
   rm -f -- "$REG/.$id.reply."*
   fm_procevent_source_lock_release "$id"
   # A retired source produces no further answer, so drop any decision binding it

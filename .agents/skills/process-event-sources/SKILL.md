@@ -120,6 +120,8 @@ The crew-hosted recovery ordering and arm-and-acknowledge rule are owned by the 
   For an ordinary firstmate-owned Lavish source that is an ended session carrying nothing, or `browser_disconnected` (classified `disconnected`): a closed review window that still has an open session.
   A task-owned empty terminal round instead reaches its owner's steering inbox for conclusion, as the crew-hosted contract requires.
   A board close carrying a real answer, and every other result, still wakes its owner unchanged.
+  A `disconnected` or `missing` Lavish result also makes the runner re-arm the same source at once, within a bound, so nothing stays unlistened until the next reconcile pass.
+  A `missing` session that stays missing through that bound is announced and retired as before, and the [silence and re-arm contract](../../../docs/configuration.md#process-to-event-sources-stateprocevent) owns the bound.
   Never read the absence of a wake as proof a review is still open; ask the source, not the queue.
 : A Lavish wake whose source id matches `bin/fm-procevent-lavish.sh source-id "$(bin/fm-bearings-board.sh path)"` is a bearings board result; load the `bearings` skill's board-wake handling regardless of which answer kinds the result contains.
 : A Lavish capture carrying an `open-call-answer.v1` save (the `call-answer` tag) is an answer from the captain's open-calls page: record it with `bin/fm-calls-page.sh apply <result-file>` before the generic acknowledgement, and follow `captain-hold-lifecycle` for what the recorded answer means.
