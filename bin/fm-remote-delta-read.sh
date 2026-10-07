@@ -10,6 +10,14 @@
 # the source. A shortened or changed prefix returns a structured continuity-break
 # result instead of silently rebasing the cursor.
 #
+# The wait is event-driven. Where inotifywait exists, one monitor process feeds
+# a FIFO and the reader blocks in the read builtin until the log changes, so an
+# idle long-poll spawns nothing. Without inotifywait it falls back to a once per
+# second wake that compares the log's mtime with a reference file using shell
+# builtins, which also spawns nothing, and records the fallback in
+# FM_REMOTE_DELTA_FALLBACK_LOG. Either way the capture and hashing pipeline runs
+# only after the log's mtime has moved.
+#
 # Exit 75 means the wait window closed with no complete line. SIGTERM exits the
 # same way after cleanup. The remote job worker preempts this read-only poll to
 # unblock any queued command other than another reply long-poll, then publishes
@@ -19,7 +27,7 @@ set -eu
 
 FM_HOME=${FM_HOME:?FM_HOME is required}
 MAX_BYTES=${FM_REMOTE_DELTA_MAX_BYTES:-65536}
-POLL_SECONDS=${FM_REMOTE_DELTA_POLL_SECONDS:-0.2}
+FALLBACK_LOG=${FM_REMOTE_DELTA_FALLBACK_LOG:-$FM_HOME/state/event-wait-fallback.log}
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
@@ -125,14 +133,116 @@ case "$MAX_BYTES" in ''|*[!0-9]*|0) die "FM_REMOTE_DELTA_MAX_BYTES must be a pos
 
 LOG=$(resolve_log "$REL")
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-remote-delta.XXXXXX") || die "cannot create delta staging directory"
-trap 'rm -rf -- "$TMP"' EXIT
+MON_PID=
+trap 'if [ -n "$MON_PID" ]; then kill "$MON_PID" 2>/dev/null || true; fi; rm -rf -- "$TMP"' EXIT
 trap 'exit 75' TERM
 : > "$TMP/empty"
 EMPTY_HASH=$(sha256_file "$TMP/empty")
-START=$(date +%s)
+START=$SECONDS
+
+# The anonymous FIFO the waiter blocks on; unlinked at once so nothing is left behind.
+EVENT_FD=
+if mkfifo "$TMP/events" 2>/dev/null && { exec 9<>"$TMP/events"; } 2>/dev/null; then
+  EVENT_FD=9
+fi
+rm -f -- "$TMP/events"
+IDLE_WAKES=0
+COARSE_MTIME=1
+[ "$(uname -s 2>/dev/null || true)" != Linux ] || COARSE_MTIME=0
+
+# The log watch is a single long-lived process that writes one line to the FIFO
+# per change. inotifywait is used where it exists. Where it does not (swift and
+# zentop), python3 calls the kernel's inotify through ctypes. Anything else falls
+# back to the builtin mtime check.
+INOTIFY_PY='
+import ctypes, ctypes.util, os, select, sys
+libc = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6", use_errno=True)
+fd = libc.inotify_init()
+mask = 0x2 | 0x4 | 0x8 | 0x400 | 0x800  # modify attrib close_write delete_self move_self
+if fd < 0 or libc.inotify_add_watch(fd, os.fsencode(sys.argv[1]), mask) < 0:
+    sys.exit(1)
+parent = os.getppid()
+while True:
+    ready, _, _ = select.select([fd], [], [], 5)
+    if ready:
+        os.read(fd, 65536)
+        os.write(1, b".\n")
+        # delete_self and move_self end the watch: exit so the reader re-arms.
+        if not os.path.exists(sys.argv[1]):
+            sys.exit(0)
+    if os.getppid() != parent:
+        sys.exit(0)
+'
+MONITOR_KIND=
+MONITOR_STARTS=0
+if [ -n "$EVENT_FD" ] && [ -z "${FM_REMOTE_DELTA_NO_INOTIFY:-}" ] && [ "$COARSE_MTIME" -eq 0 ]; then
+  if [ -z "${FM_REMOTE_DELTA_NO_INOTIFYWAIT:-}" ] && command -v inotifywait >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+    MONITOR_KIND=inotifywait
+  elif command -v python3 >/dev/null 2>&1 && python3 -c 'import ctypes, ctypes.util' >/dev/null 2>&1; then
+    MONITOR_KIND=python
+  fi
+fi
+if [ -z "$MONITOR_KIND" ]; then
+  [ ! -d "${FALLBACK_LOG%/*}" ] || [ -s "$FALLBACK_LOG" ] \
+    || printf 'fm-remote-delta-read: no inotifywait, python3 inotify or FIFO; waiting with a once-per-second builtin mtime check\n' >> "$FALLBACK_LOG" 2>/dev/null || true
+fi
+
+# One watch process on the log. It is restarted when the log is replaced and
+# the old watch ends, at most five times; after that the reader degrades to the
+# builtin mtime check so a watch that cannot start never becomes a respawn loop.
+start_monitor() {
+  [ -n "$MONITOR_KIND" ] || return 0
+  [ -f "$LOG" ] && [ ! -L "$LOG" ] || return 0
+  if [ -n "$MON_PID" ] && kill -0 "$MON_PID" 2>/dev/null; then return 0; fi
+  if [ "$MONITOR_STARTS" -ge 5 ]; then
+    MONITOR_KIND=
+    printf 'fm-remote-delta-read: the log watch kept ending; waiting with a once-per-second builtin mtime check\n' >> "$FALLBACK_LOG" 2>/dev/null || true
+    return 0
+  fi
+  MONITOR_STARTS=$((MONITOR_STARTS + 1))
+  if [ "$MONITOR_KIND" = inotifywait ]; then
+    timeout "$((WAIT + 5))" inotifywait -m -q -e modify,close_write,attrib,move_self,delete_self \
+      --format . "$LOG" >&9 2>/dev/null < /dev/null &
+  else
+    python3 -c "$INOTIFY_PY" "$LOG" >&9 2>/dev/null < /dev/null &
+  fi
+  MON_PID=$!
+}
+
+# True when the log's mtime still equals the reference taken before the last
+# capture, so nothing can have been appended since. A filesystem with coarse
+# timestamps gets a full recheck every 30 idle wakes.
+log_unchanged() {
+  [ -f "$TMP/ref" ] && [ ! "$LOG" -nt "$TMP/ref" ] && [ ! "$LOG" -ot "$TMP/ref" ] || return 1
+  if [ "$COARSE_MTIME" -eq 1 ] && [ "$IDLE_WAKES" -ge 30 ]; then
+    IDLE_WAKES=0
+    return 1
+  fi
+  return 0
+}
+
+wait_for_event() {
+  start_monitor
+  if [ -z "$EVENT_FD" ]; then
+    sleep 1
+  else
+    read -r -t 1 -u 9 _ || true
+  fi
+  IDLE_WAKES=$((IDLE_WAKES + 1))
+}
+
 while :; do
   if [ -e "$LOG" ] || [ -L "$LOG" ]; then
     [ -f "$LOG" ] && [ ! -L "$LOG" ] || die "log changed into an unsafe file: $REL"
+    if log_unchanged; then
+      [ $((SECONDS - START)) -lt "$WAIT" ] || exit 75
+      wait_for_event
+      continue
+    fi
+    # The reference is taken before the capture, so an append that lands during
+    # or after it makes the log newer than the reference and is seen next pass.
+    touch -r "$LOG" "$TMP/ref" 2>/dev/null || rm -f -- "$TMP/ref"
+    start_monitor
     snapshot_log "$LOG" "$TMP/source" "$TMP/size" \
       || die "log could not be captured safely: $REL"
     SIZE=$(tr -d ' ' < "$TMP/size")
@@ -183,7 +293,6 @@ while :; do
     emit_break missing 0 "$EMPTY_HASH"
     exit 0
   fi
-  NOW=$(date +%s)
-  [ $((NOW - START)) -lt "$WAIT" ] || exit 75
-  sleep "$POLL_SECONDS"
+  [ $((SECONDS - START)) -lt "$WAIT" ] || exit 75
+  wait_for_event
 done

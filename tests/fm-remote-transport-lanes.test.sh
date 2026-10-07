@@ -172,7 +172,7 @@ wait_for_state() { # <id> <state>
 }
 
 HOME="$ACCOUNT_HOME" FM_ROOT_OVERRIDE="$REMOTE_ROOT" FM_REMOTE_JOB_STATE_ROOT="$STATE_ROOT" \
-  FM_REMOTE_JOB_PLATFORM_OVERRIDE=Linux \
+  FM_REMOTE_JOB_PLATFORM_OVERRIDE=Linux FM_REMOTE_JOB_REAP_TICK_SECONDS=1 \
   "$REMOTE_ROOT/bin/fm-remote-job-worker.sh" > "$TMP_ROOT/worker.out" 2> "$TMP_ROOT/worker.err" &
 for _ in $(seq 1 100); do
   [ -f "$STATE_ROOT/worker.ready" ] && break
@@ -420,6 +420,8 @@ fm_remote_job_process_start "$$" > "$LIVE_STAGE_BUILD/.owner-start" \
   || fail "the live staging fixture could not record its owner identity"
 mv -- "$LIVE_STAGE_BUILD" "$LIVE_STAGE"
 touch -t 200001010000 "$OLD_STAGE" "$LIVE_STAGE"
+# The worker blocks until woken and reaps on a timer, so ring it as a stager would.
+fm_remote_job_wake_worker
 for _ in $(seq 1 100); do
   [ ! -d "$OLD_STAGE" ] && break
   sleep 0.05

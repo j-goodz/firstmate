@@ -68,6 +68,25 @@ WORKER_LANE_HOMES=()
 WORKER_LANE_PIDS=()
 WORKER_LANE_STARTS=()
 WORKER_LANE_JOBS=()
+WORKER_READY_PATH=
+# A job id is added to WORKER_DONE_JOBS once its record reads done: that state is
+# terminal, so an idle scan never re-reads a finished record.
+WORKER_DONE_JOBS=' '
+# The stale-record reaper bounds records by hours and minutes, so running it
+# every FM_REMOTE_JOB_REAP_TICK_SECONDS is as prompt as running it on every wake.
+FM_REMOTE_JOB_REAP_TICK_SECONDS=$(worker_bounded_setting "${FM_REMOTE_JOB_REAP_TICK_SECONDS:-}" 60)
+# Longest the serving loop blocks without an event. The readiness heartbeat must
+# stay fresh inside the probe's ten-second window, and a lane that died without
+# waking the loop is noticed within this bound.
+WORKER_IDLE_WAIT_SECONDS=5
+WORKER_WAKE_FD=
+WORKER_NEXT_IDENTITY_CHECK=0
+# A live lane's identity is verified against the process table at most this
+# often; liveness itself is a builtin kill -0 on every pass.
+WORKER_IDENTITY_CHECK_SECONDS=30
+# Set by the lane's USR2 trap when the serving loop signals that a job was
+# staged or cancelled, so the lane rechecks for a preempting waiter promptly.
+WORKER_POKED=0
 
 worker_error() { printf 'remote-job-worker: %s\n' "$1" >&2; }
 
@@ -80,9 +99,18 @@ worker_account_home() {
   CDPATH='' cd ~ 2>/dev/null && pwd -P
 }
 
+# The probe reads only the heartbeat file's mtime, so the steady-state refresh
+# rewrites it in place with a shell builtin and forks nothing. The atomic
+# create-and-rename path publishes the file the first time and replaces it
+# whenever it is missing or not a plain file.
 worker_write_heartbeat() {
   local ready tmp
+  if [ -n "$WORKER_READY_PATH" ] && [ -f "$WORKER_READY_PATH" ] && [ ! -L "$WORKER_READY_PATH" ] \
+    && printf '%s\n' "${BASHPID:-$$}" > "$WORKER_READY_PATH" 2>/dev/null; then
+    return 0
+  fi
   ready=$(fm_remote_job_worker_ready_path)
+  WORKER_READY_PATH=$ready
   tmp=$(umask 077; mktemp "$FM_REMOTE_JOB_STATE/.ready.XXXXXX") || return 1
   printf '%s\n' "${BASHPID:-$$}" > "$tmp" || { rm -f -- "$tmp"; return 1; }
   chmod 600 "$tmp" || { rm -f -- "$tmp"; return 1; }
@@ -526,6 +554,7 @@ worker_publish_result() { # <job-dir> <exit>
   chmod 600 "$tmp" || { rm -f -- "$tmp"; return 1; }
   mv -f -- "$tmp" "$job/exit" || { rm -f -- "$tmp"; return 1; }
   fm_remote_job_write_state "$job" 'done' || return 1
+  fm_remote_job_wake_job "$job"
   if fm_remote_job_cancelled "$job"; then
     account_home=$(worker_account_home 2>/dev/null || true)
     if [ -n "$account_home" ]; then
@@ -537,6 +566,7 @@ worker_publish_result() { # <job-dir> <exit>
 worker_run_with_timeout() { # <job-dir> <seconds> <command> [args...]
   local job=$1 timeout=$2 group_file group_start_file armed_file group_pid group_start
   local group_tmp group_start_tmp rc tmp deadline next_check attempt timed_out=0 cancelled=0
+  local lane_pid poke_fifo ticker_pid='' leader_reaped=0 group_rc=0 wait_rc
   WORKER_PREEMPTED=0
   shift 2
   group_file="$job/.claim/group"
@@ -548,6 +578,7 @@ worker_run_with_timeout() { # <job-dir> <seconds> <command> [args...]
       [ -d "$job/.claim" ] && [ ! -L "$job/.claim" ] || exit 125
       sleep 0.01
     done
+    exec 8<&- 9<&-
     exec "$@"
   ) &
   group_pid=$!
@@ -592,7 +623,25 @@ worker_run_with_timeout() { # <job-dir> <seconds> <command> [args...]
     return 125
   fi
   deadline=$((SECONDS + timeout))
-  next_check=$((SECONDS + 1))
+  # The first pass checks at once: a waiter staged before this lane's wake FIFO
+  # existed rang nothing, and must not wait for the safety interval.
+  next_check=$SECONDS
+  # The run loop blocks in the wait builtin, which returns the moment the
+  # command exits or a trapped signal arrives. A ticker subshell raises USR1
+  # every second (for the deadline) and USR2 when the serving loop pokes the
+  # lane's FIFO, and it blocks in read -t, so waiting forks nothing.
+  lane_pid=${BASHPID:-$$}
+  poke_fifo=$(worker_lane_poke_path "$lane_pid")
+  if fm_remote_job_ensure_fifo "$poke_fifo" && { exec 9<>"$poke_fifo"; } 2>/dev/null; then
+    WORKER_POKED=0
+    while :; do
+      if read -r -t 1 -u 9 _; then kill -USR2 "$lane_pid" 2>/dev/null || exit 0
+      else kill -USR1 "$lane_pid" 2>/dev/null || exit 0; fi
+    done > /dev/null 2>&1 < /dev/null &
+    ticker_pid=$!
+  else
+    fm_remote_job_note_fallback "worker_run_with_timeout" "no lane wake FIFO"
+  fi
   while worker_process_or_group_alive group "$group_pid"; do
     if [ "$SECONDS" -ge "$deadline" ]; then
       worker_signal_process_or_group group TERM "$group_pid"
@@ -600,7 +649,8 @@ worker_run_with_timeout() { # <job-dir> <seconds> <command> [args...]
       timed_out=1
       break
     fi
-    if [ "$SECONDS" -ge "$next_check" ]; then
+    if [ "$SECONDS" -ge "$next_check" ] || [ "$WORKER_POKED" -eq 1 ] || fm_remote_job_cancelled "$job"; then
+      WORKER_POKED=0
       if fm_remote_job_cancelled "$job"; then
         worker_signal_process_or_group group TERM "$group_pid"
         attempt=0
@@ -623,12 +673,36 @@ worker_run_with_timeout() { # <job-dir> <seconds> <command> [args...]
         WORKER_PREEMPTED=1
         break
       fi
-      next_check=$((SECONDS + 1))
+      next_check=$((SECONDS + 5))
     fi
-    sleep "$FM_REMOTE_JOB_POLL_SECONDS"
+    if [ -z "$ticker_pid" ]; then
+      sleep "$FM_REMOTE_JOB_FALLBACK_POLL_SECONDS"
+    elif [ "$leader_reaped" -eq 0 ]; then
+      wait "$group_pid" 2>/dev/null
+      wait_rc=$?
+      # An interrupted wait leaves the leader running; a finished one is reaped.
+      if ! kill -0 "$group_pid" 2>/dev/null; then
+        leader_reaped=1
+        group_rc=$wait_rc
+      fi
+    else
+      # Only leaked descendants remain; the ticker's one-second cadence bounds
+      # how long they are noticed after the leader.
+      read -r -t 1 -u 9 _ || :
+    fi
   done
-  wait "$group_pid" 2>/dev/null
-  rc=$?
+  if [ -n "$ticker_pid" ]; then
+    kill "$ticker_pid" 2>/dev/null || true
+    wait "$ticker_pid" 2>/dev/null || true
+    exec 9<&-
+    rm -f -- "$poke_fifo"
+  fi
+  if [ "$leader_reaped" -eq 1 ]; then
+    rc=$group_rc
+  else
+    wait "$group_pid" 2>/dev/null
+    rc=$?
+  fi
   rm -f -- "$group_file" "$group_start_file" "$armed_file"
   [ "$timed_out" -eq 0 ] || return 124
   [ "$cancelled" -eq 0 ] || return 130
@@ -811,7 +885,8 @@ worker_reap_finished_lanes() {
   while [ "$i" -lt "$count" ]; do
     pid=${WORKER_LANE_PIDS[$i]}
     start=${WORKER_LANE_STARTS[$i]}
-    if worker_lane_identity_matches "$pid" "$start"; then
+    if kill -0 "$pid" 2>/dev/null \
+      && { [ "$SECONDS" -lt "$WORKER_NEXT_IDENTITY_CHECK" ] || worker_lane_identity_matches "$pid" "$start"; }; then
       live_homes+=("${WORKER_LANE_HOMES[$i]}")
       live_pids+=("$pid")
       live_starts+=("$start")
@@ -821,6 +896,8 @@ worker_reap_finished_lanes() {
     fi
     i=$((i + 1))
   done
+  [ "$SECONDS" -lt "$WORKER_NEXT_IDENTITY_CHECK" ] \
+    || WORKER_NEXT_IDENTITY_CHECK=$((SECONDS + WORKER_IDENTITY_CHECK_SECONDS))
   WORKER_LANE_HOMES=()
   WORKER_LANE_PIDS=()
   WORKER_LANE_STARTS=()
@@ -909,7 +986,7 @@ worker_lane_execute() { # <account-home> <job-dir>
 # has always run in.
 worker_start_lane() { # <job-dir> <home>
   local job=$1 home=$2 lane_pid lane_start
-  "$SCRIPT_DIR/fm-remote-job-worker.sh" --lane "${job##*/}" &
+  "$SCRIPT_DIR/fm-remote-job-worker.sh" --lane "${job##*/}" 8<&- &
   lane_pid=$!
   lane_start=$(fm_remote_job_process_start "$lane_pid" 2>/dev/null || true)
   WORKER_LANE_HOMES+=("$home")
@@ -918,6 +995,8 @@ worker_start_lane() { # <job-dir> <home>
   WORKER_LANE_JOBS+=("$job")
 }
 
+worker_lane_poke_path() { printf '%s\n' "$FM_REMOTE_JOB_STATE/.lane-$1.poke"; }
+
 worker_lane_main() { # <job-id>
   local account_home job
   fm_remote_job_safe_id "$1" || { worker_error "invalid lane job id"; exit 2; }
@@ -925,6 +1004,14 @@ worker_lane_main() { # <job-id>
   FM_ROOT=$(fm_remote_job_canonical_existing_dir "$FM_ROOT") || { worker_error "configured FM_ROOT is unsafe"; exit 1; }
   fm_remote_job_prepare_state "$account_home" || { worker_error "$FM_REMOTE_JOB_ERROR"; exit 1; }
   job=$(fm_remote_job_job_dir "$1" 2>/dev/null) || exit 0
+  # The serving loop blocks until woken, so a finished lane wakes it to reap the
+  # lane and start any job that was waiting for this home's lane.
+  # The serving loop's USR2 poke and the run loop's USR1 tick both arrive only
+  # after the run loop installs them; until then both are ignored in the
+  # handler so a poke that races the lane's startup cannot kill it.
+  trap ':' USR1
+  trap 'WORKER_POKED=1' USR2
+  trap 'rm -f -- "$(worker_lane_poke_path "${BASHPID:-$$}")" 2>/dev/null; fm_remote_job_wake_worker' EXIT
   worker_lane_execute "$account_home" "$job"
 }
 
@@ -932,10 +1019,11 @@ worker_process_once() { # <account-home>
   local account_home=$1 job id state queue_deadline home seq candidates=''
   local reserved_index reserved_count home_reserved
   local reserved_homes=()
-  worker_reap_finished_lanes
+  [ "${#WORKER_DONE_JOBS}" -lt 8192 ] || WORKER_DONE_JOBS=' '
   for job in "$FM_REMOTE_JOB_JOBS"/job-*; do
     [ -d "$job" ] && [ ! -L "$job" ] || continue
     id=${job##*/}
+    case "$WORKER_DONE_JOBS" in *" $id "*) continue ;; esac
     fm_remote_job_safe_id "$id" || continue
     job=$(fm_remote_job_job_dir "$id" 2>/dev/null || true)
     [ -n "$job" ] || continue
@@ -972,6 +1060,7 @@ worker_process_once() { # <account-home>
         worker_lane_owns_job "$job" || worker_reclaim_running_job "$job" || true
         continue
         ;;
+      'done') WORKER_DONE_JOBS="$WORKER_DONE_JOBS$id "; continue ;;
       *) continue ;;
     esac
   done
@@ -1016,7 +1105,16 @@ main() {
   trap worker_shutdown HUP INT TERM
   worker_publish_identity "$account_home" || { worker_error "cannot publish worker code identity"; exit 1; }
   worker_publish_pid || { worker_error "cannot publish worker pid"; exit 1; }
+  local wake_flag="$FM_REMOTE_JOB_STATE/worker.wakeflag" next_reap=0 woke=1 stale_waits=0 lanes_before pid
+  if fm_remote_job_ensure_fifo "$FM_REMOTE_JOB_STATE/worker.wake" && { exec 8<>"$FM_REMOTE_JOB_STATE/worker.wake"; } 2>/dev/null; then
+    WORKER_WAKE_FD=8
+  else
+    fm_remote_job_note_fallback "worker_main" "no worker wake FIFO"
+  fi
   while :; do
+    # Cleared before the scan, so any producer that publishes after this point
+    # writes a fresh wake and the read below returns at once.
+    printf '0\n' > "$wake_flag" 2>/dev/null || true
     worker_write_heartbeat || { worker_error "cannot update worker heartbeat"; exit 1; }
     # Checked right after a fresh heartbeat, so the grace window cannot make a
     # still-healthy worker read as unready to a concurrent probe.
@@ -1024,13 +1122,34 @@ main() {
       worker_error "configured FM_ROOT $FM_ROOT no longer exists; stopping the abandoned worker"
       exit 0
     fi
-    worker_reap=0
-    if [ "$worker_reap" -eq 0 ]; then
+    if [ "$SECONDS" -ge "$next_reap" ]; then
       fm_remote_job_reap_stale "$account_home" || true
-      worker_reap=1
+      next_reap=$((SECONDS + FM_REMOTE_JOB_REAP_TICK_SECONDS))
     fi
-    worker_process_once "$account_home"
-    sleep "$FM_REMOTE_JOB_POLL_SECONDS"
+    lanes_before=${#WORKER_LANE_PIDS[@]}
+    worker_reap_finished_lanes
+    # A timeout wake with a lane still running changes nothing the scan would
+    # act on: the lane's own exit wakes this loop, so only an event, a lane
+    # change, an empty lane set or a long-quiet safety interval pays for a scan.
+    if [ "$woke" -eq 1 ] || [ "${#WORKER_LANE_PIDS[@]}" -ne "$lanes_before" ] \
+      || [ "${#WORKER_LANE_PIDS[@]}" -eq 0 ] || [ "$stale_waits" -ge 12 ]; then
+      stale_waits=0
+      worker_process_once "$account_home"
+    fi
+    if [ "$WORKER_WAKE_FD" = 8 ]; then
+      if read -r -t "$WORKER_IDLE_WAIT_SECONDS" -u 8 _; then
+        woke=1
+        for pid in "${WORKER_LANE_PIDS[@]+"${WORKER_LANE_PIDS[@]}"}"; do
+          fm_remote_job_fifo_wake "$(worker_lane_poke_path "$pid")"
+        done
+      else
+        woke=0
+        stale_waits=$((stale_waits + 1))
+      fi
+    else
+      sleep "$FM_REMOTE_JOB_FALLBACK_POLL_SECONDS"
+      woke=1
+    fi
   done
 }
 
