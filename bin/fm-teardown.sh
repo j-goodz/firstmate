@@ -3685,6 +3685,14 @@ LAUNCH_HOME_TOKEN=$(teardown_launch_home_token "$FM_HOME") || LAUNCH_HOME_TOKEN=
 if [ -n "$LAUNCH_HOME_TOKEN" ]; then
   rm -rf "/tmp/fm-$ID+$LAUNCH_HOME_TOKEN"
 fi
+# A finished task's own Lavish boards (and their runners and watchdogs) end with
+# it. A board with an unacknowledged captured round is kept for firstmate to
+# acknowledge; neither outcome blocks the cleanup of landed work.
+if [ -x "$SCRIPT_DIR/fm-procevent.sh" ]; then
+  if BOARD_OUT=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/fm-procevent.sh" retire-task "$ID" 2>&1); then BOARD_RC=0; else BOARD_RC=$?; fi
+  [ -z "$BOARD_OUT" ] || printf '%s\n' "$BOARD_OUT"
+  [ "$BOARD_RC" -eq 0 ] || echo "note: $ID still owns a board that teardown did not retire (exit $BOARD_RC); acknowledge its round with bin/fm-procevent.sh handled, then retire it" >&2
+fi
 remove_pr_poll_artifacts "$STATE" "$ID" || exit 1
 retire_busy_state "$STATE" "$ID" "$BUSY_GEN" || exit 1
 status_retire_presentation_task "$STATE" "$ID" || exit 1

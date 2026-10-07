@@ -23,9 +23,9 @@
 # A staged job whose caller goes away is cancelled rather than abandoned: any
 # exit after staging and before the published result marks the job cancelled
 # (signal traps cover a delivered HUP/TERM/PIPE/INT, and the exit trap covers a
-# failed bounded wait), and while waiting this process probes its parent about
-# once per second, so an ssh channel that dies without delivering any signal -
-# sshd exiting and reparenting this process - also cancels the job. The worker
+# failed bounded wait), and while waiting a perl watcher blocks on this
+# process's stdout, so an ssh channel that closes without delivering any signal
+# (the normal ControlMaster case) also cancels the job at once. The worker
 # then skips or stops the cancelled job instead of running it to completion for
 # nobody.
 set -eu
@@ -87,28 +87,45 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-remote-entrypoint.XXXXXX") || die "cannot cr
 JOB_ID=
 JOB_COMPLETED=0
 ACCOUNT_HOME=
-ENTRYPOINT_PPID=$(ps -o ppid= -p $$ 2>/dev/null | tr -d ' ' || true)
+HANGUP_WATCH_PID=
 
-# The recorded parent is the ssh session process; when it disappears this
-# process is reparented and the caller is provably gone. An unreadable probe
-# never cancels: only an observed parent change does.
-# shellcheck disable=SC2329 # Invoked by fm_remote_job_wait through FM_REMOTE_JOB_DISCONNECT_PROBE.
-entrypoint_caller_connected() {
-  local current
-  case "$ENTRYPOINT_PPID" in ''|*[!0-9]*) return 0 ;; esac
-  # The probe runs about once a second for the whole wait, so on Linux it reads
-  # the parent from /proc with builtins instead of spawning ps and tr.
-  if [ -r "/proc/$$/stat" ]; then
-    IFS=' ' read -r _ _ _ current _ < "/proc/$$/stat" 2>/dev/null || current=
-  else
-    current=$(ps -o ppid= -p $$ 2>/dev/null | tr -d ' ' || true)
+# Detect a hung-up caller from the event itself. Under ControlMaster every call
+# is a channel on one long-lived sshd session, so the parent process never
+# changes; what does change is the entrypoint's stdout, a pipe or socket whose
+# peer sshd closes when the channel closes. One perl process blocks in poll(2)
+# on that descriptor, with no timer, and sends this shell a HUP when the kernel
+# reports the peer gone. The HUP trap below exits, and the EXIT trap cancels the
+# job. The watcher re-checks that it still has its parent before signalling, so
+# a recycled pid is never hit. When stdout is not a pipe or socket, or perl is
+# missing, nothing is armed and the job's own deadline bounds an abandoned call.
+entrypoint_start_hangup_watch() {
+  if [ ! -p /dev/stdout ] && [ ! -S /dev/stdout ]; then return 0; fi
+  if ! command -v perl >/dev/null 2>&1; then
+    fm_remote_job_note_fallback "fm-remote-entrypoint" "no perl for the hang-up watcher"
+    return 0
   fi
-  case "$current" in ''|*[!0-9]*) return 0 ;; esac
-  [ "$current" = "$ENTRYPOINT_PPID" ]
+  perl -e '
+    use strict; use warnings; use IO::Poll qw(POLLERR POLLHUP);
+    my $owner = shift; my $poll = IO::Poll->new;
+    $poll->mask(\*STDOUT => POLLERR | POLLHUP);
+    while (1) {
+      my $n = $poll->poll(-1);
+      next if $n < 0;
+      last if $poll->events(\*STDOUT);
+    }
+    kill "HUP", $owner if getppid() == $owner;
+  ' "$$" &
+  HANGUP_WATCH_PID=$!
+}
+
+entrypoint_stop_hangup_watch() {
+  [ -z "$HANGUP_WATCH_PID" ] || kill "$HANGUP_WATCH_PID" 2>/dev/null || true
+  HANGUP_WATCH_PID=
 }
 
 # shellcheck disable=SC2329 # Invoked through the EXIT trap below.
 entrypoint_cleanup() {
+  entrypoint_stop_hangup_watch
   rm -rf -- "$TMP"
   if [ -n "$JOB_ID" ] && [ "$JOB_COMPLETED" -eq 0 ] && [ -n "$ACCOUNT_HOME" ]; then
     fm_remote_job_cancel "$ACCOUNT_HOME" "$JOB_ID" 2>/dev/null || true
@@ -185,11 +202,12 @@ if ! JOB_ID=$(fm_remote_job_stage "$ACCOUNT_HOME" "$ROOT" "$HOME_PATH" "$COMMAND
   JOB_ID=
   die "${FM_REMOTE_JOB_ERROR:-cannot stage remote job}" 70
 fi
-FM_REMOTE_JOB_DISCONNECT_PROBE=entrypoint_caller_connected
+entrypoint_start_hangup_watch
 if ! fm_remote_job_wait "$ACCOUNT_HOME" "$JOB_ID"; then
   die "${FM_REMOTE_JOB_ERROR:-remote job did not complete}" 70
 fi
 JOB_COMPLETED=1
+entrypoint_stop_hangup_watch
 cat "$FM_REMOTE_JOB_STDOUT"
 cat "$FM_REMOTE_JOB_STDERR" >&2
 RESULT=$FM_REMOTE_JOB_EXIT

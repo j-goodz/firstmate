@@ -266,14 +266,32 @@ fm_remote_job_reap "$ACCOUNT_HOME" "$FAST_STAGE" || true
 fm_remote_job_reap "$ACCOUNT_HOME" "$DELAYED_STAGE" || true
 pass "same-home sequence order follows completed staging publication"
 
+# A real ssh caller's stdout is a pipe whose reader (sshd) disappears when the
+# client dies. start_piped_caller reproduces that: the caller writes into a FIFO
+# read by a stand-in process, and hang_up_reader kills the stand-in.
+PIPED_SEQ=0
+start_piped_caller() { # <fm-on args...>; sets PIPED_CALLER and PIPED_READER
+  PIPED_SEQ=$((PIPED_SEQ + 1))
+  local fifo="$TMP_ROOT/piped-caller-$PIPED_SEQ.fifo"
+  mkfifo "$fifo"
+  sleep 600 < "$fifo" &
+  PIPED_READER=$!
+  fm_on "$@" > "$fifo" 2>/dev/null &
+  PIPED_CALLER=$!
+}
+hang_up_reader() {
+  kill -KILL "$PIPED_READER" 2>/dev/null || true
+  wait "$PIPED_READER" 2>/dev/null || true
+}
+
 # T3a: a caller killed while its job is still queued cancels it; the worker
 # never executes it.
 fm_remote_job_stage "$ACCOUNT_HOME" "$REMOTE_ROOT" "$HOME_A" fm-mark-job.sh hold2 "$LOG_A" 4 < /dev/null > /dev/null
 HOLD2=$FM_REMOTE_JOB_ID
 wait_for_state "$HOLD2" running || fail "the cancellation fixture's lane holder did not begin running"
 QUEUED_EFFECT="$TMP_ROOT/queued-cancel-effect"
-fm_on ios fm-touch-job.sh "$QUEUED_EFFECT" > /dev/null 2>&1 &
-QUEUED_CALLER=$!
+start_piped_caller ios fm-touch-job.sh "$QUEUED_EFFECT"
+QUEUED_CALLER=$PIPED_CALLER
 QUEUED_JOB=
 for _ in $(seq 1 200); do
   for job in "$STATE_ROOT"/jobs/job-*; do
@@ -285,6 +303,7 @@ for _ in $(seq 1 200); do
   sleep 0.05
 done
 [ -n "$QUEUED_JOB" ] || fail "the doomed caller's job never appeared in the queue"
+hang_up_reader
 kill -TERM "$QUEUED_CALLER" 2>/dev/null || true
 wait "$QUEUED_CALLER" 2>/dev/null || true
 for _ in $(seq 1 200); do
@@ -303,13 +322,14 @@ pass "a caller killed mid-wait cancels its queued job before execution"
 # group instead of letting it run to completion for nobody.
 RUN_START="$TMP_ROOT/running-cancel-start"
 RUN_FINISH="$TMP_ROOT/running-cancel-finish"
-fm_on build fm-two-phase-job.sh "$RUN_START" "$RUN_FINISH" 8 > /dev/null 2>&1 &
-RUNNING_CALLER=$!
+start_piped_caller build fm-two-phase-job.sh "$RUN_START" "$RUN_FINISH" 8
+RUNNING_CALLER=$PIPED_CALLER
 for _ in $(seq 1 200); do
   [ -f "$RUN_START" ] && break
   sleep 0.05
 done
 assert_present "$RUN_START" "the running-cancellation fixture never started"
+hang_up_reader
 kill -TERM "$RUNNING_CALLER" 2>/dev/null || true
 wait "$RUNNING_CALLER" 2>/dev/null || true
 CANCEL_BEGAN=$(date +%s)
@@ -325,33 +345,39 @@ sleep 2
 assert_absent "$RUN_FINISH" "a cancelled running job's process group ran to completion"
 pass "a caller killed mid-wait stops its running job's process group"
 
-# T3c: a caller whose parent exits WITHOUT delivering any signal - the shape a
-# dead ssh channel leaves behind - still cancels through the entrypoint's
-# parent-liveness probe.
-ORPHAN_START="$TMP_ROOT/orphan-cancel-start"
-ORPHAN_FINISH="$TMP_ROOT/orphan-cancel-finish"
-# shellcheck disable=SC2016 # Expansion is deliberately deferred to the child shell.
-env FM_HOME="$LOCAL_HOME" FM_ROOT_OVERRIDE="$REMOTE_ROOT" \
-  FM_SSH_BIN="$FAKEBIN/fake-ssh" \
-  FM_FAKE_REMOTE_ENTRYPOINT="$REMOTE_ROOT/bin/fm-remote-entrypoint.sh" \
-  FM_REMOTE_JOB_STATE_ROOT="$STATE_ROOT" FM_REMOTE_JOB_PLATFORM_OVERRIDE=Linux \
-  bash -c '
-    "$1/bin/fm-on.sh" build fm-two-phase-job.sh "$2" "$3" 12 >/dev/null 2>&1 &
-    while [ ! -f "$2" ]; do sleep 0.1; done
-  ' _ "$ROOT" "$ORPHAN_START" "$ORPHAN_FINISH"
-assert_present "$ORPHAN_START" "the orphan-cancellation fixture never started"
-ORPHAN_BEGAN=$(date +%s)
-for _ in $(seq 1 300); do
-  ls "$STATE_ROOT"/jobs/job-* >/dev/null 2>&1 || break
+# T3c: a caller whose stdout channel closes WITHOUT any signal reaching the
+# entrypoint - the shape a dead ssh channel leaves behind under ControlMaster,
+# where the parent process never changes - cancels the job within about a
+# second. The reader of the entrypoint's stdout FIFO is killed; the entrypoint
+# is not.
+HANGUP_START="$TMP_ROOT/hangup-cancel-start"
+HANGUP_FINISH="$TMP_ROOT/hangup-cancel-finish"
+HANGUP_FIFO="$TMP_ROOT/hangup-stdout.fifo"
+mkfifo "$HANGUP_FIFO"
+sleep 600 < "$HANGUP_FIFO" &
+HANGUP_READER=$!
+fm_on build fm-two-phase-job.sh "$HANGUP_START" "$HANGUP_FINISH" 12 > "$HANGUP_FIFO" 2>/dev/null &
+HANGUP_CALLER=$!
+for _ in $(seq 1 200); do
+  [ -f "$HANGUP_START" ] && break
   sleep 0.05
 done
-ORPHAN_ELAPSED=$(( $(date +%s) - ORPHAN_BEGAN ))
+assert_present "$HANGUP_START" "the hang-up fixture never started"
+kill -KILL "$HANGUP_READER" 2>/dev/null || true
+wait "$HANGUP_READER" 2>/dev/null || true
+HANGUP_BEGAN_MS=$(( $(date +%s%N) / 1000000 ))
+for _ in $(seq 1 400); do
+  ls "$STATE_ROOT"/jobs/job-* >/dev/null 2>&1 || break
+  sleep 0.02
+done
+HANGUP_ELAPSED_MS=$(( $(date +%s%N) / 1000000 - HANGUP_BEGAN_MS ))
 ls "$STATE_ROOT"/jobs/job-* >/dev/null 2>&1 \
-  && fail "the orphaned caller's job record survived its disconnect"
-[ "$ORPHAN_ELAPSED" -le 10 ] || fail "orphan-disconnect cancellation took ${ORPHAN_ELAPSED}s"
+  && fail "the hung-up caller's job record survived its disconnect"
+[ "$HANGUP_ELAPSED_MS" -le 1000 ] || fail "hang-up cancellation took ${HANGUP_ELAPSED_MS}ms"
+wait "$HANGUP_CALLER" 2>/dev/null || true
 sleep 2
-assert_absent "$ORPHAN_FINISH" "a job abandoned by a signal-less disconnect ran to completion"
-pass "a signal-less caller disconnect cancels the abandoned job through the parent probe"
+assert_absent "$HANGUP_FINISH" "a job abandoned by a closed stdout channel ran to completion"
+pass "a closed caller stdout channel cancels the abandoned job within a second"
 
 # T3: after the cancellations, a burst of short bounded commands meets its own
 # budget - no convoy behind abandoned work.
