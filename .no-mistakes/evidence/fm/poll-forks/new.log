@@ -1,0 +1,12 @@
+# an idle remote job worker: 0 helper processes in 6s
+ok - an idle remote job worker stays inside its process-spawn budget
+ok - the quiet worker still refreshes its readiness heartbeat
+# an idle reply long-poll: 0 helper processes in 8s
+ok - an idle reply long-poll stays inside its process-spawn budget
+ok - an appended reply line is still delivered while the poll idles
+# an idle reply long-poll on python inotify: 0 helper processes in 6s
+ok - python inotify gives an event-driven reply wait with nothing spawned
+# an idle reply long-poll without inotifywait: 0 helper processes in 6s
+ok - the polling fallback spawns nothing, delivers promptly and is logged
+# an idle owner watchdog: 0 helper processes in 6s
+ok - an idle owner watchdog stays inside its process-spawn budget

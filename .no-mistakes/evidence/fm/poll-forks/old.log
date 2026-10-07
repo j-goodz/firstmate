@@ -1,0 +1,7 @@
+    172 chmod 700
+     44 mv -f
+     44 mktemp /home/justin/.cache/tmp/fm-idle-forks.VTTpLJ/remote-jobs/.ready.XXXXXX
+     44 chmod 600
+     43 uname -s
+     43 stat -c
+not ok - an idle remote job worker spawned 562 helper processes in 6s (budget 1)
