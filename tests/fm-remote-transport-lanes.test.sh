@@ -274,7 +274,7 @@ start_piped_caller() { # <fm-on args...>; sets PIPED_CALLER and PIPED_READER
   PIPED_SEQ=$((PIPED_SEQ + 1))
   local fifo="$TMP_ROOT/piped-caller-$PIPED_SEQ.fifo"
   mkfifo "$fifo"
-  sleep 600 < "$fifo" &
+  cat < "$fifo" > /dev/null &
   PIPED_READER=$!
   fm_on "$@" > "$fifo" 2>/dev/null &
   PIPED_CALLER=$!
@@ -354,7 +354,7 @@ HANGUP_START="$TMP_ROOT/hangup-cancel-start"
 HANGUP_FINISH="$TMP_ROOT/hangup-cancel-finish"
 HANGUP_FIFO="$TMP_ROOT/hangup-stdout.fifo"
 mkfifo "$HANGUP_FIFO"
-sleep 600 < "$HANGUP_FIFO" &
+cat < "$HANGUP_FIFO" > /dev/null &
 HANGUP_READER=$!
 fm_on build fm-two-phase-job.sh "$HANGUP_START" "$HANGUP_FINISH" 12 > "$HANGUP_FIFO" 2>/dev/null &
 HANGUP_CALLER=$!
