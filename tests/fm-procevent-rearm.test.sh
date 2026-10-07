@@ -423,6 +423,11 @@ assert_contains "$wake" "procevent lavish $id " "S7: wake should contain proceve
 
 polls=$(ra_polls)
 [ "$polls" -eq 2 ] || fail "S7: poll count should be 2, got $polls"
+# The runner retires the ended source right after it publishes the wake, so wait for that.
+for _ in $(seq 1 100); do
+  [ ! -e "$home/state/procevent/$id.source" ] && break
+  sleep 0.1
+done
 [ ! -e "$home/state/procevent/$id.source" ] || fail "S7: source registration still exists"
 assert_contains "$wake" "procevent lavish $id 2" "S7: wake should contain sequence 2"
 [ ! -e "$home/state/procevent-inbox/$id.2.handled" ] || fail "S7: $id.2.handled should not exist"
