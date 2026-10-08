@@ -209,6 +209,153 @@ EOF
   assert_grep "units ledger" "$tmp/err" "ledger missing message"
 }
 
+run_report() {
+  FM_HOME="$1" FM_STATE_OVERRIDE="$1/state" FM_DATA_OVERRIDE="$1/data" FM_FANOUT_LEDGER="$1/units.jsonl" "$ROOT/bin/fm-fanout-check.sh" "$2" >"$1/rout" 2>"$1/rerr"
+}
+
+test_gate_router_prefixed_free_name_passes() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"zai/glm-5"},{"model":"nvidia/nemotron-3-ultra-550b-a55b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261005T010203Z-abc123" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261005T010203Z-abc123","label":"huddle-mod","outcome":"check_passed","requested_model":"nvidia/nemotron-3-ultra-550b-a55b:free","served_model":"kilo/nvidia/nemotron-3-ultra-550b-a55b:free"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 0 $rc "router-prefixed free name passes"
+  assert_no_grep "REFUSED" "$tmp/err" "no REFUSED in err"
+  # report mode
+  run_report "$tmp" "t1"
+  rc=$?
+  expect_code 0 $rc "report mode exits 0"
+  assert_grep "free_written=yes" "$tmp/rout" "report shows free_written=yes"
+  assert_grep "paid_step_ups=0" "$tmp/rout" "report shows paid_step_ups=0"
+}
+
+test_gate_prefix_stripped_ranked_name_passes() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"zai/glm-5"},{"model":"nvidia/nemotron-3-ultra-550b-a55b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261005T010203Z-abc123" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1","outcome":"check_passed","requested_model":"auto","served_model":"openrouter/zai/glm-5"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 0 $rc "prefix-stripped ranked name passes"
+}
+
+test_gate_unprefixed_ranked_name_passes() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"zai/glm-5"},{"model":"nvidia/nemotron-3-ultra-550b-a55b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261005T010203Z-abc123" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1","outcome":"check_passed","requested_model":"auto","served_model":"zai/glm-5"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 0 $rc "unprefixed ranked name passes"
+}
+
+test_gate_direct_paid_name_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"zai/glm-5"},{"model":"nvidia/nemotron-3-ultra-550b-a55b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261005T010203Z-abc123" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1","outcome":"check_passed","requested_model":"deepseek-chat","served_model":"deepseek-chat"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 1 $rc "direct paid name refused"
+  assert_grep "REFUSED: fanout-gate" "$tmp/err" "REFUSED prefix"
+  assert_grep "deepseek-chat" "$tmp/err" "deepseek-chat named"
+}
+
+test_gate_and_report_agree() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"zai/glm-5"},{"model":"nvidia/nemotron-3-ultra-550b-a55b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261005T010203Z-abc123" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261005T010203Z-abc123","label":"a","outcome":"check_passed","requested_model":"nvidia/nemotron-3-ultra-550b-a55b:free","served_model":"kilo/nvidia/nemotron-3-ultra-550b-a55b:free"}
+{"run_id":"fr-20261005T010203Z-abc123","label":"b","outcome":"check_passed","requested_model":"deepseek-chat","served_model":"deepseek-chat"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 1 $rc "gate refuses when any unit is paid"
+  assert_grep "REFUSED: fanout-gate" "$tmp/err" "REFUSED prefix"
+  assert_grep "deepseek-chat" "$tmp/err" "deepseek-chat named"
+  assert_no_grep "kilo/" "$tmp/err" "no kilo/ in err"
+  # report mode
+  run_report "$tmp" "t1"
+  rc=$?
+  expect_code 0 $rc "report mode exits 0 and counts only the free unit"
+  assert_grep "units=1" "$tmp/rout" "report shows units=1"
+}
+
 # Run tests
 test_gate_clean_lane_passes
 test_gate_refuses_no_run_ids
@@ -218,3 +365,8 @@ test_gate_split_units_resolve_exhausted_parent
 test_gate_split_unit_exhausted_still_refused
 test_gate_refuses_paid_served
 test_gate_refuses_missing_ledger
+test_gate_router_prefixed_free_name_passes
+test_gate_prefix_stripped_ranked_name_passes
+test_gate_unprefixed_ranked_name_passes
+test_gate_direct_paid_name_refused
+test_gate_and_report_agree
