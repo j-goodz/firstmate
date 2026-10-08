@@ -122,6 +122,46 @@ EOF
   expect_code 0 $rc "free_exhausted then pass is clean"
 }
 
+test_gate_split_units_resolve_exhausted_parent() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  FM_FANOUT_MODELS="$tmp/models.json"
+  export FM_FANOUT_MODELS
+  echo '{"models":[{"model":"dots-studio/dots-3-note-preview:free"}]}' > "$FM_FANOUT_MODELS"
+  echo "working [at=1]: fan-out runs fr-20261005T010203Z-abc123" > "$tmp/state/t1.status"
+  local m="dots-studio/dots-3-note-preview:free"
+  cat > "$tmp/units.jsonl" <<EOF
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1","outcome":"free_exhausted","requested_model":"$m","served_model":"$m"}
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1--a","outcome":"check_passed","requested_model":"$m","served_model":"$m"}
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1--b","outcome":"check_passed","requested_model":"$m","served_model":"$m"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 0 $rc "split units resolve exhausted parent"
+}
+
+test_gate_split_unit_exhausted_still_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  FM_FANOUT_MODELS="$tmp/models.json"
+  export FM_FANOUT_MODELS
+  echo '{"models":[{"model":"dots-studio/dots-3-note-preview:free"}]}' > "$FM_FANOUT_MODELS"
+  echo "working [at=1]: fan-out runs fr-20261005T010203Z-abc123" > "$tmp/state/t1.status"
+  local m="dots-studio/dots-3-note-preview:free"
+  cat > "$tmp/units.jsonl" <<EOF
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1","outcome":"free_exhausted","requested_model":"$m","served_model":"$m"}
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1--a","outcome":"free_exhausted","requested_model":"$m","served_model":"$m"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 1 $rc "exhausted split unit refused"
+  assert_grep "u1--a" "$tmp/err" "split unit named"
+}
+
 test_gate_refuses_paid_served() {
   local tmp
   tmp=$(fm_test_tmproot)
@@ -176,5 +216,7 @@ test_gate_clean_lane_passes
 test_gate_refuses_no_run_ids
 test_gate_refuses_free_exhausted_last
 test_gate_free_exhausted_then_free_pass_is_clean
+test_gate_split_units_resolve_exhausted_parent
+test_gate_split_unit_exhausted_still_refused
 test_gate_refuses_paid_served
 test_gate_refuses_missing_ledger

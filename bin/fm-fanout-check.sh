@@ -10,7 +10,8 @@
 # --gate it exits 0 for any valid invocation, whatever the verdict. With --gate the script
 # becomes a refusal check: it exits 1 and prints `REFUSED: fanout-gate: ...` lines on stderr
 # when the lane has no run ids, an unreadable units ledger, a unit whose last terminal outcome
-# is free_exhausted, or a check_passed unit whose producing model (served_model, else
+# is free_exhausted (unless a later free check_passed unit labelled
+# "<parent label>--<suffix>" in the lane split it), or a check_passed unit whose producing model (served_model, else
 # requested_model) is not free; it appends nothing to the adoption ledger and prints no
 # WARNING. Exit 2 only for bad usage (no task id, unknown option, option missing its value).
 #
@@ -236,15 +237,23 @@ else
             | {run_id, label, outcome, requested_model, served_model}
           ' \
         | jq -s --argjson free "$free_models_json" '
-            reduce .[] as $row ({};
-              ($row.run_id + "/" + $row.label) as $key |
-              if $row.outcome == "check_passed" or $row.outcome == "free_exhausted" then
-                .[$key] = $row
-              else . end
-            )
-            | to_entries | map(.value)
+            def model: if .served_model != "" and .served_model != null then .served_model else .requested_model end;
+            . as $rows
+            | (reduce range(0; $rows | length) as $i ({};
+                $rows[$i] as $row |
+                ($row.run_id + "/" + $row.label) as $key |
+                if $row.outcome == "check_passed" or $row.outcome == "free_exhausted" then
+                  .[$key] = ($row + {idx: $i})
+                else . end
+              ) | to_entries | map(.value)) as $units
+            | $units
             | {
-                exhausted: (map(select(.outcome == "free_exhausted")) | map(.run_id + "/" + .label) | join(", ")),
+                exhausted: (map(select(.outcome == "free_exhausted"))
+                  | map(select(. as $p | any($units[];
+                      .outcome == "check_passed" and .idx > $p.idx
+                      and (.label | startswith($p.label + "--"))
+                      and ((model) as $m | ($free | index($m)) != null)) | not))
+                  | map(.run_id + "/" + .label) | join(", ")),
                 paid: (map(select(.outcome == "check_passed"
                     and ((if .served_model != "" and .served_model != null then .served_model else .requested_model end) as $model
                          | ($free | index($model)) == null)))

@@ -593,7 +593,7 @@ It is mandatory: every code and test file comes from free models, and you never 
 1. Turn the Firstmate spec into a fan-out manifest (a JSON list of units). Use an \`out\` unit for each new file and an \`edit\` unit (SEARCH/REPLACE blocks) for each existing file, each with a \`check\` command that proves the unit works. Write the tests first, from the spec, as their own units.
 2. Run \`python3 $FANOUT_ENGINE --manifest <file>\` (if that path is missing, use the nexus checkout path on this machine). Keep scratch files under ~/scratch/$ID, never inside a git tree.
 3. Review every result and apply it. Never hand-write code. A rate-limited or failed call reroutes to the next free model and is not a failure.
-4. A unit the run reports \`free_exhausted\` is split into smaller units and rerun through the fan-out engine. If a split unit ends \`free_exhausted\` again, stop and append a \`blocked:\` status line naming the unit; never write that file yourself or with a paid model.
+4. A unit the run reports \`free_exhausted\` is split into smaller units, named \`<parent label>--<suffix>\`, and rerun through the fan-out engine; the gate treats the parent as resolved once its split units pass with free models. If a split unit ends \`free_exhausted\` again, stop and append a \`blocked:\` status line naming the unit; never write that file yourself or with a paid model.
 5. Name the fan-out run ids (fr-...) in a status line, and in the PR body on one line that starts with \`Fan-out runs:\` followed by the ids; firstmate reads only that line. Firstmate records whether free models wrote the change; the merge is refused for a lane with no run ids, a unit that ended free_exhausted, or a unit a paid model wrote.
 
 $DOD
