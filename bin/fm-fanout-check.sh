@@ -37,11 +37,12 @@
 # are ignored. A unit is a distinct (run_id, label) pair. Only rows whose run_id is one of the
 # collected run ids count.
 #
-# Free vs paid provenance comes from the row that produced the code: requested_model or
-# served_model, either of which marks the row free when the ranked list in $FM_FANOUT_MODELS
-# (plus the engine's seed fallback and "auto") names it; any model neither field names is paid.
-# A check_passed row counts as free-written when either field names a free model, so a run a
-# lead handed wholesale to a paid model is never recorded as free adoption.
+# Free vs paid test (shared by report mode and gate mode): a model name is free when it ends in
+# ":free", is in the ranked list in $FM_FANOUT_MODELS (plus the engine's seed fallback and
+# "auto"), or becomes so after its first path segment is removed (a router prefix such as kilo/
+# or openrouter/). Report mode counts a check_passed row as free-written when either
+# requested_model or served_model passes. Gate mode judges the producing model (served_model,
+# else requested_model) with the same test; any model that fails it is paid.
 #
 # Verdict, decided in this order:
 #   no-runs         no run id was found anywhere
@@ -204,6 +205,7 @@ else
 
     # Process ledger with jq to count distinct (run_id, label) pairs per outcome. A
     # check_passed unit counts as free-written only when its producing model is free.
+    FREE_JQ_DEF='def isfree($free): if . == null or . == "" then false else . as $m | ($m | endswith(":free")) or (($free | index($m)) != null) or (($m | sub("^[^/]*/"; "")) as $s | $s != $m and ($free | index($s)) != null) end;'
     counts=$(jq -R 'fromjson? | select(type=="object")' "$UNITS_LEDGER" \
       | jq --argjson ids "$run_ids_json" '
           select(.run_id as $rid | ($ids | index($rid)) != null)
@@ -211,14 +213,14 @@ else
              requested_model: (.requested_model // ""),
              served_model: (.served_model // "")}
         ' \
-      | jq -s --argjson free "$free_models_json" '
+      | jq -s --argjson free "$free_models_json" "$FREE_JQ_DEF"'
           group_by(.run_id, .label)
           | map({
               run_id: .[0].run_id,
               label: .[0].label,
               has_free_pass: any(.[]; . as $row | ($row.outcome == "check_passed")
-                and ((($free | index($row.requested_model)) != null)
-                     or (($free | index($row.served_model)) != null))),
+                and (($row.requested_model | isfree($free))
+                     or ($row.served_model | isfree($free)))),
               has_free_exhausted: any(.[]; .outcome == "free_exhausted")
             })
           | {
@@ -236,7 +238,7 @@ else
             select(.run_id as $rid | ($ids | index($rid)) != null)
             | {run_id, label, outcome, requested_model, served_model}
           ' \
-        | jq -s --argjson free "$free_models_json" '
+        | jq -s --argjson free "$free_models_json" "$FREE_JQ_DEF"'
             def model: if .served_model != "" and .served_model != null then .served_model else .requested_model end;
             . as $rows
             | (reduce range(0; $rows | length) as $i ({};
@@ -252,11 +254,11 @@ else
                   | map(select(. as $p | any($units[];
                       .outcome == "check_passed" and .idx > $p.idx
                       and (.label | startswith($p.label + "--"))
-                      and ((model) as $m | ($free | index($m)) != null)) | not))
+                      and ((model) as $m | ($m | isfree($free)))) | not))
                   | map(.run_id + "/" + .label) | join(", ")),
                 paid: (map(select(.outcome == "check_passed"
                     and ((if .served_model != "" and .served_model != null then .served_model else .requested_model end) as $model
-                         | ($free | index($model)) == null)))
+                         | ($model | isfree($free)) | not)))
                   | map(.run_id + "/" + .label + " (" + (if .served_model != "" and .served_model != null then .served_model else .requested_model end) + ")")
                   | join(", "))
               }
