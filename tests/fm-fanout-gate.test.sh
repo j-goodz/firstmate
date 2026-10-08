@@ -160,6 +160,93 @@ EOF
   assert_grep "u1--a" "$tmp/err" "split unit named"
 }
 
+test_gate_retry_passed_free_clears_exhausted() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  FM_FANOUT_MODELS="$tmp/models.json"
+  export FM_FANOUT_MODELS
+  echo '{"models":[{"model":"dots-studio/dots-3-note-preview:free"}]}' > "$FM_FANOUT_MODELS"
+  local A="fr-20261008T115751Z-89c9d1"
+  local B="fr-20261008T120414Z-402763"
+  local m="dots-studio/dots-3-note-preview:free"
+  echo "working [at=1]: fan-out runs $A $B" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<EOF
+{"run_id":"$A","label":"t-order","outcome":"free_exhausted","requested_model":"$m","served_model":"$m","at":"2026-10-08T11:57:51Z"}
+{"run_id":"$B","label":"t-order","outcome":"check_passed","requested_model":"$m","served_model":"$m","at":"2026-10-08T12:04:14Z"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 0 $rc "retry passed free clears exhausted"
+}
+
+test_gate_retry_exhausted_again_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  FM_FANOUT_MODELS="$tmp/models.json"
+  export FM_FANOUT_MODELS
+  echo '{"models":[{"model":"dots-studio/dots-3-note-preview:free"}]}' > "$FM_FANOUT_MODELS"
+  local A="fr-20261008T115751Z-89c9d1"
+  local B="fr-20261008T120414Z-402763"
+  local m="dots-studio/dots-3-note-preview:free"
+  echo "working [at=1]: fan-out runs $A $B" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<EOF
+{"run_id":"$A","label":"t-order","outcome":"free_exhausted","requested_model":"$m","served_model":"$m","at":"2026-10-08T11:57:51Z"}
+{"run_id":"$B","label":"t-order","outcome":"free_exhausted","requested_model":"$m","served_model":"$m","at":"2026-10-08T12:04:14Z"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 1 $rc "retry exhausted again refused"
+  assert_grep "t-order" "$tmp/err" "t-order mentioned"
+}
+
+test_gate_retry_passed_paid_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  FM_FANOUT_MODELS="$tmp/models.json"
+  export FM_FANOUT_MODELS
+  echo '{"models":[{"model":"dots-studio/dots-3-note-preview:free"}]}' > "$FM_FANOUT_MODELS"
+  local A="fr-20261008T115751Z-89c9d1"
+  local B="fr-20261008T120414Z-402763"
+  local m="dots-studio/dots-3-note-preview:free"
+  echo "working [at=1]: fan-out runs $A $B" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<EOF
+{"run_id":"$A","label":"t-order","outcome":"free_exhausted","requested_model":"$m","served_model":"$m","at":"2026-10-08T11:57:51Z"}
+{"run_id":"$B","label":"t-order","outcome":"check_passed","requested_model":"anthropic/claude-sonnet","served_model":"anthropic/claude-sonnet","at":"2026-10-08T12:04:14Z"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 1 $rc "retry passed paid refused"
+}
+
+test_gate_earlier_pass_then_later_exhausted_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  FM_FANOUT_MODELS="$tmp/models.json"
+  export FM_FANOUT_MODELS
+  echo '{"models":[{"model":"dots-studio/dots-3-note-preview:free"}]}' > "$FM_FANOUT_MODELS"
+  local A="fr-20261008T115751Z-89c9d1"
+  local B="fr-20261008T120414Z-402763"
+  local m="dots-studio/dots-3-note-preview:free"
+  echo "working [at=1]: fan-out runs $A $B" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<EOF
+{"run_id":"$A","label":"t-order","outcome":"check_passed","requested_model":"$m","served_model":"$m","at":"2026-10-08T11:57:51Z"}
+{"run_id":"$B","label":"t-order","outcome":"free_exhausted","requested_model":"$m","served_model":"$m","at":"2026-10-08T12:04:14Z"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 1 $rc "earlier pass then later exhausted refused"
+  assert_grep "t-order" "$tmp/err" "t-order mentioned"
+  assert_grep "free_exhausted" "$tmp/err" "free_exhausted mentioned"
+}
+
 test_gate_refuses_paid_served() {
   local tmp
   tmp=$(fm_test_tmproot)
@@ -446,6 +533,10 @@ test_gate_refuses_free_exhausted_last
 test_gate_free_exhausted_then_free_pass_is_clean
 test_gate_split_units_resolve_exhausted_parent
 test_gate_split_unit_exhausted_still_refused
+test_gate_retry_passed_free_clears_exhausted
+test_gate_retry_exhausted_again_refused
+test_gate_retry_passed_paid_refused
+test_gate_earlier_pass_then_later_exhausted_refused
 test_gate_refuses_paid_served
 test_gate_refuses_missing_ledger
 test_gate_router_prefixed_free_name_passes
