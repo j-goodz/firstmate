@@ -1,0 +1,19 @@
+== PR110 kilo-prefixed rc=0
+fanout-check: t1 free_written=yes verdict=yes units=1 paid_step_ups=0 runs=fr-20261005T010203Z-abc123
+== PR56 requesty-prefixed rc=0
+fanout-check: t1 free_written=yes verdict=yes units=1 paid_step_ups=0 runs=fr-20261005T010203Z-abc123
+== different paid served (expect refuse) rc=1
+fanout-check: t1 free_written=yes verdict=yes units=1 paid_step_ups=0 runs=fr-20261005T010203Z-abc123
+REFUSED: fanout-gate: unit(s) written by a paid model: fr-20261005T010203Z-abc123/u (requesty/anthropic/claude-sonnet)
+== paid served, paid requested (expect refuse) rc=1
+fanout-check: t1 free_written=no verdict=no units=0 paid_step_ups=0 runs=fr-20261005T010203Z-abc123
+REFUSED: fanout-gate: unit(s) written by a paid model: fr-20261005T010203Z-abc123/u (anthropic/claude-sonnet)
+== suffix-lookalike (expect refuse) rc=1
+fanout-check: t1 free_written=yes verdict=yes units=1 paid_step_ups=0 runs=fr-20261005T010203Z-abc123
+REFUSED: fanout-gate: unit(s) written by a paid model: fr-20261005T010203Z-abc123/u (requesty/evil-nvidia/nemotron-3-ultra-550b-a55b)
+== exhausted split resolved by prefixed rc=0
+fanout-check: t1 free_written=no verdict=mixed units=1 paid_step_ups=1 runs=fr-20261005T010203Z-abc123
+== exhausted split resolved by different paid (expect refuse) rc=1
+fanout-check: t1 free_written=no verdict=mixed units=1 paid_step_ups=1 runs=fr-20261005T010203Z-abc123
+REFUSED: fanout-gate: unit(s) ended free_exhausted: fr-20261005T010203Z-abc123/p
+REFUSED: fanout-gate: unit(s) written by a paid model: fr-20261005T010203Z-abc123/p--1 (requesty/anthropic/claude-sonnet)
