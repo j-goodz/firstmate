@@ -203,6 +203,20 @@ mkdir -p "$STATE"
 # watcher reads only its presence (afk_record_present below).
 # shellcheck source=bin/fm-afk-contract.sh
 . "$SCRIPT_DIR/fm-afk-contract.sh"
+# Event source for the idle wait (inotifywait or python3 inotify) and its dirty flags.
+# The library needs bash 4.1+ to parse; older bash (macOS /bin/bash 3.2) keeps the plain poll
+# loop through these stubs, which leave every section dirty on every cycle.
+if [ "${BASH_VERSINFO[0]}" -ge 4 ]; then
+  # shellcheck source=bin/fm-watch-events-lib.sh
+  . "$SCRIPT_DIR/fm-watch-events-lib.sh"
+else
+  fm_wev_init() { :; }
+  fm_wev_start() { return 1; }
+  fm_wev_stop() { :; }
+  fm_wev_clear() { FM_WEV_SIG=0; FM_WEV_RECOV=0; FM_WEV_PR=0; FM_WEV_META=0; FM_WEV_PROC=0; FM_WEV_OUT=0; FM_WEV_STALL=0; FM_WEV_GEN=0; FM_WEV_FULL=0; FM_WEV_SIG_FILES=; }
+  fm_wev_all() { FM_WEV_SIG=1; FM_WEV_RECOV=1; FM_WEV_PR=1; FM_WEV_META=1; FM_WEV_PROC=1; FM_WEV_OUT=1; FM_WEV_STALL=1; FM_WEV_GEN=1; FM_WEV_FULL=1; }
+  fm_wev_clear
+fi
 
 WATCH_LOCK="$STATE/.watch.lock"
 WATCH_PATH="$SCRIPT_DIR/fm-watch.sh"
@@ -1826,7 +1840,15 @@ age_of() {  # seconds since file mtime; "due immediately" if missing
 # and commits a status classification position only after a successful span read.
 scan_signals() {
   local f sig sf
-  for f in "$STATE"/*.status "$STATE"/*.turn-ended; do
+  # An event pass scans only the files it reported; a full pass (first pass, monitor
+  # restart, safety net, no event source) scans them all, exactly as before.
+  if [ "${FM_WEV_FULL:-1}" = 1 ] || [ -z "${FM_WEV_SIG_FILES:-}" ]; then
+    set -- "$STATE"/*.status "$STATE"/*.turn-ended
+  else
+    # shellcheck disable=SC2086  # a space-separated list of state paths (task ids carry no spaces or globs)
+    set -- $FM_WEV_SIG_FILES
+  fi
+  for f in "$@"; do
     if [ ! -e "$f" ]; then
       case "$f" in *.status) [ -L "$f" ] || continue ;; *) continue ;; esac
     fi
@@ -2096,6 +2118,140 @@ heartbeat_scan_finds_actionable() {
   return "$found"
 }
 
+# --- Event-driven passes (bin/fm-watch-events-lib.sh) ------------------------------
+# An idle pass forked about 200 helpers every POLL. A pass now runs a section only when
+# an inotify event marked its inputs dirty or that section's timer is due, and the loop
+# blocks in the read builtin in between, so an idle home spawns about nothing. The
+# beacon, the self-eviction check and the due test use builtins only. Without an event
+# source every flag stays set and the loop is the old poll.
+WATCH_NEVER=9999999999
+WATCH_SAFETY_SECS=${FM_WATCH_SAFETY_SECS:-300}  # full-pass backstop if an event were ever lost
+case "$WATCH_SAFETY_SECS" in ''|*[!0-9]*|0) WATCH_SAFETY_SECS=300 ;; esac
+WATCH_PROCEVENT_SECS=${FM_WATCH_PROCEVENT_RECONCILE_SECS:-60}  # process-event source repair cadence
+case "$WATCH_PROCEVENT_SECS" in ''|*[!0-9]*|0) WATCH_PROCEVENT_SECS=60 ;; esac
+WATCH_INACTIVE_SECS=${FM_INACTIVE_RECONCILE_SECS:-900}  # the scan gates itself on the same value
+case "$WATCH_INACTIVE_SECS" in ''|*[!0-9]*|0) WATCH_INACTIVE_SECS=900 ;; esac
+WATCH_EVENTS=0
+# POLL may be fractional (tests); scheduling arithmetic uses whole seconds, and a fractional
+# POLL keeps the plain poll loop because an event wait cannot honour sub-second cadence.
+POLL_INT=1
+WATCH_POLL_WHOLE=0
+case "$POLL" in
+  ''|*[!0-9]*|0) ;;
+  *) POLL_INT=$POLL; WATCH_POLL_WHOLE=1 ;;
+esac
+WINDOWS_CACHED=0
+NOW=0
+NEXT_SUMMARY=0
+NEXT_CHECK=0
+NEXT_HB=0
+NEXT_INACTIVE=0
+NEXT_INACTIVE_EV=0
+NEXT_PR=0
+NEXT_STALL=0
+NEXT_PROC=0
+NEXT_WINDOWS=0
+NEXT_SAFETY=0
+WINDOWS_LIST=
+HB_SECS=$HEARTBEAT
+
+# Epoch seconds into NOW without a process (bash >= 4.2), else date.
+watch_now() {
+  if [ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -ge 2 ]; }; then
+    printf -v NOW '%(%s)T' -1
+  else
+    NOW=$(date +%s)
+  fi
+}
+
+# First line of a file into REPLY, or the default when it is missing or empty. No process.
+watch_read() {  # <file> <default>
+  local v=
+  if [ -f "$1" ] && { IFS= read -r v < "$1" || [ -n "$v" ]; } 2>/dev/null && [ -n "$v" ]; then
+    REPLY=$v
+  else
+    REPLY=$2
+  fi
+}
+
+# The heartbeat interval for the current streak into HB_SECS (same arithmetic as before).
+watch_hb_secs() {
+  local streak
+  watch_read "$STATE/.heartbeat-streak" 0
+  streak=$REPLY
+  case "$streak" in ''|*[!0-9]*) streak=0 ;; esac
+  [ "$streak" -le 12 ] || streak=12
+  HB_SECS=$(( HEARTBEAT * (1 << streak) ))
+  [ "$HB_SECS" -le "$HEARTBEAT_MAX" ] || HB_SECS=$HEARTBEAT_MAX
+}
+
+# Set the variable named by $1 to the epoch when a file-mtime schedule next falls due.
+watch_resched() {  # <var-name> <file> <interval>
+  local age
+  age=$(age_of "$2")
+  [ "$age" -lt "$3" ] || age=0
+  printf -v "$1" '%s' "$((NOW + $3 - age))"
+}
+
+# Foreign state dirs of local secondmates, watched so a new row in a mate's wake queue is an event.
+watch_extra_dirs() {
+  local meta home dirs=
+  for meta in "$STATE"/*.meta; do
+    [ -e "$meta" ] || continue
+    [ "$(fm_meta_get "$meta" kind)" = secondmate ] || continue
+    [ -z "$(fm_meta_get "$meta" remote_host)" ] || continue
+    home=$(fm_meta_get "$meta" home)
+    [ -n "$home" ] && [ -d "$home/state" ] && [ ! -L "$home/state" ] || continue
+    dirs="$dirs $home/state"
+  done
+  FM_WEV_EXTRA_DIRS=${dirs# }
+}
+
+# Top of each wake: fold queued events into the dirty flags.
+watch_events_poll() {
+  if [ "$WATCH_EVENTS" = 1 ]; then
+    fm_wev_drain
+    if ! fm_wev_alive; then
+      WATCH_EVENTS=0
+      fm_wev_all
+    fi
+    if [ "$FM_WEV_META" = 1 ] || [ "$FM_WEV_GEN" = 1 ]; then
+      watch_extra_dirs
+      fm_wev_refresh_dirs || true
+    fi
+    if [ "$NOW" -ge "$NEXT_SAFETY" ]; then
+      fm_wev_all
+      NEXT_SAFETY=$((NOW + WATCH_SAFETY_SECS))
+    fi
+  else
+    fm_wev_all
+    NEXT_WINDOWS=0
+  fi
+}
+
+# End of each pass: wait for an event, bounded by the nearest due timer and by POLL (the beacon).
+watch_pause() {
+  local t=$POLL_INT n i=0
+  if [ "$WATCH_EVENTS" != 1 ]; then
+    sleep "$POLL"
+    return
+  fi
+  watch_now
+  for n in "$NEXT_SUMMARY" "$NEXT_CHECK" "$NEXT_HB" "$NEXT_INACTIVE" "$NEXT_PR" "$NEXT_STALL" "$NEXT_PROC" "$NEXT_SAFETY"; do
+    [ $((n - NOW)) -ge "$t" ] || t=$((n - NOW))
+  done
+  if [ -n "$WINDOWS_LIST" ] && [ $((NEXT_WINDOWS - NOW)) -lt "$t" ]; then
+    t=$((NEXT_WINDOWS - NOW))
+  fi
+  [ "$t" -ge 1 ] || t=1
+  if fm_wev_wait "$t"; then
+    # Coalesce a burst (a status write and its turn-end land together) into one pass.
+    while [ "$i" -lt 5 ] && fm_wev_wait 1; do
+      i=$((i + 1))
+    done
+  fi
+}
+
 # event_wait_or_sleep: the terminal wait of each supervision cycle. For a home
 # with push-capable windows (herdr), it replaces the blind `sleep POLL` with a
 # bounded wait on the backend's native transition stream, so a crew going
@@ -2110,7 +2266,14 @@ heartbeat_scan_finds_actionable() {
 event_wait_or_sleep() {
   local w b session first_backend="" first_session="" rec rc
   local windows=()
+  local wl=$WINDOWS_LIST
+  [ "$WINDOWS_CACHED" = 1 ] || wl=$(recorded_windows)
+  if [ -z "$wl" ]; then
+    watch_pause
+    return
+  fi
   while IFS= read -r w; do
+    [ -n "$w" ] || continue
     b=$(window_backend "$w")
     fm_backend_has_push "$b" || continue
     # Secondmate endpoints are supervised via status writes, not pane/agent
@@ -2127,10 +2290,10 @@ event_wait_or_sleep() {
       continue
     fi
     windows+=("$w")
-  done < <(recorded_windows)
+  done <<<"$wl"
 
   if [ "${#windows[@]}" -eq 0 ]; then
-    sleep "$POLL"
+    watch_pause
     return
   fi
 
@@ -2146,7 +2309,7 @@ event_wait_or_sleep() {
     _event_cap_fails=0
   fi
   if [ "$_event_cap_ok" != 1 ]; then
-    sleep "$POLL"
+    watch_pause
     return
   fi
 
@@ -2163,7 +2326,7 @@ event_wait_or_sleep() {
       # pure polling for the rest of this watcher process.
       _event_cap_fails=$((_event_cap_fails + 1))
       [ "$_event_cap_fails" -ge "$EVENT_CAP_FAIL_MAX" ] && _event_cap_ok=0
-      sleep "$POLL"
+      watch_pause
       ;;
     *)
       # 1: a clean full-budget wait with no actionable edge - the reader already
@@ -2317,6 +2480,7 @@ watcher_cleanup() {
       transition=release-lock-existing
     fi
   fi
+  fm_wev_stop
   fm_active_check_stop || cleanup_status=1
   fm_check_output_cleanup
   fm_custom_check_snapshot_cleanup
@@ -2404,6 +2568,15 @@ resurface_after_downtime() {
   wake "check: rearm-resurface"
 }
 
+fm_wev_init "$STATE"
+watch_extra_dirs
+if [ "$WATCH_POLL_WHOLE" = 1 ] && fm_wev_start; then
+  WATCH_EVENTS=1
+fi
+watch_now
+NEXT_SAFETY=$((NOW + WATCH_SAFETY_SECS))
+fm_wev_all
+
 while :; do
   # Self-eviction: if the singleton lock no longer names this process, a second
   # watcher has taken over (e.g. a transient duplicate from a racy arm). Stand
@@ -2411,16 +2584,24 @@ while :; do
   # no-ops because the lock pid is not ours, so the survivor's lock is untouched.
   # This makes any duplicate self-resolve within one poll instead of persisting
   # and doubling every wake.
-  if [ "$(cat "$WATCH_LOCK/pid" 2>/dev/null || true)" != "$WATCHER_PID" ]; then
+  watch_read "$WATCH_LOCK/pid" ""
+  if [ "$REPLY" != "$WATCHER_PID" ]; then
     exit 0
   fi
 
   # Liveness beacon for fm-guard.sh: a fresh mtime here means a watcher is
   # alive. Supervision scripts warn when this goes stale with tasks in flight.
-  touch "$STATE/.last-watcher-beat"
+  : > "$STATE/.last-watcher-beat"
+  watch_now
+  watch_events_poll
 
-  if [ "$(age_of "$STATE/home-summary.json")" -ge "$HOME_SUMMARY_INTERVAL" ]; then
-    home_summary_refresh_detached
+  if [ "$NOW" -ge "$NEXT_SUMMARY" ]; then
+    if [ "$(age_of "$STATE/home-summary.json")" -ge "$HOME_SUMMARY_INTERVAL" ]; then
+      home_summary_refresh_detached
+      NEXT_SUMMARY=$((NOW + HOME_SUMMARY_INTERVAL))
+    else
+      watch_resched NEXT_SUMMARY "$STATE/home-summary.json" "$HOME_SUMMARY_INTERVAL"
+    fi
   fi
 
   # Bearings publishes reconcile asks as local one-shot request files and
@@ -2434,36 +2615,66 @@ while :; do
   # parent reports, observe backend busy/idle turn completion, send one recovery
   # repost after grace, and escalate once if the recovery turn is also missed.
   # No conversation scraping; unresolved records are never silently expired.
-  fm_pending_reply_tick "$STATE" || true
+  if [ "$FM_WEV_PR" = 1 ] || [ "$FM_WEV_META" = 1 ] || [ "$FM_WEV_GEN" = 1 ] || [ "$NOW" -ge "$NEXT_PR" ]; then
+    fm_pending_reply_tick "$STATE" || true
+    if [ "${FM_PENDING_REPLY_ACTIVE:-1}" -gt 0 ]; then
+      NEXT_PR=$((NOW + POLL_INT))
+    else
+      NEXT_PR=$WATCH_NEVER
+    fi
+  fi
 
   # A live secondmate endpoint does not prove that its own wake loop is alive.
   # Observe the foreign queue before the rest of this cycle so an aged row wakes
   # the parent without consuming or rewriting the receiving home's record.
-  secondmate_wake_stall_tick || {
-    echo "watcher: secondmate wake-loop observation failed" >&2
-    exit 1
-  }
+  if [ "$FM_WEV_STALL" = 1 ] || [ "$FM_WEV_META" = 1 ] || [ "$FM_WEV_GEN" = 1 ] || [ "$NOW" -ge "$NEXT_STALL" ]; then
+    secondmate_wake_stall_tick || {
+      echo "watcher: secondmate wake-loop observation failed" >&2
+      exit 1
+    }
+    if compgen -G "$STATE/.secondmate-wake-progress-*" >/dev/null; then
+      NEXT_STALL=$((NOW + POLL_INT))
+    else
+      NEXT_STALL=$WATCH_NEVER
+    fi
+  fi
 
   # Process-to-event liveness repair. This never discovers a result by polling:
   # each registered source has its own child blocking on that source, and this
   # only republishes results already captured durably and restarts a source
   # whose owner is gone. It is a no-op with nothing registered.
-  if [ -d "$STATE/procevent" ]; then
+  if [ -d "$STATE/procevent" ] \
+    && { [ "$FM_WEV_GEN" = 1 ] || [ "$FM_WEV_PROC" = 1 ] || [ "$NOW" -ge "$NEXT_PROC" ]; }; then
     FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-procevent.sh" reconcile >/dev/null 2>&1 || true
+    NEXT_PROC=$((NOW + WATCH_PROCEVENT_SECS))
   fi
   # Then deliver any queued-but-unsurfaced result, including one a runner
   # published while this watcher was between cycles.
-  procevent_surface_queued
+  if [ "$FM_WEV_RECOV" = 1 ] || [ "$FM_WEV_PROC" = 1 ] || [ "$FM_WEV_GEN" = 1 ]; then
+    procevent_surface_queued
+  fi
 
   # A process-event result carries richer adapter-owned wake context than the
   # generic recovery reason, so give that owner first refusal.
-  resurface_after_downtime
+  if [ "$FM_WEV_RECOV" = 1 ] || [ "$FM_WEV_GEN" = 1 ]; then
+    resurface_after_downtime
+  fi
 
   # The existing poll loop also owns the bounded inactive-outcome cadence.
   # This is mechanical and silent unless a durable terminal-outcome obligation
   # was created, so quiet cycles never wake firstmate or consume model tokens.
   inactive_out=
-  if inactive_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+  watch_run_inactive=0
+  if [ "$FM_WEV_GEN" = 1 ] || [ "$NOW" -ge "$NEXT_INACTIVE" ] \
+    || { [ -e "$FM_HOME/.fm-secondmate-home" ] && [ "$NOW" -ge "$NEXT_INACTIVE_EV" ] \
+      && { [ "$FM_WEV_SIG" = 1 ] || [ "$FM_WEV_META" = 1 ] || [ "$FM_WEV_OUT" = 1 ]; }; }; then
+    watch_run_inactive=1
+    NEXT_INACTIVE=$((NOW + WATCH_INACTIVE_SECS))
+    NEXT_INACTIVE_EV=$((NOW + POLL_INT))
+  fi
+  if [ "$watch_run_inactive" != 1 ]; then
+    :
+  elif inactive_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
     "$SCRIPT_DIR/fm-inactive-reconcile.sh" scan 2>/dev/null); then
     if [ -n "$inactive_out" ]; then
       wake "check: inactive-outcome"
@@ -2479,7 +2690,7 @@ while :; do
   # keeps producing signals - the slow poll (e.g. merge detection) would then
   # never run until the fleet went quiet. Checks are due only every
   # CHECK_INTERVAL, so most cycles skip this block and fall straight through.
-  if [ "$(age_of "$STATE/.last-check")" -ge "$CHECK_INTERVAL" ]; then
+  if [ "$NOW" -ge "$NEXT_CHECK" ] && [ "$(age_of "$STATE/.last-check")" -ge "$CHECK_INTERVAL" ]; then
     rejected_checks=
     contribution_check_output=
     for c in "$STATE"/*.check.sh; do
@@ -2595,16 +2806,20 @@ EOF
       wake "$contribution_check_output"
     fi
   fi
+  [ "$NOW" -lt "$NEXT_CHECK" ] || watch_resched NEXT_CHECK "$STATE/.last-check" "$CHECK_INTERVAL"
 
   # On the first changed signal, linger one grace period and re-scan before
   # classifying: a crewmate's final status write and the same turn's turn-end
   # hook land seconds apart, and reporting them as separate actionable wakes
   # costs a full firstmate turn each. The re-scan also picks up a newer
   # signature for an already-pending file (last write wins below).
-  pending=$(scan_signals)
+  pending=
+  if [ "$FM_WEV_SIG" = 1 ] || [ "$FM_WEV_META" = 1 ] || [ "$FM_WEV_GEN" = 1 ]; then
+    pending=$(scan_signals)
+  fi
   if [ -n "$pending" ]; then
     sleep "$SIGNAL_GRACE"
-    pending=$(printf '%s\n%s' "$pending" "$(scan_signals)")
+    pending=$(printf '%s\n%s' "$pending" "$(FM_WEV_FULL=1 scan_signals)")
     # The final coalesced signal set is the watcher-carried status-change
     # trigger for this home's published summary. Start it before either
     # surfacing or absorbing the signal, but never wait on it: see
@@ -2726,7 +2941,21 @@ EOF
   # stale hash is surfaced, absorbed, or timed toward escalation once (.stale-*
   # remembers the hash already classified, or the declaration a busy pane's
   # crossed turn bound already handed to the away-mode daemon).
+  if [ "$NOW" -ge "$NEXT_WINDOWS" ] || [ "$FM_WEV_META" = 1 ] || [ "$FM_WEV_GEN" = 1 ]; then
+    if compgen -G "$STATE/*.meta" >/dev/null; then
+      WINDOWS_LIST=$(recorded_windows)
+    else
+      WINDOWS_LIST=
+    fi
+    WINDOWS_CACHED=1
+  fi
+  windows_run=
+  if [ "$NOW" -ge "$NEXT_WINDOWS" ]; then
+    windows_run=$WINDOWS_LIST
+    NEXT_WINDOWS=$((NOW + POLL_INT))
+  fi
   while IFS= read -r w; do
+    [ -n "$w" ] || continue
     kind=$(window_kind "$w")
     task=$(window_to_task "$w" "$STATE")
     # Steering-inbox loss detection runs before the secondmate stale
@@ -2942,17 +3171,15 @@ EOF
         clear_pause_tracking "$key" keep-throttle
       fi
     fi
-  done < <(recorded_windows)
+  done <<<"$windows_run"
 
   # Heartbeat: the watcher runs a cheap fleet-scan at a regular cadence no matter
   # what. Time-based via .last-heartbeat mtime; interval doubles per consecutive
   # no-change heartbeat (idle fleet) up to HEARTBEAT_MAX, and resets on any
   # surfaced non-heartbeat wake.
-  streak=$(cat "$STATE/.heartbeat-streak" 2>/dev/null || echo 0)
-  [ "$streak" -gt 12 ] && streak=12
-  hb=$(( HEARTBEAT * (1 << streak) ))
-  [ "$hb" -gt "$HEARTBEAT_MAX" ] && hb=$HEARTBEAT_MAX
-  if [ "$(age_of "$STATE/.last-heartbeat")" -ge "$hb" ]; then
+  watch_hb_secs
+  hb=$HB_SECS
+  if [ "$NOW" -ge "$NEXT_HB" ] && [ "$(age_of "$STATE/.last-heartbeat")" -ge "$hb" ]; then
     # Triage: in always-on mode a heartbeat is benign unless the cheap fleet-scan
     # turns up a captain-relevant status the per-wake path missed. Absorb the
     # no-change case (advance the schedule and back off exactly as wake() would,
@@ -2982,8 +3209,13 @@ EOF
       triage_log "absorbed heartbeat (no captain-relevant change)"
     fi
   fi
+  if [ "$NOW" -ge "$NEXT_HB" ]; then
+    watch_hb_secs
+    watch_resched NEXT_HB "$STATE/.last-heartbeat" "$HB_SECS"
+  fi
 
   # Terminal wait: a bounded native-event wait for push-capable homes (herdr),
   # else the blind poll sleep. See event_wait_or_sleep.
+  fm_wev_clear
   event_wait_or_sleep
 done
