@@ -1,0 +1,10 @@
+## incident: exhausted then free retry passed (expect 0) rc=0
+## retry exhausted again (expect 1) rc=1
+REFUSED: fanout-gate: unit(s) ended free_exhausted: fr-20261008T115751Z-89c9d1/t-order, fr-20261008T120414Z-402763/t-order
+## retry passed on paid (expect 1) rc=1
+REFUSED: fanout-gate: unit(s) ended free_exhausted: fr-20261008T115751Z-89c9d1/t-order
+REFUSED: fanout-gate: unit(s) written by a paid model: fr-20261008T120414Z-402763/t-order (anthropic/claude-sonnet)
+## pass earlier, exhausted later (expect 1) rc=1
+REFUSED: fanout-gate: unit(s) ended free_exhausted: fr-20261008T120414Z-402763/t-order
+## pass with missing at (expect 1) rc=1
+REFUSED: fanout-gate: unit(s) ended free_exhausted: fr-20261008T115751Z-89c9d1/t-order
