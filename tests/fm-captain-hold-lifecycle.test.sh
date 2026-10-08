@@ -41,6 +41,7 @@ EOF
 run_lavish() {  # <home> <command args...>
   local home=$1
   shift
+  fm_clean_fanout_lane "$home/state" "$1"
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROCEVENT_CLAIM_ROOT="$home/procevent-claims" \
@@ -132,6 +133,7 @@ SH
 run_pr_merge() {  # <home> <id> <url>
   local home=$1
   shift
+  fm_clean_fanout_lane "$home/state" "$1"
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_CONFIG_OVERRIDE="$home/config" FM_TEST_GH_LOG="$home/gh.log" \
@@ -2897,7 +2899,7 @@ test_retained_row_artifacts_survive_captain_answers() {
   assert_not_contains "$show" "hold_kind: captain" \
     "local merge approval retained its captain hold kind"
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
-    FM_STATE_OVERRIDE="$home/state" "$ROOT/bin/fm-merge-local.sh" "$local_id" \
+    FM_STATE_OVERRIDE="$home/state" "$ROOT/bin/fm-merge-local.sh" "$local_id" --allow-no-fanout fixture \
     > "$home/local-merge.out" 2> "$home/local-merge.err" \
     || fail "approved local merge failed: $(cat "$home/local-merge.err")"
   run_teardown "$home" "$local_id" > "$home/local-teardown.out" \
@@ -3400,7 +3402,7 @@ test_local_merge_entrypoint_refuses_a_captain_held_task() {
   set +e
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_CONFIG_OVERRIDE="$home/config" "$ROOT/bin/fm-merge-local.sh" "$local_id" \
+    FM_CONFIG_OVERRIDE="$home/config" "$ROOT/bin/fm-merge-local.sh" "$local_id" --allow-no-fanout fixture \
     > "$home/local.out" 2> "$home/local.err"
   rc=$?
   set -e
@@ -3468,7 +3470,7 @@ test_local_merge_entrypoint_separates_an_unreadable_record_from_an_absent_one() 
   set +e
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_CONFIG_OVERRIDE="$home/config" "$ROOT/bin/fm-merge-local.sh" "$id" \
+    FM_CONFIG_OVERRIDE="$home/config" "$ROOT/bin/fm-merge-local.sh" "$id" --allow-no-fanout fixture \
     > "$home/missing-local.out" 2> "$home/missing-local.err"
   rc=$?
   set -e
@@ -3483,7 +3485,7 @@ test_local_merge_entrypoint_separates_an_unreadable_record_from_an_absent_one() 
   rm "$home/data/backlog.md"
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_CONFIG_OVERRIDE="$home/config" "$ROOT/bin/fm-merge-local.sh" "$id" \
+    FM_CONFIG_OVERRIDE="$home/config" "$ROOT/bin/fm-merge-local.sh" "$id" --allow-no-fanout fixture \
     > "$home/absent-local.out" 2> "$home/absent-local.err" \
     || fail "the local merge entrypoint refused a home carrying no backlog"
   after=$(git -C "$repo" rev-parse main)
@@ -3692,7 +3694,7 @@ test_merge_entrypoints_refuse_a_reused_task_incarnation() {
     FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$local_home" \
     FM_STATE_OVERRIDE="$local_home/state" FM_DATA_OVERRIDE="$local_home/data" \
     FM_CONFIG_OVERRIDE="$local_home/config" \
-    "$ROOT/bin/fm-merge-local.sh" "$local_id" > "$local_home/reuse-merge.out" \
+    "$ROOT/bin/fm-merge-local.sh" "$local_id" --allow-no-fanout fixture > "$local_home/reuse-merge.out" \
     2> "$local_home/reuse-merge.err" &
   local_merge_pid=$!
   if ! wait_for_test_file "$local_merge_ready" "$local_merge_pid"; then
@@ -3875,7 +3877,7 @@ SH
     FM_TEST_RACE_RELEASE="$local_release" FM_ROOT_OVERRIDE="$ROOT" \
     FM_HOME="$local_home" FM_STATE_OVERRIDE="$local_home/state" \
     FM_DATA_OVERRIDE="$local_home/data" FM_CONFIG_OVERRIDE="$local_home/config" \
-    "$ROOT/bin/fm-merge-local.sh" "$local_id" \
+    "$ROOT/bin/fm-merge-local.sh" "$local_id" --allow-no-fanout fixture \
     > "$local_home/race-local.out" 2> "$local_home/race-local.err" &
   local_pid=$!
   i=0

@@ -45,6 +45,7 @@ make_case() {
     "project=$case_dir/project" \
     "kind=ship" \
     "mode=no-mistakes"
+  fm_clean_fanout_lane "$case_dir/state" task-x1
   printf '%s\n' \
     'state=MERGED' \
     'merged=true' \
@@ -391,6 +392,8 @@ run_pr_merge() {
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_HOME="${FM_TEST_HOME:-$case_dir/home}" \
   FM_STATE_OVERRIDE="$case_dir/state" \
+  FM_FANOUT_LEDGER="$case_dir/fanout-units.jsonl" \
+  FM_FANOUT_MODELS="$case_dir/fanout-models.json" \
   FM_TEST_GH_AXI_LOG="$case_dir/gh-axi.log" \
   FM_TEST_GH_LOG="$case_dir/gh.log" \
   FM_TEST_GH_OUTCOME="$case_dir/github-outcome" \

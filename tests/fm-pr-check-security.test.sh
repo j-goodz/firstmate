@@ -227,6 +227,7 @@ write_task_meta() {
     "project=$dir/project" \
     "kind=ship" \
     "mode=no-mistakes"
+  fm_clean_fanout_lane "$dir/home/state" "$id"
 }
 
 # Extra "field=value" arguments are written before pr=, because
@@ -257,6 +258,7 @@ run_merge_entry() {
   FM_ROOT_OVERRIDE="$dir/root" FM_HOME="$dir/home" \
     FM_TEST_GUARD_LOG="$dir/guard.log" FM_TEST_GH_LOG="$dir/gh.log" \
     FM_TEST_GH_AXI_LOG="$dir/gh-axi.log" FM_TEST_GLAB_LOG="$dir/glab.log" \
+    FM_FANOUT_LEDGER="$dir/home/fanout-units.jsonl" FM_FANOUT_MODELS="$dir/home/fanout-models.json" \
     PATH="$dir/fakebin:$BASE_PATH" \
     "$PR_MERGE" "$@"
 }

@@ -47,6 +47,20 @@ umask 022
 # strips this to verify real refusal.
 export FM_GATE_REFUSE_BYPASS=1
 
+# Write a clean fan-out lane for task <id>: a status line carrying a run id into
+# <state-dir>/<id>.status and a free check_passed ledger row, and point the
+# fan-out gate at that ledger and a ranked free-model list.
+fm_clean_fanout_lane() {
+  local state_dir=$1 id=$2 dir run=fr-20261005T010203Z-abc123 model=openai/gpt-oss-120b
+  dir=$(dirname "$state_dir")
+  mkdir -p "$state_dir"
+  echo "working [at=1]: fan-out runs $run" >> "$state_dir/$id.status"
+  printf '{"run_id":"%s","label":"%s-u1","outcome":"check_passed","requested_model":"%s","served_model":"%s"}\n' \
+    "$run" "$id" "$model" "$model" >> "$dir/fanout-units.jsonl"
+  printf '{"models":[{"model":"%s"}]}\n' "$model" > "$dir/fanout-models.json"
+  export FM_FANOUT_LEDGER="$dir/fanout-units.jsonl" FM_FANOUT_MODELS="$dir/fanout-models.json"
+}
+
 # Clear the task-worker marker bin/fm-spawn.sh exports into ship and scout
 # panes. This suite builds git-init fixture repositories whose primary checkout
 # it runs a copied bin/fm-test-run.sh in, and that runner refuses the primary

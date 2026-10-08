@@ -14,7 +14,9 @@
 # merge, so a captain approval must be recorded as an `answer --release` before
 # this entrypoint is invoked. The lock ends when the fast-forward returns;
 # docs/captain-hold-lifecycle.md owns the accepted merge-to-cleanup residual.
-# Usage: fm-merge-local.sh <task-id>
+# The landing is refused unless bin/fm-fanout-check.sh --gate passes for the lane;
+# the override records fanout_override=<reason> in the task meta.
+# Usage: fm-merge-local.sh <task-id> [--allow-no-fanout <reason>]
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,7 +27,16 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-backlog-transition-lib.sh
 . "$SCRIPT_DIR/fm-backlog-transition-lib.sh"
-if [ "$#" -ne 1 ] || ! fm_pr_task_id_valid "$1"; then
+ALLOW_NO_FANOUT=
+if [ "$#" -eq 1 ]; then
+  :
+elif [ "$#" -eq 3 ] && [ "$2" = "--allow-no-fanout" ] && [ -n "$3" ]; then
+  ALLOW_NO_FANOUT="$3"
+else
+  echo "error: invalid local merge request" >&2
+  exit 2
+fi
+if ! fm_pr_task_id_valid "$1"; then
   echo "error: invalid local merge request" >&2
   exit 2
 fi
@@ -76,6 +87,20 @@ fi
 PROJ=$(grep '^project=' "$META" | cut -d= -f2-)
 MODE=$(grep '^mode=' "$META" | cut -d= -f2- || true)
 [ "$MODE" = local-only ] || { echo "error: task $ID is mode=$MODE, not local-only; merge PR tasks with bin/fm-pr-merge.sh <id> <PR url> after approval" >&2; exit 1; }
+
+if [ -n "$ALLOW_NO_FANOUT" ]; then
+  fanout_reason=$(printf '%s' "$ALLOW_NO_FANOUT" | tr '\n' ' ')
+  printf 'fanout_override=%s\n' "$fanout_reason" >> "$META"
+  echo "fanout gate skipped: $fanout_reason" >&2
+else
+  fanout_status=0
+  FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    "$SCRIPT_DIR/fm-fanout-check.sh" "$ID" --gate >/dev/null || fanout_status=$?
+  if [ "$fanout_status" -ne 0 ]; then
+    echo "error: local merge refused: the lane has no clean free-model fan-out evidence; fix it or pass --allow-no-fanout <reason> for a change that touches no code" >&2
+    exit 1
+  fi
+fi
 
 default_branch() {
   local ref branch
