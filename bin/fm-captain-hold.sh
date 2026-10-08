@@ -52,6 +52,7 @@
 # `--until` records the captain's own deferral date through `tasks-axi hold
 # --until`, so a "revisit later" answer is stored as a date instead of a live
 # card.
+# A reason containing the word pacing must carry --until (the reset date); the hold is refused without it.
 #
 # `answer` records the captain's exact words and resolves the call in the same
 # act. It requires a non-empty captain decision file of at most 8192 bytes and
@@ -908,6 +909,12 @@ command_hold() {
     case "$until" in
       [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) : ;;
       *) fail "--until must be a YYYY-MM-DD date: $until" ;;
+    esac
+  fi
+  # A pacing hold carries its reset date; bin/fm-backlog-overdue.sh reads hold-until.
+  if [ -z "$until" ]; then
+    case "$(printf '%s' "$reason" | tr '[:upper:]' '[:lower:]')" in
+      *pacing*) fail "pacing hold needs --until YYYY-MM-DD (the reset date): a hold with no expiry is never re-checked" ;;
     esac
   fi
   hold_set=${FM_CAPTAIN_HOLD_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}

@@ -643,9 +643,24 @@ print_status_sections() {
   rm -f -- "$prepared"
 }
 
+# Print the OVERDUE section (bin/fm-backlog-overdue.sh owns what is overdue) when the presented
+# rows include a heartbeat wake or a backlog-overdue check wake, so every heartbeat shows the same
+# bounded list the session-start digest shows. Silent otherwise, silent when nothing is overdue,
+# and never changes the drain's exit status.
+print_overdue_section() {  # <deduped-raw-rows>
+  local rows=${1:-} text
+  [ "$DRAIN_MODE" != absorb ] || return 0
+  [ -n "$rows" ] || return 0
+  printf '%s\n' "$rows" | grep -E -q "(^|[[:space:]])heartbeat([[:space:]]|$)|backlog-overdue:" || return 0
+  text=$(FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/fm-backlog-overdue.sh" report 2>/dev/null) || return 0
+  [ -z "$text" ] || printf '%s\n' "$text"
+  return 0
+}
+
 print_status_presentation() {  # [<deduped-raw-rows>]
   local rows=${1:-} lock="$STATE/.status-presentation-lock" snapshot annotation_manifest fully_presented='' rc=0
   local lock_rc holder_pid
+  print_overdue_section "$rows"
   if fm_lock_acquire_wait_bounded "$lock" "$PRESENTATION_LOCK_TIMEOUT"; then
     :
   else
