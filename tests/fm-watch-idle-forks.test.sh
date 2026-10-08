@@ -120,6 +120,18 @@ assert_idle_budget "an idle watcher" 8 2
 # watcher still running?
 "$REAL_KILL" -0 "$WATCH_PID" || fail "idle watcher exited unexpectedly"
 
+# the watcher's own beacon write must not wake it more often than the poll interval
+beats=$(
+  last=""; n=0
+  for _ in $(seq 1 50); do
+    m=$("$REAL_STAT" -c %y "$home1/state/.last-watcher-beat" 2>/dev/null || echo 0)
+    [ "$m" = "$last" ] || { n=$((n + 1)); last=$m; }
+    "$REAL_SLEEP" 0.2
+  done
+  echo "$n"
+)
+[ "$beats" -le $((10 / WATCH_POLL + 2)) ] || fail "idle watcher woke $beats times in 10s (poll ${WATCH_POLL}s)"
+
 # beacon fresh (<=5s)
 beacon_ts=$("$REAL_STAT" -c %Y "$home1/state/.last-watcher-beat" 2>/dev/null || echo 0)
 now_ts=$("$REAL_DATE" +%s)

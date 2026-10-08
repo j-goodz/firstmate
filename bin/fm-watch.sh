@@ -2647,6 +2647,8 @@ while :; do
     && { [ "$FM_WEV_GEN" = 1 ] || [ "$FM_WEV_PROC" = 1 ] || [ "$NOW" -ge "$NEXT_PROC" ]; }; then
     FM_HOME="$FM_HOME" "$SCRIPT_DIR/fm-procevent.sh" reconcile >/dev/null 2>&1 || true
     NEXT_PROC=$((NOW + WATCH_PROCEVENT_SECS))
+  elif [ ! -d "$STATE/procevent" ]; then
+    NEXT_PROC=$((NOW + WATCH_PROCEVENT_SECS))
   fi
   # Then deliver any queued-but-unsurfaced result, including one a runner
   # published while this watcher was between cycles.

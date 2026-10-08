@@ -322,7 +322,13 @@ fm_wev_drain() {
     done
 }
 
-# Wait for an event up to $1 seconds. Returns 0 if event, 1 on timeout/fallback.
+# Wait for an event that sets a dirty flag, up to $1 seconds. Events classified as
+# ignored (the watcher's own beacon and markers) do not end the wait.
+# Returns 0 if a flag was set, 1 on timeout/fallback.
+_fm_wev_flags() {
+    printf -v _FM_WEV_SNAP '%s' "$FM_WEV_SIG$FM_WEV_RECOV$FM_WEV_PR$FM_WEV_META$FM_WEV_PROC$FM_WEV_OUT$FM_WEV_STALL$FM_WEV_GEN$FM_WEV_FULL$FM_WEV_SIG_FILES"
+}
+
 fm_wev_wait() {
     local seconds="${1:-1}"
     (( seconds < 1 )) && seconds=1
@@ -330,21 +336,31 @@ fm_wev_wait() {
         sleep "$seconds"
         return 1
     fi
-    local line status=0
-    IFS= read -r -t "$seconds" -u "$FM_WEV_FD" line || status=$?
-    if (( status == 0 )); then
-        fm_wev_classify "$line"
-        fm_wev_drain
-        return 0
-    fi
-    if (( status > 128 )); then
-        # timeout (142) or interrupt
+    local line status before left deadline
+    deadline=$(( ${EPOCHREALTIME/./} + seconds * 1000000 ))
+    _fm_wev_flags; before=$_FM_WEV_SNAP
+    while :; do
+        left=$(( deadline - ${EPOCHREALTIME/./} ))
+        (( left < 1000 )) && return 1
+        printf -v left '%d.%06d' $((left / 1000000)) $((left % 1000000))
+        status=0
+        IFS= read -r -t "$left" -u "$FM_WEV_FD" line || status=$?
+        if (( status == 0 )); then
+            fm_wev_classify "$line"
+            fm_wev_drain
+            _fm_wev_flags
+            [[ "$_FM_WEV_SNAP" != "$before" ]] && return 0
+            continue
+        fi
+        if (( status > 128 )); then
+            # timeout (142) or interrupt
+            return 1
+        fi
+        # Descriptor closed or error -> fallback
+        FM_WEV_KIND="none"
+        sleep "$left"
         return 1
-    fi
-    # Descriptor closed or error -> fallback
-    FM_WEV_KIND="none"
-    sleep "$seconds"
-    return 1
+    done
 }
 
 # Stop monitor and clean up.
