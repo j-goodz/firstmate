@@ -1,0 +1,20 @@
+== t1 
+fanout-check: t1 free_written=yes verdict=yes units=1 paid_step_ups=0 runs=fr-20261005T010203Z-abc123
+rc=0
+== t1 --gate
+fanout-check: t1 free_written=yes verdict=yes units=1 paid_step_ups=0 runs=fr-20261005T010203Z-abc123
+rc=0
+== t2 
+fanout-check: t2 free_written=no verdict=no units=0 paid_step_ups=0 runs=fr-20261005T010203Z-def456
+WARNING: fanout-check: run ids found but zero units are free-written
+rc=0
+== t2 --gate
+fanout-check: t2 free_written=no verdict=no units=0 paid_step_ups=0 runs=fr-20261005T010203Z-def456
+REFUSED: fanout-gate: unit(s) written by a paid model: fr-20261005T010203Z-def456/x (kilo/anthropic/claude-opus)
+rc=1
+== t3 
+fanout-check: t3 free_written=yes verdict=yes units=1 paid_step_ups=0 runs=fr-20261005T010203Z-aaa111
+rc=0
+== t3 --gate
+fanout-check: t3 free_written=yes verdict=yes units=1 paid_step_ups=0 runs=fr-20261005T010203Z-aaa111
+rc=0
