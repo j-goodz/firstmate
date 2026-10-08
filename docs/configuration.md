@@ -1269,7 +1269,11 @@ FM_STARTUP_NETWORK_TIMEOUT=120   # seconds bounding the deferred inactive-outcom
 FM_TASKS_AXI_COMPATIBLE=   # internal one-hop handoff of an already-computed tasks-axi compatibility verdict (0 or 1); consumed when bin/fm-tasks-axi-lib.sh is sourced
 FM_GUARD_READ_ONLY=0    # internal/read-only guard mode: keep alarms but suppress drain, supervision repair, and checkout repair commands
 FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the guarded operation WILL still run.'   # banner continuation line; fm-send.sh overrides it to name the requested message specifically
-FM_POLL=15              # seconds between watcher poll cycles
+FM_POLL=15              # longest the watcher waits between wakes (liveness beacon) and the pane-staleness cadence for live windows; with an event source (inotifywait, else python3 inotify; macOS and the no-source case poll as before and log why to state/.watch-events.fallback) it wakes on state-file events and runs each section only when its inputs changed or its own timer is due, so an idle home spawns about nothing
+FM_WATCH_SAFETY_SECS=300   # backstop: one full pass this often in case an event were ever lost; invalid or zero values use 300
+FM_WATCH_PROCEVENT_RECONCILE_SECS=60   # how often the watcher repairs registered process-to-event sources when no event asks for it; invalid or zero values use 60
+FM_WATCH_EVENTS_NO_INOTIFYWAIT=   # set to force the python3 inotify source even where inotifywait exists (test seam)
+FM_WATCH_EVENTS_NO_INOTIFY=   # set (or FM_WATCH_EVENTS=off) to disable event waiting and poll every FM_POLL as before (test seam)
 FM_HOME_SUMMARY_INTERVAL=300   # seconds before a live watcher refreshes this home's state/home-summary.json even without a status signal; invalid or zero values use 300
 FM_HOME_SUMMARY_TIMEOUT=60     # seconds bounding the complete best-effort home-summary refresh, including lock acquisition, validation, atomic publication, and worker-side failure logging; invalid or zero values use 60
 FM_HOME_SUMMARY_ERROR_LOG_MAX_BYTES=65536   # approximate size cap for state/.home-summary-refresh.log before it is trimmed to the newest 200 lines; invalid or zero values use 65536

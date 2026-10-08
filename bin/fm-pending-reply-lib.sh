@@ -1431,6 +1431,25 @@ fm_pending_reply_tick_one() {  # <state-dir> <corr_id> <busy_state> [secondmate-
   return 0
 }
 
+# 0 when <record> needs no work from the tick: it is resolved and either never escalated
+# or its escalation is already closed. Reads the record with builtins only (no process is
+# spawned); a key that appears more than once takes its LAST value, like
+# fm_pending_reply_get (grep | tail -1 | cut -d= -f2-). A missing or unreadable record is
+# not quiet, so the caller handles it exactly as before.
+_fm_pending_reply_rec_quiet() {  # <record-path>
+  local rec=$1 line phase='' escalated='' closed=''
+  [ -f "$rec" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      phase=*) phase=${line#phase=} ;;
+      escalated_epoch=*) escalated=${line#escalated_epoch=} ;;
+      escalation_closed_epoch=*) closed=${line#escalation_closed_epoch=} ;;
+    esac
+  done < "$rec" 2>/dev/null || return 1
+  [ "$phase" = resolved ] || return 1
+  [ -z "$escalated" ] || [ -n "$closed" ]
+}
+
 # Scan every pending record for this parent state. Safe to call every poll.
 # Never scrapes secondmate conversation; uses only parent status, backend busy
 # state, and optional secondmate-home wrong-home path checks.
@@ -1438,13 +1457,18 @@ fm_pending_reply_tick() {  # <state-dir>
   local state=$1 dir rec corr task_id phase delivered meta backend target label busy sm_home harness remote_host
   local observation observation_task found i
   local -a observation_tasks=() observation_values=()
+  FM_PENDING_REPLY_ACTIVE=0
   dir=$(fm_pending_reply_dir "$state")
   [ -d "$dir" ] || return 0
   for rec in "$dir"/*; do
     [ -f "$rec" ] || continue
-    case "$(basename "$rec")" in
+    case "${rec##*/}" in
       .*) continue ;;
     esac
+    if _fm_pending_reply_rec_quiet "$rec"; then
+      continue
+    fi
+    FM_PENDING_REPLY_ACTIVE=$((FM_PENDING_REPLY_ACTIVE + 1))
     corr=$(fm_pending_reply_get "$rec" corr_id)
     [ -n "$corr" ] || corr=$(basename "$rec")
     task_id=$(fm_pending_reply_get "$rec" task_id)
