@@ -1,0 +1,6 @@
+OVERDUE (4 item(s) past a hold date, due date or the 48h queue limit, oldest first):
+a-1 - cond hold: 5d overdue (undated hold, re-check)
+a-6 - plain old: 5d overdue (queued 7d, never dispatched)
+a-5 - due gate: 3d overdue (due 2026-10-05)
+a-2 - pacing nodate: <1d overdue (pacing hold has no hold-until reset date)
+OVERDUE: act on each one: dispatch it, re-hold it with a new date (fm-captain-hold.sh hold <id> --reason <why> --until YYYY-MM-DD, or fm-tasks-axi.sh hold <id> --reason <why> --until YYYY-MM-DD), or close it with a reason.
