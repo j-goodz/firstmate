@@ -135,4 +135,10 @@ if [ "${ARGS[0]:-}" = "done" ] && [ -n "${ARGS[1]:-}" ]; then
 fi
 
 cd "$FM_BACKLOG_AXI_ROOT" || fail "cannot enter the backlog root $FM_BACKLOG_AXI_ROOT"
+if [ "${ARGS[0]:-}" = "done" ] && [ -n "${ARGS[1]:-}" ]; then
+  tasks-axi "${ARGS[@]}"
+  done_status=$?
+  [ "$done_status" -ne 0 ] || fm_captain_ask_sync "${ARGS[1]}"
+  exit "$done_status"
+fi
 exec tasks-axi ${ARGS[@]+"${ARGS[@]}"}
