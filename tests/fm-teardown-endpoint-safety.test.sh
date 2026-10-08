@@ -596,6 +596,33 @@ test_sole_slot_record_still_tears_down() {
   pass "fm-teardown: a task that solely holds its slot still returns it"
 }
 
+test_teardown_retires_the_tasks_own_boards() {
+  local dir id=board-task other=other-task
+
+  dir=$(make_case board-owner)
+  mark_case_as_treehouse_pool "$dir"
+  fm_write_meta "$dir/home/state/$id.meta" \
+    "window=firstmate:fm-$id" "endpoint_task_id=$id" \
+    "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
+  mkdir -p "$dir/other-worktree"
+  fm_write_meta "$dir/home/state/$other.meta" \
+    "window=firstmate:fm-$other" "endpoint_task_id=$other" \
+    "worktree=$dir/other-worktree" "project=$dir/project" "kind=scout"
+  export FM_PROCEVENT_CLAIM_ROOT="$dir/claims"
+  fm_test_track_procevent_home "$dir/home"
+  FM_HOME="$dir/home" "$ROOT/bin/fm-procevent.sh" register-task lavish lavish-own1 "$id" -- /bin/sleep 3600 >/dev/null \
+    || fail "could not register the task's board"
+  FM_HOME="$dir/home" "$ROOT/bin/fm-procevent.sh" register-task lavish lavish-oth1 "$other" -- /bin/sleep 3600 >/dev/null \
+    || fail "could not register the neighbour's board"
+
+  run_case "$dir" "$id" > "$dir/stdout" 2> "$dir/stderr" \
+    || fail "teardown of a task owning a board failed: $(cat "$dir/stderr")"
+  assert_absent "$dir/home/state/procevent/lavish-own1.source" "teardown left the finished task's board registered"
+  assert_present "$dir/home/state/procevent/lavish-oth1.source" "teardown retired another task's board"
+  unset FM_PROCEVENT_CLAIM_ROOT
+  pass "fm-teardown: a finished task's own boards are retired and a neighbour's are not"
+}
+
 test_recorded_endpoint_that_changed_directory_still_tears_down() {
   local dir id=moved-task
 
@@ -1392,3 +1419,4 @@ test_project_lock_anchors_at_the_local_root_across_home_layouts
 test_remote_seeded_home_returns_its_uncontested_slot
 test_remote_seeded_home_still_refuses_a_slot_its_child_holds
 test_remote_layout_homes_serialize_on_one_project_lock
+test_teardown_retires_the_tasks_own_boards

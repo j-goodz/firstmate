@@ -12,6 +12,7 @@
 #   fm-procevent.sh classify <result-file>
 #   fm-procevent.sh handled <source-id> <sequence>
 #   fm-procevent.sh retire <source-id> [--if-absent|--if-matches <adapter> -- <argv>...|--if-owner <registration-token>]
+#   fm-procevent.sh retire-task <task-id>
 #   fm-procevent.sh sweep-home [--preflight]
 #   fm-procevent.sh binding-retirement-preflight <binding-digest>
 #   fm-procevent.sh extension-retirement <binding|transfer> <retirement-arguments...>
@@ -99,6 +100,17 @@
 #            exists, and --if-owner removes only the exact extension registration
 #            token printed by register-extension, so a stale owner cannot retire
 #            a replacement generation.
+# retire-task
+#            Retire every worker-owned board (and its runner and watchdog)
+#            registered for <task-id>; bin/fm-teardown.sh calls it so a finished
+#            task leaves no board behind. A board whose captured round is still
+#            unacknowledged is kept and printed as `kept:` (exit 3), because its
+#            registration is that round's only ownership evidence; firstmate
+#            acknowledges it with `handled`. Idempotent.
+#            Separately, `reconcile` retires an idle task-owned board whose
+#            registration is older than FM_PROCEVENT_BOARD_MAX_AGE_SECONDS
+#            (default 259200, three days; 0 disables), so a board the captain
+#            never closes cannot outlive the work forever.
 # sweep-home Retire a bounded snapshot of this home's registrations and owned
 #            claims, then refuse unless no registration, runner record, or owned
 #            claim remains. Used by supported Firstmate home retirement.
@@ -1671,6 +1683,56 @@ stranded_leaderless_detail() {  # <source-id>
   printf '%s' "its runner died and its polling child may still be attached to the source's session, so reconcile preserves that claim and starts no replacement, and nothing automatic will touch that group. Verify whether anything is still polling $1; once that process group is empty, the next reconcile reclaims the source on its own."
 }
 
+# Retire a task-owned source with no open captured round. The retirement runs
+# in a subshell because cmd_retire reports failure by exiting.
+retire_idle_board() {  # <source-id>
+  local id=$1
+  ( cmd_retire "$id" ) >/dev/null 2>&1
+}
+
+cmd_retire_task() {
+  local task=${1-} rec id kept=0 failed=0 owner
+  [ "$#" -eq 1 ] || usage
+  fm_pr_task_id_valid "$task" || die "task id is invalid: $task"
+  [ -d "$REG" ] || return 0
+  for rec in "$REG"/*.source; do
+    [ -f "$rec" ] && [ ! -L "$rec" ] || continue
+    id=${rec##*/}; id=${id%.source}
+    fm_procevent_source_id_valid "$id" || continue
+    [ "$(source_kind "$id" 2>/dev/null || true)" = task-owned ] || continue
+    owner=$(source_owner_task "$id" 2>/dev/null || true)
+    [ "$owner" = "$task" ] || continue
+    if [ -n "$(source_pending "$id" | head -1)" ]; then
+      printf 'kept: %s (unacknowledged round; acknowledge it with handled)\n' "$id"
+      kept=$((kept + 1))
+    elif retire_idle_board "$id"; then
+      printf 'retired: %s\n' "$id"
+    else
+      printf 'failed: %s\n' "$id" >&2
+      failed=$((failed + 1))
+    fi
+  done
+  [ "$failed" -eq 0 ] || return 1
+  [ "$kept" -eq 0 ] || return 3
+}
+
+# A task-owned board is retired once its registration is older than the
+# maximum age and no captured round is open; re-arming rewrites the record, so
+# an answered board keeps its age fresh.
+retire_expired_boards() {
+  local max=${FM_PROCEVENT_BOARD_MAX_AGE_SECONDS:-259200} rec id
+  case "$max" in ''|*[!0-9]*) return 0 ;; esac
+  [ "$max" -gt 0 ] && [ -d "$REG" ] || return 0
+  while IFS= read -r rec; do
+    [ -n "$rec" ] || continue
+    id=${rec##*/}; id=${id%.source}
+    fm_procevent_source_id_valid "$id" || continue
+    [ "$(source_kind "$id" 2>/dev/null || true)" = task-owned ] || continue
+    [ -z "$(source_pending "$id" | head -1)" ] || continue
+    retire_idle_board "$id" || true
+  done < <(find "$REG" -maxdepth 1 -type f -name '*.source' -mmin "+$(((max + 59) / 60))" 2>/dev/null)
+}
+
 cmd_reconcile() {
   local rec id published started=0 stopped=0 uncertain=0 failed=0 claim owner pid token identity claim_state stop_state task_pending
   local launch_identity launch_stamp launch_mark unconfirmed entry
@@ -1682,6 +1744,7 @@ cmd_reconcile() {
     || die "FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS must be whole seconds from $FM_PROCEVENT_LAUNCH_CONFIRM_MIN_SECONDS to $FM_PROCEVENT_LAUNCH_CONFIRM_MAX_SECONDS"
   owner_lease_refresh
   published=$(publish_pending)
+  retire_expired_boards
 
   # Stop a runner this home owns whose source is no longer registered. Without
   # this, unregistering a source that never completes leaves its child blocked
@@ -2488,6 +2551,7 @@ case "${1-}" in
   classify)           shift; cmd_classify "$@" ;;
   handled)            shift; cmd_handled "$@" ;;
   retire)             shift; cmd_retire "$@" ;;
+  retire-task)        shift; cmd_retire_task "$@" ;;
   sweep-home)         shift; cmd_sweep_home "$@" ;;
   binding-retirement-preflight) shift; cmd_binding_retirement_preflight "$@" ;;
   extension-retirement) shift; cmd_extension_retirement "$@" ;;

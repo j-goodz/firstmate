@@ -54,12 +54,9 @@
 # abandoning it: fm_remote_job_cancel writes a cancel marker into the record,
 # the worker skips a cancelled queued job and terminates a running cancelled
 # job's process group, and whichever side observes terminal publication reaps
-# the finalized record because no result consumer remains. fm_remote_job_wait
-# honors an optional FM_REMOTE_JOB_DISCONNECT_PROBE function name. When set,
-# the probe runs about once per second; a failure cancels the job and fails
-# the wait. The staging entrypoint arms it with a parent-liveness probe so an
-# ssh channel
-# that dies without delivering a signal still cancels the abandoned job.
+# the finalized record because no result consumer remains. The staging
+# entrypoint detects a hung-up caller event-driven, by watching its own stdout
+# channel close (bin/fm-remote-entrypoint.sh), and cancels through the same path.
 # Abandoned .stage.* staging litter older than
 # FM_REMOTE_JOB_STAGE_REAP_SECONDS is reaped by the worker's stale sweep.
 #
@@ -737,7 +734,7 @@ fm_remote_job_wake_job() { # <job-dir>
   fm_remote_job_fifo_wake "$1/.notify"
 }
 
-fm_remote_job_wait() { # <account-home> <id>; honors FM_REMOTE_JOB_DISCONNECT_PROBE
+fm_remote_job_wait() { # <account-home> <id>; caller hang-up is handled by the entrypoint's stdout watcher
   local account_home=$1 id=$2 job rc
   FM_REMOTE_JOB_NOTIFY_FD=
   fm_remote_job_prepare_state "$account_home" || return 1
@@ -758,7 +755,7 @@ fm_remote_job_wait() { # <account-home> <id>; honors FM_REMOTE_JOB_DISCONNECT_PR
 
 fm_remote_job_wait_loop() { # <account-home> <id>
   local account_home=$1 id=$2 job state queue_deadline execution_timeout wait_deadline exit_value
-  local now next_probe=0 timeouts=0 need_read=1 remaining wait_end
+  local now timeouts=0 need_read=1 remaining wait_end
   fm_remote_job_prepare_state "$account_home" || return 1
   job=$(fm_remote_job_job_dir "$id") || {
     FM_REMOTE_JOB_ERROR="remote job record disappeared or became unsafe"
@@ -810,16 +807,8 @@ fm_remote_job_wait_loop() { # <account-home> <id>
       FM_REMOTE_JOB_ERROR="remote job did not complete within its bounded wait"
       return 1
     fi
-    if [ -n "${FM_REMOTE_JOB_DISCONNECT_PROBE:-}" ] && [ "$now" -ge "$next_probe" ]; then
-      next_probe=$((now + 1))
-      if ! "$FM_REMOTE_JOB_DISCONNECT_PROBE"; then
-        fm_remote_job_cancel "$account_home" "$id" 2>/dev/null || true
-        FM_REMOTE_JOB_ERROR="remote job caller disconnected; the job was cancelled"
-        return 1
-      fi
-    fi
     # Block until the worker publishes. The one-second timeout bounds the
-    # disconnect probe and the deadline; the record is reread on every wake and
+    # deadline check; the record is reread on every wake and
     # on every fifth timeout as a safety net for a lost wake.
     need_read=1
     if [ -n "$FM_REMOTE_JOB_NOTIFY_FD" ]; then
