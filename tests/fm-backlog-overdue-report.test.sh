@@ -52,10 +52,11 @@ EOF
 
   assert_equals 0 "$exitcode" "report exits 0"
 
-  local expected_header="OVERDUE (6 item(s) past a hold date, due date or the 48h queue limit, oldest first):"
+  local expected_header="OVERDUE (7 item(s) past a hold date, due date or the 48h queue limit, oldest first):"
   assert_contains "$(cat "$stdout_file")" "$expected_header" "header line present"
 
   local expected_lines=(
+    "held-undated - Captain hold without date: 35d overdue (undated hold, re-check)"
     "old-queued - Old queued item: 12d overdue (queued 14d, never dispatched)"
     "pacing-undated - Pacing hold without reset: 5d overdue (pacing hold has no hold-until reset date)"
     "due-past - Due date passed: 2d overdue (due 2026-10-06)"
@@ -72,7 +73,7 @@ EOF
   local expected_final="OVERDUE: act on each one: dispatch it, re-hold it with a new date (fm-captain-hold.sh hold <id> --reason <why> --until YYYY-MM-DD, or fm-tasks-axi.sh hold <id> --reason <why> --until YYYY-MM-DD), or close it with a reason."
   assert_contains "$(cat "$stdout_file")" "$expected_final" "final act line present"
 
-  local non_overdue=("a-inflight" "fresh-queued" "hold-future" "held-undated" "pacing-dated" "blocked-one" "no-since" "done-old")
+  local non_overdue=("a-inflight" "fresh-queued" "hold-future" "pacing-dated" "blocked-one" "no-since" "done-old")
   local id
   for id in "${non_overdue[@]}"; do
     assert_not_contains "$id" "$(cat "$stdout_file")" "non-overdue id $id not in output"
@@ -84,6 +85,27 @@ EOF
   assert_equals "" "$(cat "$jsonl" 2>/dev/null || true)" "jsonl log empty"
 
   pass "report_lists_overdue_oldest_first"
+}
+
+test_undated_holds_always_surface() {
+  local home; home="$TMP_ROOT/undated-holds-always-surface"
+  mkdir -p "$home/data" "$home/state"
+
+  cat > "$home/data/backlog.md" <<'EOF'
+# Backlog
+
+## Queued
+- [ ] cond-hold - Conditional hold (repo: x) (kind: ship) (since 2026-10-01) (hold: waiting until several changes land)
+- [ ] cond-fresh - Fresh conditional hold (repo: x) (kind: ship) (since 2026-10-08) (hold: waiting until several changes land)
+- [ ] pacing-nosince - Pacing hold no since (repo: x) (kind: ship) (hold: pacing on)
+EOF
+
+  local out; out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_OVERDUE_NOW_EPOCH="$NOW" "$SCRIPT" report 2>&1)
+  assert_contains "$out" "cond-hold - Conditional hold: 5d overdue (undated hold, re-check)" "conditional hold surfaces"
+  assert_contains "$out" "pacing-nosince - Pacing hold no since: <1d overdue (pacing hold has no hold-until reset date)" "pacing without since surfaces"
+  assert_not_contains "cond-fresh" "$out" "fresh hold not reported"
+
+  pass "undated_holds_always_surface"
 }
 
 test_report_is_silent_when_nothing_is_overdue() {
@@ -225,3 +247,4 @@ test_report_is_silent_when_nothing_is_overdue
 test_report_caps_at_ten_with_more_line
 test_report_limit_env_overrides
 test_rehold_removes_overdue
+test_undated_holds_always_surface

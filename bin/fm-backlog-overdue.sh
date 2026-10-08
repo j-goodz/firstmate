@@ -11,7 +11,8 @@
 #   Rows in ## In flight and ## Queued sections are checked. A row is overdue if:
 #   1) it has (hold-until: D) and now >= D; 2) it has (due: D) and now >= D;
 #   3) it is in ## Queued, has (since D), has no (hold and no blocked-by:, and age > QUEUED_HOURS;
-#   4) it has a pacing hold (hold text contains "pacing" case-insensitive) with no hold-until.
+#   4) it has a pacing hold (hold text contains "pacing" case-insensitive) with no hold-until;
+#   5) it has a (hold: ...) with no hold-until, has (since D), and age > QUEUED_HOURS.
 #   The rule with the largest overdue_secs wins. Rows under ## Done are ignored.
 #
 # Once-per-item-per-day rule: wake enqueues at most one check per item per UTC day.

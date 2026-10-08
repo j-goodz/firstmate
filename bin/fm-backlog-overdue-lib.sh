@@ -18,11 +18,14 @@
 #    overdue_secs = age - QUEUED_HOURS*3600.
 #    reason: "queued Nd, never dispatched" where N = floor(age/86400).
 # 4. pacing hold without reset: row has (hold: ...) containing "pacing"
-#    (case-insensitive) and NO (hold-until:). overdue_secs = max(0, now - D_epoch)
-#    using (since D) if present else 0.
+#    (case-insensitive) and NO (hold-until:). overdue_secs = max(1, now - D_epoch)
+#    using (since D) if present.
 #    reason: "pacing hold has no hold-until reset date".
+# 5. undated hold: row has (hold: ...), NO (hold-until:), has (since D), and
+#    age = now - D_epoch > QUEUED_HOURS*3600 (whatever the hold wording).
+#    overdue_secs = age - QUEUED_HOURS*3600. reason: "undated hold, re-check".
 # If multiple rules match, the one with the largest overdue_secs wins.
-# Ordinary captain holds (hold without pacing, no hold-until) are NOT overdue.
+# Pacing holds always surface (overdue_secs floor of 1).
 # Future hold-until does not trigger rule 1.
 #
 # The library prints nothing if the backlog file is missing, empty, or
@@ -150,18 +153,33 @@ fm_overdue_scan() {
 
             # Rule 4: pacing hold without hold-until (case-insensitive without tolower)
             if (hold[i] != "" && hold_until[i] == "" && hold[i] ~ /[Pp][Aa][Cc][Ii][Nn][Gg]/) {
-                overdue = 0
+                overdue = 1
                 if (since[i] != "") {
                     d = parse_date(since[i])
                     if (d >= 0) {
                         s_epoch = d * 86400
                         overdue = now - s_epoch
-                        if (overdue < 0) overdue = 0
+                        if (overdue < 1) overdue = 1
                     }
                 }
                 if (overdue > max_overdue) {
                     max_overdue = overdue
                     best_reason = "pacing hold has no hold-until reset date"
+                }
+            }
+
+            # Rule 5: undated hold older than the queue limit
+            if (hold[i] != "" && hold_until[i] == "" && since[i] != "") {
+                d = parse_date(since[i])
+                if (d >= 0) {
+                    age = now - d * 86400
+                    if (age > queued_limit) {
+                        overdue = age - queued_limit
+                        if (overdue > max_overdue) {
+                            max_overdue = overdue
+                            best_reason = "undated hold, re-check"
+                        }
+                    }
                 }
             }
 

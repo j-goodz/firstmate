@@ -48,8 +48,9 @@ write_fixture() {
 EOF
 }
 
-# Expected titles for the six overdue items.
+# Expected titles for the seven overdue items.
 declare -A EXPECTED_TITLE=(
+    [held-undated]="Captain hold without date"
     [old-queued]="Old queued item"
     [pacing-undated]="Pacing hold without reset"
     [due-past]="Due date passed"
@@ -58,8 +59,9 @@ declare -A EXPECTED_TITLE=(
     [hold-today]="Hold date is today"
 )
 
-# Expected reasons for the six overdue items.
+# Expected reasons for the seven overdue items.
 declare -A EXPECTED_REASON=(
+    [held-undated]="undated hold, re-check"
     [old-queued]="queued 14d, never dispatched"
     [pacing-undated]="pacing hold has no hold-until reset date"
     [due-past]="due 2026-10-06"
@@ -73,6 +75,10 @@ overdue_secs() {
     local id=$1
     local since epoch
     case "$id" in
+        held-undated)
+            since=$(date -u -d 2026-09-01 +%s)
+            epoch=$(( NOW - since - 48 * 3600 ))
+            ;;
         old-queued)
             since=$(date -u -d 2026-09-24 +%s)
             epoch=$(( NOW - since - 48 * 3600 ))
@@ -122,7 +128,7 @@ test_wake_enqueues_one_check_wake_per_item_and_logs() {
         FM_OVERDUE_NOW_EPOCH="$NOW" \
         "$SCRIPT" wake
     )
-    assert_equals "backlog-overdue: 6 item(s) overdue, woken" "$out" "wake summary line"
+    assert_equals "backlog-overdue: 7 item(s) overdue, woken" "$out" "wake summary line"
 
     # -----------------------------------------------------------------
     # Verify the wake queue.
@@ -131,7 +137,7 @@ test_wake_enqueues_one_check_wake_per_item_and_logs() {
 
     local row_count
     row_count=$(awk -F '\t' 'NF' "$queue_file" | wc -l | tr -d ' ')
-    assert_equals "6" "$row_count" "queue contains six rows"
+    assert_equals "7" "$row_count" "queue contains seven rows"
 
     while IFS=$'\t' read -r epoch _ kind key payload; do
         assert_equals "check" "$kind" "queue kind is check"
@@ -149,7 +155,7 @@ test_wake_enqueues_one_check_wake_per_item_and_logs() {
 
     local log_count
     log_count=$(wc -l <"$log_file" | tr -d ' ')
-    assert_equals "6" "$log_count" "log contains six lines"
+    assert_equals "7" "$log_count" "log contains seven lines"
 
     while IFS= read -r line; do
         # Validate JSON.
@@ -193,7 +199,7 @@ test_wake_is_once_per_item_per_day() {
         FM_OVERDUE_NOW_EPOCH="$NOW" \
         "$SCRIPT" wake
     )
-    assert_equals "backlog-overdue: 6 item(s) overdue, woken" "$out1" "first wake prints summary"
+    assert_equals "backlog-overdue: 7 item(s) overdue, woken" "$out1" "first wake prints summary"
 
     local queue_before
     queue_before=$(cat "$state/.wake-queue")
