@@ -41,8 +41,10 @@
 # ":free", is in the ranked list in $FM_FANOUT_MODELS (plus the engine's seed fallback and
 # "auto"), or becomes so after its first path segment is removed (a router prefix such as kilo/
 # or openrouter/). Report mode counts a check_passed row as free-written when either
-# requested_model or served_model passes. Gate mode judges the producing model (served_model,
-# else requested_model) with the same test; any model that fails it is paid.
+# requested_model or served_model passes. Gate mode calls a check_passed row free when
+# served_model passes, or when requested_model passes and served_model is the same model
+# once a router prefix is stripped; a different served model is paid. A split unit that
+# resolves a free_exhausted parent uses the same test.
 #
 # Verdict, decided in this order:
 #   no-runs         no run id was found anywhere
@@ -205,6 +207,7 @@ else
 
     # Process ledger with jq to count distinct (run_id, label) pairs per outcome. A
     # check_passed unit counts as free-written only when its producing model is free.
+    # shellcheck disable=SC2016 # single quotes are intentional: this is jq source
     FREE_JQ_DEF='def isfree($free): if . == null or . == "" then false else . as $m | ($m | endswith(":free")) or (($free | index($m)) != null) or (($m | sub("^[^/]*/"; "")) as $s | $s != $m and ($free | index($s)) != null) end;'
     counts=$(jq -R 'fromjson? | select(type=="object")' "$UNITS_LEDGER" \
       | jq --argjson ids "$run_ids_json" '
@@ -240,6 +243,7 @@ else
           ' \
         | jq -s --argjson free "$free_models_json" "$FREE_JQ_DEF"'
             def model: if .served_model != "" and .served_model != null then .served_model else .requested_model end;
+            def rowfree: ((.served_model // "") as $sv | (.requested_model // "") as $rq | if $sv == "" then ($rq | isfree($free)) else ($sv | isfree($free)) or (($rq | isfree($free)) and (($rq | sub(":free$"; "")) as $r | ($sv | sub(":free$"; "")) as $s | $s == $r or ($s | endswith("/" + $r)))) end);
             . as $rows
             | (reduce range(0; $rows | length) as $i ({};
                 $rows[$i] as $row |
@@ -254,11 +258,10 @@ else
                   | map(select(. as $p | any($units[];
                       .outcome == "check_passed" and .idx > $p.idx
                       and (.label | startswith($p.label + "--"))
-                      and ((model) as $m | ($m | isfree($free)))) | not))
+                      and rowfree) | not))
                   | map(.run_id + "/" + .label) | join(", ")),
                 paid: (map(select(.outcome == "check_passed"
-                    and ((if .served_model != "" and .served_model != null then .served_model else .requested_model end) as $model
-                         | ($model | isfree($free)) | not)))
+                    and (rowfree | not)))
                   | map(.run_id + "/" + .label + " (" + (if .served_model != "" and .served_model != null then .served_model else .requested_model end) + ")")
                   | join(", "))
               }
