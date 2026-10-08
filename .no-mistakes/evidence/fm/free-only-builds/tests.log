@@ -1,0 +1,19 @@
+== fm-fanout-gate
+ok - fanout-adoption.jsonl absent
+== fm-fanout-gate-callers
+ok - Build method section contains blocked:
+== fm-fanout-check
+ok - fm-fanout-check.sh: bad usage case
+ok - fm-fanout-check.sh: unwritable data dir case
+ok - fm-fanout-check.sh: --pr-url case
+ok - fm-fanout-check.sh: ledger unchanged case
+ok - fm-fanout-check.sh: mixed case
+ok - fm-fanout-check.sh: pr-body runs line only case
+== fm-pr-merge
+ok - fm-pr-merge supersedes an old cancellation that finishes last
+ok - fm-pr-merge keeps a check red while its re-run is still in flight
+ok - fm-pr-merge never lets one check's pass clear another check's failure
+ok - fm-pr-merge clears a failure only on a proven later pass of the same check
+ok - fm-pr-merge keeps --allow-red scoped to its named check beside a superseded failure
+ok - fm-pr-merge rechecks away presence before an attended red merge
+== fm-captain-hold-lifecycle
