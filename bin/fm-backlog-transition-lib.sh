@@ -562,10 +562,25 @@ fm_backlog_start() {  # <data-dir> <id>
   fm_backlog_mutate "$1" start "$2"
 }
 
+# Close the nexus captain-ask linked to a backlog item that just went done.
+# Best effort by contract: absent bridge (home without nexus) is silent, a
+# failure or timeout prints one warning line and never changes the close result.
+fm_captain_ask_sync() {  # <id>
+  local bridge=${FM_CAPTAIN_ASK_BRIDGE:-$HOME/nexus/scripts/captain_ask_bridge.py}
+  [ -f "$bridge" ] || return 0
+  if ! timeout "${FM_CAPTAIN_ASK_SYNC_TIMEOUT:-15}" python3 "$bridge" sync --backlog-id "$1" >/dev/null 2>&1; then
+    echo "warning: captain-ask sync for $1 failed or timed out; the linked nexus ask stays open" >&2
+  fi
+  return 0
+}
+
 fm_backlog_done() {  # <data-dir> <id> [flag...]
-  local data=$1 id=$2
+  local data=$1 id=$2 status
   shift 2
   fm_backlog_mutate "$data" "done" "$id" "$@"
+  status=$?
+  [ "$status" -ne 0 ] || fm_captain_ask_sync "$id"
+  return "$status"
 }
 
 fm_backlog_row_artifact_supported() {
