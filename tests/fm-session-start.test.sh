@@ -762,6 +762,30 @@ EOF
   pass "context digest distinguishes ABSENT, empty-but-present, and populated files"
 }
 
+test_overdue_section_after_backlog() {
+  local rec root home fakebin out ss_status
+  rec=$(new_world overdue-section)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  # A Real old date keeps the queued row overdue whenever this test runs.
+  printf '## In flight\n\n## Queued\n- [ ] stale-one - A queued item nobody dispatched (repo: x) (kind: ship) (since 2020-01-01)\n\n## Done\n' > "$home/data/backlog.md"
+  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_contains "$out" "Overdue backlog items" "digest did not print the overdue subsection"
+  assert_contains "$out" "OVERDUE (1 item(s)" "digest did not print the OVERDUE header"
+  assert_contains "$out" "stale-one - A queued item nobody dispatched" "digest did not list the overdue row"
+  ss_status=0
+  [ -x "$home/state/backlog-overdue.check.sh" ] || ss_status=1
+  assert_equals 0 "$ss_status" "a locked session start did not arm the overdue check shim"
+
+  printf '## In flight\n\n## Queued\n\n## Done\n' > "$home/data/backlog.md"
+  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_not_contains "$out" "Overdue backlog items" "digest printed an overdue subsection with nothing overdue"
+  pass "session start prints the overdue section after the backlog, arms the check, and stays silent when nothing is overdue"
+}
+
 # --- lock refusal: read-only path --------------------------------------------
 
 test_lock_refusal_read_only_path() {
@@ -2964,5 +2988,7 @@ test_read_only_pi_compact_refreshes_against_its_own_session_identity
 test_codex_unreachable_reset_sources_do_not_claim_instruction_refresh
 test_agents_baseline_requires_sha256_and_successful_completion
 test_reemit_keeps_repair_ownership_with_the_lock_holder
+
+test_overdue_section_after_backlog
 
 echo "# fm-session-start.test.sh: all assertions passed"

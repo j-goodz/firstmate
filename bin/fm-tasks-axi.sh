@@ -43,6 +43,7 @@
 #     this command exists to prevent. Lifecycle transitions refuse the same file.
 #   - `done` of a task held for the captain, which would lose the hold marker;
 #     the refusal names `fm-captain-hold.sh answer <id> --decision-file <path>`.
+#   - `hold` of a pacing reason without `--until`, because an undated hold is never re-checked; the refusal names the missing reset date.
 # Otherwise the exit status is tasks-axi's own.
 set -u
 
@@ -131,6 +132,35 @@ if [ "${ARGS[0]:-}" = "done" ] && [ -n "${ARGS[1]:-}" ]; then
   if fm_backlog_row_probe "$DATA" "${ARGS[1]}" \
     && [ "${FM_BACKLOG_ROW_STATE%% *}" != "done" ] && [ "$FM_BACKLOG_ROW_HOLD_KIND" = captain ]; then
     fail "task ${ARGS[1]} is held for the captain; close it with the captain's words: fm-captain-hold.sh answer ${ARGS[1]} --decision-file <path>"
+  fi
+fi
+
+# A pacing hold carries its reset date, because a hold with no machine-readable
+# expiry stays on forever (audit causes C3/C4); bin/fm-backlog-overdue.sh reads
+# the hold-until date.
+if [ "${ARGS[0]:-}" = "hold" ]; then
+  reason_text=""
+  have_until=0
+  for ((i = 1; i < ${#ARGS[@]}; i++)); do
+    case "${ARGS[i]}" in
+      --reason)
+        if [ $((i + 1)) -lt ${#ARGS[@]} ]; then
+          reason_text="${ARGS[i+1]}"
+        fi
+        ;;
+      --reason=*)
+        reason_text="${ARGS[i]#--reason=}"
+        ;;
+      --until|--until=*)
+        have_until=1
+        ;;
+    esac
+  done
+  if [ -n "$reason_text" ] && [ "$have_until" = 0 ]; then
+    lower_reason=$(printf '%s' "$reason_text" | tr '[:upper:]' '[:lower:]')
+    case "$lower_reason" in
+      *pacing*) fail "pacing hold needs --until YYYY-MM-DD (the reset date): a hold with no expiry is never re-checked" ;;
+    esac
   fi
 fi
 

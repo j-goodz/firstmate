@@ -961,6 +961,16 @@ if [ "$REEMIT" -eq 1 ]; then
 else
 print_backlog_compact "$DATA/backlog.md" "data/backlog.md"
 
+# Overdue holds, due dates and long-queued rows (bin/fm-backlog-overdue.sh owns the rules).
+# Bounded and silent when nothing is overdue; a scan failure never stops the digest.
+# A locked session also arms the watcher check that raises one wake per overdue item per day.
+[ "$READ_ONLY" -ne 0 ] || FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-backlog-overdue.sh" arm >/dev/null 2>&1 || true
+overdue_text=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-backlog-overdue.sh" report 2>/dev/null) || overdue_text=''
+if [ -n "$overdue_text" ]; then
+  subsection "Overdue backlog items (act on each: dispatch, re-hold with a new date, or close)"
+  printf '%s\n' "$overdue_text"
+fi
+
 subsection "Work under way (state/*.meta)"
 META_FOUND=0
 for meta in "$STATE"/*.meta; do
