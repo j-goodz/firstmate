@@ -3,8 +3,6 @@
 set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-unset FM_FANOUT_GATE_BYPASS
-
 run_gate() {
   local tmp
   tmp=$1

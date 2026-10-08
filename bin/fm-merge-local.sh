@@ -88,19 +88,17 @@ PROJ=$(grep '^project=' "$META" | cut -d= -f2-)
 MODE=$(grep '^mode=' "$META" | cut -d= -f2- || true)
 [ "$MODE" = local-only ] || { echo "error: task $ID is mode=$MODE, not local-only; merge PR tasks with bin/fm-pr-merge.sh <id> <PR url> after approval" >&2; exit 1; }
 
-if [ "${FM_FANOUT_GATE_BYPASS:-}" != 1 ]; then
-  if [ -n "$ALLOW_NO_FANOUT" ]; then
-    fanout_reason=$(printf '%s' "$ALLOW_NO_FANOUT" | tr '\n' ' ')
-    printf 'fanout_override=%s\n' "$fanout_reason" >> "$META"
-    echo "fanout gate skipped: $fanout_reason" >&2
-  else
-    fanout_status=0
-    FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-      "$SCRIPT_DIR/fm-fanout-check.sh" "$ID" --gate >/dev/null || fanout_status=$?
-    if [ "$fanout_status" -ne 0 ]; then
-      echo "error: local merge refused: the lane has no clean free-model fan-out evidence; fix it or pass --allow-no-fanout <reason> for a change that touches no code" >&2
-      exit 1
-    fi
+if [ -n "$ALLOW_NO_FANOUT" ]; then
+  fanout_reason=$(printf '%s' "$ALLOW_NO_FANOUT" | tr '\n' ' ')
+  printf 'fanout_override=%s\n' "$fanout_reason" >> "$META"
+  echo "fanout gate skipped: $fanout_reason" >&2
+else
+  fanout_status=0
+  FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    "$SCRIPT_DIR/fm-fanout-check.sh" "$ID" --gate >/dev/null || fanout_status=$?
+  if [ "$fanout_status" -ne 0 ]; then
+    echo "error: local merge refused: the lane has no clean free-model fan-out evidence; fix it or pass --allow-no-fanout <reason> for a change that touches no code" >&2
+    exit 1
   fi
 fi
 

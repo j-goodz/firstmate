@@ -3,8 +3,6 @@
 set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-unset FM_FANOUT_GATE_BYPASS
-
 test_merge_local_refuses_without_fanout() {
     local tmp
     tmp=$(fm_test_tmproot)
