@@ -11,7 +11,9 @@
 # becomes a refusal check: it exits 1 and prints `REFUSED: fanout-gate: ...` lines on stderr
 # when the lane has no run ids, an unreadable units ledger, a unit whose last terminal outcome
 # is free_exhausted (unless a later free check_passed unit labelled
-# "<parent label>--<suffix>" in the lane split it), or a check_passed unit whose producing model (served_model, else
+# "<parent label>--<suffix>" in the lane split it, or a LATER collected run, later by the row's
+# `at` timestamp, has a check_passed unit with the same label on a free model; a retry that
+# passed on a paid model or was exhausted again does not clear it), or a check_passed unit whose producing model (served_model, else
 # requested_model) is not free; it appends nothing to the adoption ledger and prints no
 # WARNING. Exit 2 only for bad usage (no task id, unknown option, option missing its value).
 #
@@ -239,7 +241,7 @@ else
       gate_data=$(jq -R 'fromjson? | select(type=="object")' "$UNITS_LEDGER" \
         | jq --argjson ids "$run_ids_json" '
             select(.run_id as $rid | ($ids | index($rid)) != null)
-            | {run_id, label, outcome, requested_model, served_model}
+            | {run_id, label, outcome, requested_model, served_model, at}
           ' \
         | jq -s --argjson free "$free_models_json" "$FREE_JQ_DEF"'
             def model: if .served_model != "" and .served_model != null then .served_model else .requested_model end;
@@ -256,9 +258,16 @@ else
             | {
                 exhausted: (map(select(.outcome == "free_exhausted"))
                   | map(select(. as $p | any($units[];
-                      .outcome == "check_passed" and .idx > $p.idx
-                      and (.label | startswith($p.label + "--"))
-                      and rowfree) | not))
+                      .outcome == "check_passed"
+                      and rowfree
+                      and (
+                        (.idx > $p.idx and (.label | startswith($p.label + "--")))
+                        or
+                        (.label == $p.label
+                         and ((.at // "") | type == "string") and (.at // "") != ""
+                         and ((($p.at // "")) != "")
+                         and .at > $p.at)
+                      )) | not))
                   | map(.run_id + "/" + .label) | join(", ")),
                 paid: (map(select(.outcome == "check_passed"
                     and (rowfree | not)))
