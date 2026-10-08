@@ -2,12 +2,17 @@
 # bin/fm-fanout-check.sh (adoption check for the FreeLLMAPI fan-out build method)
 #
 # Usage: bin/fm-fanout-check.sh <task-id> [--pr-url <url>]
+#        bin/fm-fanout-check.sh <task-id> [--pr-url <url>] --gate
 #        bin/fm-fanout-check.sh --help      (prints usage, exit 0)
 #
 # Purpose: after a build lane lands, report whether its code was written by free models through
-# scripts/free_direct_fanout.py. A recorded check, never a gate: it exits 0 for any valid
-# invocation, whatever the verdict. Exit 2 only for bad usage (no task id, unknown option,
-# option missing its value).
+# scripts/free_direct_fanout.py. A recorded check by default, a gate only with --gate: without
+# --gate it exits 0 for any valid invocation, whatever the verdict. With --gate the script
+# becomes a refusal check: it exits 1 and prints `REFUSED: fanout-gate: ...` lines on stderr
+# when the lane has no run ids, an unreadable units ledger, a unit whose last terminal outcome
+# is free_exhausted, or a check_passed unit whose producing model (served_model, else
+# requested_model) is not free; it appends nothing to the adoption ledger and prints no
+# WARNING. Exit 2 only for bad usage (no task id, unknown option, option missing its value).
 #
 # Paths (same convention as the other bin scripts):
 #   FM_HOME            default: the repository root that contains this script's bin/ directory
@@ -82,9 +87,14 @@ FREE_MODELS_FILE="${FM_FANOUT_MODELS:-$HOME/.nexus/free-coding-models.json}"
 # Parse arguments
 TASK_ID=""
 PR_URL=""
+GATE=0
 
 while (( "$#" )); do
   case "$1" in
+    --gate)
+      GATE=1
+      shift
+      ;;
     --help)
       # Print the header comment block (lines starting with # after the shebang)
       awk 'NR==1{next} /^#/{print; next} {exit}' "$0"
@@ -154,6 +164,8 @@ else
   run_ids_json=$(printf '%s\n' "${run_ids[@]}" | jq -R . | jq -s .)
 fi
 
+gate_exhausted=""
+gate_paid=""
 # Determine verdict and counts
 verdict="no-runs"
 units=0
@@ -216,6 +228,34 @@ else
     units=$(echo "$counts" | jq -r '.units')
     paid_step_ups=$(echo "$counts" | jq -r '.paid_step_ups')
 
+    if [[ $GATE -eq 1 ]]; then
+      # Compute gate_exhausted and gate_paid
+      gate_data=$(jq -R 'fromjson? | select(type=="object")' "$UNITS_LEDGER" \
+        | jq --argjson ids "$run_ids_json" '
+            select(.run_id as $rid | ($ids | index($rid)) != null)
+            | {run_id, label, outcome, requested_model, served_model}
+          ' \
+        | jq -s --argjson free "$free_models_json" '
+            reduce .[] as $row ({};
+              ($row.run_id + "/" + $row.label) as $key |
+              if $row.outcome == "check_passed" or $row.outcome == "free_exhausted" then
+                .[$key] = $row
+              else . end
+            )
+            | to_entries | map(.value)
+            | {
+                exhausted: (map(select(.outcome == "free_exhausted")) | map(.run_id + "/" + .label) | join(", ")),
+                paid: (map(select(.outcome == "check_passed"
+                    and ((if .served_model != "" and .served_model != null then .served_model else .requested_model end) as $model
+                         | ($free | index($model)) == null)))
+                  | map(.run_id + "/" + .label + " (" + (if .served_model != "" and .served_model != null then .served_model else .requested_model end) + ")")
+                  | join(", "))
+              }
+          ')
+      gate_exhausted=$(echo "$gate_data" | jq -r '.exhausted')
+      gate_paid=$(echo "$gate_data" | jq -r '.paid')
+    fi
+
     if [[ $units -gt 0 ]]; then
       if [[ $paid_step_ups -eq 0 ]]; then
         verdict="yes"
@@ -246,6 +286,32 @@ fi
 
 # Output to stdout
 echo "fanout-check: $TASK_ID free_written=$free_written verdict=$verdict units=$units paid_step_ups=$paid_step_ups runs=$runs_display"
+
+if [[ $GATE -eq 1 ]]; then
+  # Refusal check
+  refused=0
+  # (a) no run ids
+  if [[ ${#run_ids[@]} -eq 0 ]]; then
+    echo "REFUSED: fanout-gate: the lane recorded no fan-out run ids" >&2
+    refused=1
+  fi
+  # (a2) run ids exist but ledger missing/unreadable
+  if [[ ${#run_ids[@]} -gt 0 && ! -r "$UNITS_LEDGER" ]]; then
+    echo "REFUSED: fanout-gate: the units ledger is unreadable" >&2
+    refused=1
+  fi
+  # (b) free_exhausted units
+  if [[ -n "$gate_exhausted" ]]; then
+    echo "REFUSED: fanout-gate: unit(s) ended free_exhausted: $gate_exhausted" >&2
+    refused=1
+  fi
+  # (c) paid model units
+  if [[ -n "$gate_paid" ]]; then
+    echo "REFUSED: fanout-gate: unit(s) written by a paid model: $gate_paid" >&2
+    refused=1
+  fi
+  exit $refused
+fi
 
 # Output warning to stderr if verdict is not yes
 if [[ "$verdict" != "yes" ]]; then

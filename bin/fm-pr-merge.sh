@@ -106,8 +106,13 @@
 # before the optional -- separator, re-enables those forge flags for an
 # explicit captain instruction and never skips the live green check, the
 # away-record read, or a captain hold.
+# A fan-out gate runs before the merge: bin/fm-fanout-check.sh --gate must pass, so a
+# lane with no fan-out run ids, a unit that ended free_exhausted, or a check_passed unit
+# written by a paid model is refused and the refusal names the units.
+# --allow-no-fanout <reason> skips the gate for a PR that changes no code and
+# records fanout_override=<reason> in the task meta.
 #
-# Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [--allow-non-default-base] [-- <extra forge merge args>]
+# Usage: fm-pr-merge.sh <task-id> <pr-url> [--attended-override] [--allow-red <check-name>] [--allow-non-default-base] [--allow-no-fanout <reason>] [-- <extra forge merge args>]
 #
 # On GitLab, this script confirms the MR is actually merged before reporting it;
 # an auto-merge-queued or unconfirmed request leaves the poll armed and records
@@ -157,6 +162,7 @@ shift 2
 ATTENDED_OVERRIDE=false
 ALLOW_RED=()
 ALLOW_NON_DEFAULT_BASE=false
+ALLOW_NO_FANOUT=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --attended-override)
@@ -183,6 +189,16 @@ while [ "$#" -gt 0 ]; do
       ;;
     --allow-non-default-base=*)
       echo "error: --allow-non-default-base takes no value" >&2
+      exit 2
+      ;;
+    --allow-no-fanout)
+      [ -n "${2:-}" ] || { echo "error: --allow-no-fanout requires a reason" >&2; exit 2; }
+      [ -z "$ALLOW_NO_FANOUT" ] || { echo "error: --allow-no-fanout may be specified only once" >&2; exit 2; }
+      ALLOW_NO_FANOUT="$2"
+      shift 2
+      ;;
+    --allow-no-fanout=*)
+      echo "error: --allow-no-fanout requires a separate reason argument" >&2
       exit 2
       ;;
     --) shift; break ;;
@@ -396,6 +412,22 @@ if [ "$PROVIDER" = github ]; then
   if [ -n "$GITHUB_MISSING" ]; then
     echo "error: merging a GitHub pull request requires $GITHUB_MISSING on PATH" >&2
     exit 1
+  fi
+fi
+
+if [ "${FM_FANOUT_GATE_BYPASS:-}" != 1 ]; then
+  if [ -n "$ALLOW_NO_FANOUT" ]; then
+    fanout_reason=$(printf '%s' "$ALLOW_NO_FANOUT" | tr '\n' ' ')
+    printf 'fanout_override=%s\n' "$fanout_reason" >> "$META"
+    echo "fanout gate skipped: $fanout_reason" >&2
+  else
+    fanout_status=0
+    FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-fanout-check.sh" "$ID" --pr-url "$URL" --gate >/dev/null || fanout_status=$?
+    if [ "$fanout_status" -ne 0 ]; then
+      echo "error: PR merge refused: the lane has no clean free-model fan-out evidence; fix it or pass --allow-no-fanout <reason> for a PR that changes no code" >&2
+      exit 1
+    fi
   fi
 fi
 

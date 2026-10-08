@@ -92,7 +92,7 @@
 # anything is written. Secondmate charters never take it.
 # Ship scaffolds carry one "Build method" section between the project-memory section and the
 # Definition of done: the standard FreeLLMAPI fan-out method (free models write the code through
-# scripts/free_direct_fanout.py, the lead reviews, paid models only for free_exhausted units,
+# scripts/free_direct_fanout.py, the lead reviews, free_exhausted units split and rerun, never paid or hand-written,
 # run ids named in the PR body). The engine path comes from FM_FANOUT_ENGINE, defaulting to
 # $HOME/nexus/scripts/free_direct_fanout.py. bin/fm-fanout-check.sh records adoption at teardown.
 # Refuses to overwrite an existing brief.
@@ -589,12 +589,12 @@ Keep it proportionate: skip \`AGENTS.md\` edits for trivial tasks that produced 
 
 # Build method
 The standard build method for this task is FreeLLMAPI fan-out: free models write the code, you lead and verify.
-It is the standard method, not an iron rule: skip it for a specific part only when you state the reason in a status line.
+It is mandatory: every code and test file comes from free models, and you never write code yourself or hand it to a paid model.
 1. Turn the Firstmate spec into a fan-out manifest (a JSON list of units). Use an \`out\` unit for each new file and an \`edit\` unit (SEARCH/REPLACE blocks) for each existing file, each with a \`check\` command that proves the unit works. Write the tests first, from the spec, as their own units.
 2. Run \`python3 $FANOUT_ENGINE --manifest <file>\` (if that path is missing, use the nexus checkout path on this machine). Keep scratch files under ~/scratch/$ID, never inside a git tree.
 3. Review every result and apply it. Never hand-write code. A rate-limited or failed call reroutes to the next free model and is not a failure.
-4. Only units the run reports \`free_exhausted\` may go to a paid model, and only after you append a \`working\` status line naming those units.
-5. Name the fan-out run ids (fr-...) in a status line, and in the PR body on one line that starts with \`Fan-out runs:\` followed by the ids; firstmate reads only that line. Firstmate records whether free models wrote the change; a lane with no run ids gets a warning, never a refusal.
+4. A unit the run reports \`free_exhausted\` is split into smaller units and rerun through the fan-out engine. If a split unit ends \`free_exhausted\` again, stop and append a \`blocked:\` status line naming the unit; never write that file yourself or with a paid model.
+5. Name the fan-out run ids (fr-...) in a status line, and in the PR body on one line that starts with \`Fan-out runs:\` followed by the ids; firstmate reads only that line. Firstmate records whether free models wrote the change; the merge is refused for a lane with no run ids, a unit that ended free_exhausted, or a unit a paid model wrote.
 
 $DOD
 EOF

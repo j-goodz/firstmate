@@ -47,6 +47,11 @@ umask 022
 # strips this to verify real refusal.
 export FM_GATE_REFUSE_BYPASS=1
 
+# Bypass the fan-out evidence gate for this suite. The existing merge tests
+# build fixture lanes with no fan-out evidence; tests/fm-fanout-gate.test.sh
+# and the gate tests in tests/fm-pr-merge.test.sh unset this to exercise the gate.
+export FM_FANOUT_GATE_BYPASS=1
+
 # Clear the task-worker marker bin/fm-spawn.sh exports into ship and scout
 # panes. This suite builds git-init fixture repositories whose primary checkout
 # it runs a copied bin/fm-test-run.sh in, and that runner refuses the primary
