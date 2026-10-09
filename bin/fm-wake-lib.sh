@@ -215,6 +215,21 @@ fm_supervision_model() {
   esac
 }
 
+# fm_stop_hook_acks
+# True when this process runs under a harness whose Stop hook acknowledges the
+# rows a drain delivered (bin/fm-claude-stop-autoarm.sh), so the drain prints
+# WAKE_ACK instead of asking the model to run --ack-through. Only claude has
+# that hook. FM_STOP_HOOK_ACKS=1|0 overrides detection (tests, and callers that
+# parse the WAKE_ACK_REQUIRED line themselves). bin/fm-harness.sh is the single
+# detection owner.
+fm_stop_hook_acks() {
+  case "${FM_STOP_HOOK_ACKS:-}" in
+    1) return 0 ;;
+    0) return 1 ;;
+  esac
+  [ "$("$FM_WAKE_LIB_DIR/fm-harness.sh" 2>/dev/null || printf unknown)" = claude ]
+}
+
 # Pi primary supervision evidence. The Pi extensions record, in their state
 # markers, the exact build they loaded and the session process that loaded it, so
 # "a live Pi session owns supervision" is provable from durable state without a

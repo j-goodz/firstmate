@@ -583,7 +583,8 @@ EOF
     fi
   fi
 
-  drained=$("$SCRIPT_DIR/fm-wake-drain.sh" 2> "$drain_err") || {
+  # This script parses the WAKE_ACK_REQUIRED line below; no Stop hook acknowledges for it.
+  drained=$(FM_STOP_HOOK_ACKS=0 "$SCRIPT_DIR/fm-wake-drain.sh" 2> "$drain_err") || {
     append_evidence lifecycle 'durable wake drain failed; retry catch-up before ordinary work' "$evidence"
     lifecycle_ok=0
     drained=""

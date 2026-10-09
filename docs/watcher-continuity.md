@@ -68,8 +68,10 @@ An acknowledged episode does not freeze the generation, because the next downtim
 
 ## Turn-end acknowledgement and absorbed wakes (Claude Stop hook)
 
-A main drain that prints `WAKE_ACK_REQUIRED` also records the printed cutoff and generation in `state/.drain-delivered`.
-When the handling turn ends normally, the Claude Stop hook claims that record atomically and runs the same acknowledgement, so the model spends no tool call on it.
+A main drain records the cutoff and generation it delivered in `state/.drain-delivered`.
+When the handling turn ends normally, the Claude Stop hook claims that record atomically and runs the acknowledgement, so the model spends no tool call on it.
+Under a Claude primary (`fm_stop_hook_acks` in `bin/fm-wake-lib.sh`, overridable with `FM_STOP_HOOK_ACKS=1|0`) the drain prints a `WAKE_ACK` line instead of the `--ack-through` command once the record is written.
+Every other harness, a branch drain, a failed record write, and the daemon and away-return callers that parse the line keep `WAKE_ACK_REQUIRED`.
 A turn the person interrupted (an interruption marker in the transcript at or after the record), a record older than six hours, a missing or unreadable transcript, and an away session all acknowledge nothing, so re-delivery stays exactly as durable as before.
 `bin/fm-wake-absorb-lib.sh` owns those checks and the record format, and `state/wake-absorb.jsonl` logs every acknowledgement, skip and absorb.
 The drain prints the OPEN DECISIONS block in full only when its content changed since the last committed presentation or its record is older than `FM_DRAIN_SECTION_TTL_SECS` (default 14400), otherwise one count line; `FM_WAKE_DRAIN_FULL=1` forces the full block, and a new session's start-up drain always forces it.
