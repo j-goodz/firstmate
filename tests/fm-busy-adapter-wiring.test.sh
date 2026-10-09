@@ -275,6 +275,33 @@ test_claude_hooks_semantic_lifecycle() {
   pass "claude hooks open on UserPromptSubmit and close on Stop, StopFailure, and SessionEnd"
 }
 
+test_claude_worker_denies_sleep_poll() {
+  local rec id=busy-cl-sleep out settings cmd payload rc log
+  rec=$(make_spawn_case claude-sleepguard claude "$id")
+  read_case_record "$rec"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR" --model sonnet)
+  expect_code 0 $? "claude spawn should succeed: $out"
+  settings="$WT_DIR/.claude/settings.local.json"
+  jq -e . "$settings" >/dev/null || fail "claude hook settings are not valid JSON"
+  [ "$(jq -r '.hooks.PreToolUse[0].matcher' "$settings")" = "Bash" ] \
+    || fail "claude worker settings lack a Bash PreToolUse matcher"
+  cmd=$(jq -r '.hooks.PreToolUse[0].hooks[0].command' "$settings")
+  [ -n "$cmd" ] && [ "$cmd" != null ] || fail "no PreToolUse hook command in $settings"
+  log="$WT_DIR/../sleep-guard-$id.jsonl"
+  rm -f "$log"
+  payload='{"tool_name":"Bash","tool_input":{"command":"sleep 580; tail x"}}'
+  rc=0
+  printf '%s' "$payload" | FM_SLEEP_GUARD_LOG="$log" sh -c "$cmd" >/dev/null 2>&1 || rc=$?
+  [ "$rc" -eq 2 ] || fail "the worker PreToolUse hook must deny sleep 580 with exit 2, got $rc"
+  [ "$(jq -r '.task' "$log")" = "$id" ] || fail "the denial log must carry the task id $id"
+  payload='{"tool_name":"Bash","tool_input":{"command":"sleep 20 && tail x"}}'
+  rc=0
+  printf '%s' "$payload" | FM_SLEEP_GUARD_LOG="$log" sh -c "$cmd" >/dev/null 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || fail "the worker PreToolUse hook must allow sleep 20, got $rc"
+  rm -f "$log"
+  pass "claude worker settings wire a Bash PreToolUse hook that denies long sleeps and allows short ones"
+}
+
 test_claude_hooks_stale_incarnation_harmless() {
   local rec id=busy-cl-2 out state settings
   rec=$(make_spawn_case claude-stale claude "$id")
@@ -432,6 +459,7 @@ test_kimi_and_grok_install_no_unverified_wiring
 test_opencode_plugin_semantic_lifecycle
 test_claude_hooks_semantic_lifecycle
 test_claude_hooks_stale_incarnation_harmless
+test_claude_worker_denies_sleep_poll
 test_gemini_hooks_semantic_lifecycle
 test_gemini_hooks_stale_incarnation_harmless
 test_raw_gemini_launch_has_no_semantic_wiring
