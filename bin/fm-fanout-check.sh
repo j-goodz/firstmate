@@ -42,8 +42,7 @@
 # Free vs paid test (shared by report mode and gate mode): a model name is free when it ends in
 # ":free", is in the ranked list in $FM_FANOUT_MODELS (plus the engine's seed fallback and
 # "auto"), or becomes so after its first path segment is removed (a router prefix such as kilo/
-# or openrouter/). Report mode counts a check_passed row as free-written when either
-# requested_model or served_model passes. Gate mode calls a check_passed row free when
+# or openrouter/). Report mode and gate mode share one test: a check_passed row is free when
 # served_model passes, or when requested_model passes and served_model is the same model
 # once a router prefix is stripped, or once both names have their first path segment
 # stripped and are compared case-insensitively (requested openai/gpt-oss-20b served
@@ -58,10 +57,13 @@
 #   yes             at least one unit is free-written (see units) and zero paid step-ups
 #   mixed           at least one unit is free-written and some paid step-ups were needed
 #   no              run ids found, ledger readable, but zero units are free-written
-# units = number of distinct (run_id,label) pairs whose check_passed row names a free model
-#         (0 for no-runs and missing-ledger)
-# paid_step_ups = number of distinct (run_id,label) pairs with outcome free_exhausted
-#                 (0 for no-runs and missing-ledger)
+# units = number of distinct (run_id,label) pairs whose final terminal row is a check_passed row
+#         that passes the free test above (0 for no-runs and missing-ledger)
+# paid_step_ups = number of distinct (run_id,label) pairs whose final terminal outcome is
+#                 free_exhausted and that no later free check_passed unit cleared (a later run's
+#                 unit with the same label, or a unit labelled "<label>--<suffix>"): exactly the
+#                 units gate mode reports as unresolved (0 for no-runs and missing-ledger)
+# A unit written by a paid model also turns a would-be yes into mixed.
 #
 # Output:
 #   stdout, exactly one line:
@@ -180,6 +182,7 @@ gate_paid=""
 verdict="no-runs"
 units=0
 paid_step_ups=0
+paid_written=0
 
 if [[ ${#run_ids[@]} -eq 0 ]]; then
   verdict="no-runs"
@@ -215,76 +218,55 @@ else
     # check_passed unit counts as free-written only when its producing model is free.
     # shellcheck disable=SC2016 # single quotes are intentional: this is jq source
     FREE_JQ_DEF='def isfree($free): if . == null or . == "" then false else . as $m | ($m | endswith(":free")) or (($free | index($m)) != null) or (($m | sub("^[^/]*/"; "")) as $s | $s != $m and ($free | index($s)) != null) end;'
-    counts=$(jq -R 'fromjson? | select(type=="object")' "$UNITS_LEDGER" \
+    # One pass decides both report and gate mode, so the two modes cannot disagree on what is free or
+    # on which free_exhausted units a later free retry cleared.
+    gate_data=$(jq -R 'fromjson? | select(type=="object")' "$UNITS_LEDGER" \
       | jq --argjson ids "$run_ids_json" '
           select(.run_id as $rid | ($ids | index($rid)) != null)
-          | {run_id, label, outcome,
-             requested_model: (.requested_model // ""),
-             served_model: (.served_model // "")}
+          | {run_id, label, outcome, requested_model, served_model, at}
         ' \
       | jq -s --argjson free "$free_models_json" "$FREE_JQ_DEF"'
-          group_by(.run_id, .label)
-          | map({
-              run_id: .[0].run_id,
-              label: .[0].label,
-              has_free_pass: any(.[]; . as $row | ($row.outcome == "check_passed")
-                and (($row.requested_model | isfree($free))
-                     or ($row.served_model | isfree($free)))),
-              has_free_exhausted: any(.[]; .outcome == "free_exhausted")
-            })
+          def model: if .served_model != "" and .served_model != null then .served_model else .requested_model end;
+          def rowfree: ((.served_model // "") as $sv | (.requested_model // "") as $rq | if $sv == "" then ($rq | isfree($free)) else ($sv | isfree($free)) or (($rq | isfree($free)) and (($rq | sub(":free$"; "")) as $r | ($sv | sub(":free$"; "")) as $s | $s == $r or ($s | endswith("/" + $r)) or (($rq | sub("^[^/]*/"; "") | ascii_downcase) == ($sv | sub("^[^/]*/"; "") | ascii_downcase)))) end);
+          . as $rows
+          | (reduce range(0; $rows | length) as $i ({};
+              $rows[$i] as $row |
+              ($row.run_id + "/" + $row.label) as $key |
+              if $row.outcome == "check_passed" or $row.outcome == "free_exhausted" then
+                .[$key] = ($row + {idx: $i})
+              else . end
+            ) | to_entries | map(.value)) as $units
+          | $units
           | {
-              units: (map(select(.has_free_pass)) | length),
-              paid_step_ups: (map(select(.has_free_exhausted)) | length)
+              exhausted: (map(select(.outcome == "free_exhausted"))
+                | map(select(. as $p | any($units[];
+                    .outcome == "check_passed"
+                    and rowfree
+                    and (
+                      (.idx > $p.idx and (.label | startswith($p.label + "--")))
+                      or
+                      (.label == $p.label
+                       and ((.at // "") | type == "string") and (.at // "") != ""
+                       and ((($p.at // "")) != "")
+                       and .at > $p.at)
+                    )) | not))
+                | map(.run_id + "/" + .label)),
+              paid: (map(select(.outcome == "check_passed"
+                  and (rowfree | not)))
+                | map(.run_id + "/" + .label + " (" + (if .served_model != "" and .served_model != null then .served_model else .requested_model end) + ")")
+                | join(", ")),
+              units: (map(select(.outcome == "check_passed" and rowfree)) | length),
+              paid_written: (map(select(.outcome == "check_passed" and (rowfree | not))) | length)
             }
         ')
-    units=$(echo "$counts" | jq -r '.units')
-    paid_step_ups=$(echo "$counts" | jq -r '.paid_step_ups')
-
-    if [[ $GATE -eq 1 ]]; then
-      # Compute gate_exhausted and gate_paid
-      gate_data=$(jq -R 'fromjson? | select(type=="object")' "$UNITS_LEDGER" \
-        | jq --argjson ids "$run_ids_json" '
-            select(.run_id as $rid | ($ids | index($rid)) != null)
-            | {run_id, label, outcome, requested_model, served_model, at}
-          ' \
-        | jq -s --argjson free "$free_models_json" "$FREE_JQ_DEF"'
-            def model: if .served_model != "" and .served_model != null then .served_model else .requested_model end;
-            def rowfree: ((.served_model // "") as $sv | (.requested_model // "") as $rq | if $sv == "" then ($rq | isfree($free)) else ($sv | isfree($free)) or (($rq | isfree($free)) and (($rq | sub(":free$"; "")) as $r | ($sv | sub(":free$"; "")) as $s | $s == $r or ($s | endswith("/" + $r)) or (($rq | sub("^[^/]*/"; "") | ascii_downcase) == ($sv | sub("^[^/]*/"; "") | ascii_downcase)))) end);
-            . as $rows
-            | (reduce range(0; $rows | length) as $i ({};
-                $rows[$i] as $row |
-                ($row.run_id + "/" + $row.label) as $key |
-                if $row.outcome == "check_passed" or $row.outcome == "free_exhausted" then
-                  .[$key] = ($row + {idx: $i})
-                else . end
-              ) | to_entries | map(.value)) as $units
-            | $units
-            | {
-                exhausted: (map(select(.outcome == "free_exhausted"))
-                  | map(select(. as $p | any($units[];
-                      .outcome == "check_passed"
-                      and rowfree
-                      and (
-                        (.idx > $p.idx and (.label | startswith($p.label + "--")))
-                        or
-                        (.label == $p.label
-                         and ((.at // "") | type == "string") and (.at // "") != ""
-                         and ((($p.at // "")) != "")
-                         and .at > $p.at)
-                      )) | not))
-                  | map(.run_id + "/" + .label) | join(", ")),
-                paid: (map(select(.outcome == "check_passed"
-                    and (rowfree | not)))
-                  | map(.run_id + "/" + .label + " (" + (if .served_model != "" and .served_model != null then .served_model else .requested_model end) + ")")
-                  | join(", "))
-              }
-          ')
-      gate_exhausted=$(echo "$gate_data" | jq -r '.exhausted')
-      gate_paid=$(echo "$gate_data" | jq -r '.paid')
-    fi
+    gate_exhausted=$(echo "$gate_data" | jq -r '.exhausted | join(", ")')
+    gate_paid=$(echo "$gate_data" | jq -r '.paid')
+    units=$(echo "$gate_data" | jq -r '.units')
+    paid_step_ups=$(echo "$gate_data" | jq -r '.exhausted | length')
+    paid_written=$(echo "$gate_data" | jq -r '.paid_written')
 
     if [[ $units -gt 0 ]]; then
-      if [[ $paid_step_ups -eq 0 ]]; then
+      if [[ $paid_step_ups -eq 0 && $paid_written -eq 0 ]]; then
         verdict="yes"
       else
         verdict="mixed"
