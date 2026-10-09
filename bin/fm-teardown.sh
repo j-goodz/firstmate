@@ -5,6 +5,8 @@
 # scout tasks before reporting success (a secondmate teardown transitions none,
 # since secondmates are not backlog items), then refresh/prune the project's
 # clone for PR-based ship tasks.
+# A scout's recorded report is also posted to #research once, fail-open, through
+# bin/fm-research-post.sh before cleanup proceeds.
 # An endpoint whose close could not do its job REFUSES before any record naming
 # it is removed: those records are the only thing that names what survived, so
 # reporting such a close as a completed cleanup strands the endpoint instead of
@@ -3320,6 +3322,13 @@ if [ "$KIND" = scout ] && [ "$FORCE" != "--force" ]; then
     echo "Inventory its report and any visual review through bin/fm-captain-hold.sh before teardown." >&2
     exit 1
   fi
+fi
+# Post the recorded scout report to #research once. bin/fm-research-post.sh is
+# idempotent per task id and logs every attempt; a posting failure must never
+# block cleanup, so its exit status and output are discarded.
+if [ "$KIND" = scout ] && [ "$FORCE" != "--force" ] && [ -x "$SCRIPT_DIR/fm-research-post.sh" ]; then
+  FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA" \
+    "$SCRIPT_DIR/fm-research-post.sh" "$ID" >/dev/null 2>&1 || true
 fi
 
 # A public commitment is not kept until its final reply lands in the ORIGINAL
