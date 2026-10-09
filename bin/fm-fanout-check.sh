@@ -64,6 +64,12 @@
 #                 unit with the same label, or a unit labelled "<label>--<suffix>"): exactly the
 #                 units gate mode reports as unresolved (0 for no-runs and missing-ledger)
 # A unit written by a paid model also turns a would-be yes into mixed.
+# Paid Flash step-up (nexus fan-out --step-up-flash): a check_passed unit is an ACCEPTED step-up, not a paid-written
+# unit, only when its row has step_up_from "free_exhausted", an EARLIER row of the same run_id and label was
+# free_exhausted, and its producing model is DeepSeek V4 Flash (deepseek-v4-flash or deepseek/deepseek-v4-flash).
+# Any other paid unit, including a paid first-try unit, is still refused. paid_step_ups counts the unresolved
+# exhausted units plus the accepted step-ups. When at least one step-up was accepted the stdout line ends with
+# " step_up_cost_usd=<sum of cost_usd>", and the adoption ledger line carries step_up_cost_usd (0 when none).
 #
 # Output:
 #   stdout, exactly one line:
@@ -197,6 +203,8 @@ verdict="no-runs"
 units=0
 paid_step_ups=0
 paid_written=0
+step_ups=0
+step_up_cost=0
 
 if [[ ${#run_ids[@]} -eq 0 ]]; then
   verdict="no-runs"
@@ -237,17 +245,18 @@ else
     gate_data=$(jq -R 'fromjson? | select(type=="object")' "$UNITS_LEDGER" \
       | jq --argjson ids "$run_ids_json" '
           select(.run_id as $rid | ($ids | index($rid)) != null)
-          | {run_id: .run_id, label: .label, outcome: .outcome, requested_model: .requested_model, served_model: .served_model, at: .at}
+          | {run_id: .run_id, label: .label, outcome: .outcome, requested_model: .requested_model, served_model: .served_model, at: .at, step_up_from: .step_up_from, cost_usd: .cost_usd}
         ' \
       | jq -s --argjson free "$free_models_json" "$FREE_JQ_DEF"'
           def model: if .served_model != "" and .served_model != null then .served_model else .requested_model end;
           def rowfree: ((.served_model // "") as $sv | (.requested_model // "") as $rq | if $sv == "" then ($rq | isfree($free)) else ($sv | isfree($free)) or (($rq | isfree($free)) and (($rq | sub(":free$"; "")) as $r | ($sv | sub(":free$"; "")) as $s | $s == $r or ($s | endswith("/" + $r)) or (($rq | sub("^[^/]*/"; "") | ascii_downcase) == ($sv | sub("^[^/]*/"; "") | ascii_downcase)))) end);
+          def stepup: (.outcome == "check_passed") and (.seen_exh == true) and (.step_up_from == "free_exhausted") and ((model // "") | ascii_downcase | test("^(deepseek/)?deepseek-(v4-)?flash$"));
           . as $rows
           | (reduce range(0; $rows | length) as $i ({};
               $rows[$i] as $row |
               ($row.run_id + "/" + $row.label) as $key |
               if $row.outcome == "check_passed" or $row.outcome == "free_exhausted" then
-                .[$key] = ($row + {idx: $i})
+                .[$key] = ($row + {idx: $i, seen_exh: ((.[$key].seen_exh // false) or ((.[$key].outcome // "") == "free_exhausted"))})
               else . end
             ) | to_entries | map(.value)) as $units
           | $units
@@ -266,11 +275,13 @@ else
                     )) | not))
                 | map(.run_id + "/" + .label)),
               paid: (map(select(.outcome == "check_passed"
-                  and (rowfree | not)))
+                  and (rowfree | not) and (stepup | not)))
                 | map(.run_id + "/" + .label + " (" + (if .served_model != "" and .served_model != null then .served_model else .requested_model end) + ")")
                 | join(", ")),
               units: (map(select(.outcome == "check_passed" and rowfree)) | length),
-              paid_written: (map(select(.outcome == "check_passed" and (rowfree | not))) | length)
+              paid_written: (map(select(.outcome == "check_passed" and (rowfree | not) and (stepup | not))) | length),
+              step_ups: (map(select(stepup)) | length),
+              step_up_cost: (((map(select(stepup) | ((.cost_usd | numbers) // 0)) | add) // 0) * 1000000 | round / 1000000)
             }
         ')
     gate_exhausted=$(echo "$gate_data" | jq -r '.exhausted | join(", ")')
@@ -278,6 +289,9 @@ else
     units=$(echo "$gate_data" | jq -r '.units')
     paid_step_ups=$(echo "$gate_data" | jq -r '.exhausted | length')
     paid_written=$(echo "$gate_data" | jq -r '.paid_written')
+    step_ups=$(echo "$gate_data" | jq -r '.step_ups')
+    step_up_cost=$(echo "$gate_data" | jq -r '.step_up_cost')
+    paid_step_ups=$((paid_step_ups + step_ups))
 
     if [[ $units -gt 0 ]]; then
       if [[ $paid_step_ups -eq 0 && $paid_written -eq 0 ]]; then
@@ -308,7 +322,11 @@ else
 fi
 
 # Output to stdout
-echo "fanout-check: $TASK_ID free_written=$free_written verdict=$verdict units=$units paid_step_ups=$paid_step_ups runs=$runs_display"
+cost_suffix=""
+if [[ "$step_ups" -gt 0 ]]; then
+  cost_suffix=" step_up_cost_usd=$step_up_cost"
+fi
+echo "fanout-check: $TASK_ID free_written=$free_written verdict=$verdict units=$units paid_step_ups=$paid_step_ups runs=$runs_display$cost_suffix"
 
 if [[ $GATE -eq 1 ]]; then
   # Refusal check
@@ -375,9 +393,10 @@ json=$(jq -nc \
   --arg verdict "$verdict" \
   --argjson units "$units" \
   --argjson paid_step_ups "$paid_step_ups" \
+  --argjson step_up_cost "$step_up_cost" \
   --argjson runs "$run_ids_json" \
   --arg pr "$pr_value" \
-  '{ts: $ts, at: $at, task: $task, free_written: $free_written, verdict: $verdict, units: $units, paid_step_ups: $paid_step_ups, runs: $runs, pr: $pr}')
+  '{ts: $ts, at: $at, task: $task, free_written: $free_written, verdict: $verdict, units: $units, paid_step_ups: $paid_step_ups, step_up_cost_usd: $step_up_cost, runs: $runs, pr: $pr}')
 
 if ! echo "$json" >> "$DATA/fanout-adoption.jsonl"; then
   echo "WARNING: fanout-check: failed to write adoption ledger" >&2

@@ -770,8 +770,262 @@ EOF
   assert_grep "ovh/some-unlisted-model" "$tmp/err" "served model mentioned"
 }
 
+test_gate_stepup_flash_after_exhausted_passes() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'JSON'
+{"models":[{"model":"dots-studio/dots-3-note-preview:free"},{"model":"openai/gpt-oss-120b"}]}
+JSON
+  echo "working [at=1]: fan-out runs fr-20261009T041529Z-3addea" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<'JSONL'
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","step_up_from":"free_exhausted","cost_usd":0.001235,"at":"2026-10-09T04:41:00Z"}
+JSONL
+  run_gate "$tmp" "t1"
+  local rc=$?
+  expect_code 0 $rc "step-up flash after exhausted passes"
+  assert_no_grep "REFUSED" "$tmp/err" "no REFUSED in err"
+  pass "test_gate_stepup_flash_after_exhausted_passes"
+}
+
+test_gate_stepup_requested_only_model_passes() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'JSON'
+{"models":[{"model":"dots-studio/dots-3-note-preview:free"},{"model":"openai/gpt-oss-120b"}]}
+JSON
+  echo "working [at=1]: fan-out runs fr-20261009T041529Z-3addea" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<'JSONL'
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"","step_up_from":"free_exhausted","cost_usd":0.001235,"at":"2026-10-09T04:41:00Z"}
+JSONL
+  run_gate "$tmp" "t1"
+  local rc=$?
+  expect_code 0 $rc "step-up requested-only model passes"
+  assert_no_grep "REFUSED" "$tmp/err" "no REFUSED in err"
+  pass "test_gate_stepup_requested_only_model_passes"
+}
+
+test_gate_paid_flash_first_try_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'JSON'
+{"models":[{"model":"dots-studio/dots-3-note-preview:free"},{"model":"openai/gpt-oss-120b"}]}
+JSON
+  echo "working [at=1]: fan-out runs fr-20261009T041529Z-3addea" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<'JSONL'
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","step_up_from":"free_exhausted","cost_usd":0.001235,"at":"2026-10-09T04:41:00Z"}
+JSONL
+  run_gate "$tmp" "t1"
+  local rc=$?
+  expect_code 1 $rc "paid flash first try refused"
+  assert_grep "REFUSED: fanout-gate" "$tmp/err" "REFUSED prefix"
+  assert_grep "deepseek/deepseek-v4-flash" "$tmp/err" "served model named"
+  pass "test_gate_paid_flash_first_try_refused"
+}
+
+test_gate_flash_without_step_up_from_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'JSON'
+{"models":[{"model":"dots-studio/dots-3-note-preview:free"},{"model":"openai/gpt-oss-120b"}]}
+JSON
+  echo "working [at=1]: fan-out runs fr-20261009T041529Z-3addea" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<'JSONL'
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","cost_usd":0.001235,"at":"2026-10-09T04:41:00Z"}
+JSONL
+  run_gate "$tmp" "t1"
+  local rc=$?
+  expect_code 1 $rc "flash without step_up_from refused"
+  pass "test_gate_flash_without_step_up_from_refused"
+}
+
+test_gate_flash_exhausted_in_other_run_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'JSON'
+{"models":[{"model":"dots-studio/dots-3-note-preview:free"},{"model":"openai/gpt-oss-120b"}]}
+JSON
+  echo "working [at=1]: fan-out runs fr-20261009T041529Z-3addea fr-20261009T041530Z-4bbeb0" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<'JSONL'
+{"run_id":"fr-20261009T041530Z-4bbeb0","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","step_up_from":"free_exhausted","cost_usd":0.001235,"at":"2026-10-09T04:41:00Z"}
+JSONL
+  run_gate "$tmp" "t1"
+  local rc=$?
+  expect_code 1 $rc "flash exhausted in other run refused"
+  pass "test_gate_flash_exhausted_in_other_run_refused"
+}
+
+test_gate_flash_row_before_exhausted_row_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'JSON'
+{"models":[{"model":"dots-studio/dots-3-note-preview:free"},{"model":"openai/gpt-oss-120b"}]}
+JSON
+  echo "working [at=1]: fan-out runs fr-20261009T041529Z-3addea" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<'JSONL'
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","step_up_from":"free_exhausted","cost_usd":0.001235,"at":"2026-10-09T04:41:00Z"}
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}
+JSONL
+  run_gate "$tmp" "t1"
+  local rc=$?
+  expect_code 1 $rc "flash row before exhausted row refused"
+  pass "test_gate_flash_row_before_exhausted_row_refused"
+}
+
+test_gate_stepup_other_deepseek_model_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'JSON'
+{"models":[{"model":"dots-studio/dots-3-note-preview:free"},{"model":"openai/gpt-oss-120b"}]}
+JSON
+  echo "working [at=1]: fan-out runs fr-20261009T041529Z-3addea" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<'JSONL'
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"check_passed","requested_model":"deepseek-chat","served_model":"deepseek/deepseek-chat","step_up_from":"free_exhausted","cost_usd":0.001235,"at":"2026-10-09T04:41:00Z"}
+JSONL
+  run_gate "$tmp" "t1"
+  local rc=$?
+  expect_code 1 $rc "step-up other deepseek model refused"
+  assert_grep "deepseek/deepseek-chat" "$tmp/err" "served model named"
+  pass "test_gate_stepup_other_deepseek_model_refused"
+}
+
+test_gate_stepup_other_paid_model_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'JSON'
+{"models":[{"model":"dots-studio/dots-3-note-preview:free"},{"model":"openai/gpt-oss-120b"}]}
+JSON
+  echo "working [at=1]: fan-out runs fr-20261009T041529Z-3addea" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<'JSONL'
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"check_passed","requested_model":"anthropic/claude-sonnet-5-5","served_model":"anthropic/claude-sonnet-5-5","step_up_from":"free_exhausted","cost_usd":0.001235,"at":"2026-10-09T04:41:00Z"}
+JSONL
+  run_gate "$tmp" "t1"
+  local rc=$?
+  expect_code 1 $rc "step-up other paid model refused"
+  assert_grep "anthropic/claude-sonnet-5-5" "$tmp/err" "served model named"
+  pass "test_gate_stepup_other_paid_model_refused"
+}
+
+test_gate_failed_stepup_still_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'JSON'
+{"models":[{"model":"dots-studio/dots-3-note-preview:free"},{"model":"openai/gpt-oss-120b"}]}
+JSON
+  echo "working [at=1]: fan-out runs fr-20261009T041529Z-3addea" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<'JSONL'
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted_after_stepup","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","step_up_from":"free_exhausted","at":"2026-10-09T04:41:00Z"}
+JSONL
+  run_gate "$tmp" "t1"
+  local rc=$?
+  expect_code 1 $rc "failed step-up still refused"
+  assert_grep "ended free_exhausted" "$tmp/err" "ended free_exhausted message"
+  assert_no_grep "written by a paid model" "$tmp/err" "no paid model message"
+  pass "test_gate_failed_stepup_still_refused"
+}
+
+test_gate_stepup_does_not_excuse_other_paid_unit() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'JSON'
+{"models":[{"model":"dots-studio/dots-3-note-preview:free"},{"model":"openai/gpt-oss-120b"}]}
+JSON
+  echo "working [at=1]: fan-out runs fr-20261009T041529Z-3addea" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<'JSONL'
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","step_up_from":"free_exhausted","cost_usd":0.001235,"at":"2026-10-09T04:41:00Z"}
+{"run_id":"fr-20261009T041529Z-3addea","label":"u2","outcome":"check_passed","requested_model":"paid-model-xyz","served_model":"paid-model-xyz","at":"2026-10-09T04:42:00Z"}
+JSONL
+  run_gate "$tmp" "t1"
+  local rc=$?
+  expect_code 1 $rc "step-up does not excuse other paid unit"
+  assert_grep "paid-model-xyz" "$tmp/err" "paid model named"
+  assert_no_grep "deepseek/deepseek-v4-flash" "$tmp/err" "no flash model in err"
+  pass "test_gate_stepup_does_not_excuse_other_paid_unit"
+}
+
+test_gate_stepup_mixed_with_free_unit_passes() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'JSON'
+{"models":[{"model":"dots-studio/dots-3-note-preview:free"},{"model":"openai/gpt-oss-120b"}]}
+JSON
+  echo "working [at=1]: fan-out runs fr-20261009T041529Z-3addea" > "$tmp/state/t1.status"
+  cat > "$tmp/units.jsonl" <<'JSONL'
+{"run_id":"fr-20261009T041529Z-3addea","label":"u2","outcome":"check_passed","requested_model":"openai/gpt-oss-120b","served_model":"openai/gpt-oss-120b","at":"2026-10-09T04:42:00Z"}
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}
+{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","step_up_from":"free_exhausted","cost_usd":0.001235,"at":"2026-10-09T04:41:00Z"}
+JSONL
+  run_gate "$tmp" "t1"
+  local rc=$?
+  expect_code 0 $rc "step-up mixed with free unit passes"
+  assert_no_grep "REFUSED" "$tmp/err" "no REFUSED in err"
+  pass "test_gate_stepup_mixed_with_free_unit_passes"
+}
+
 # Run tests
 test_gate_clean_lane_passes
+test_gate_stepup_flash_after_exhausted_passes
+test_gate_stepup_requested_only_model_passes
+test_gate_paid_flash_first_try_refused
+test_gate_flash_without_step_up_from_refused
+test_gate_flash_exhausted_in_other_run_refused
+test_gate_flash_row_before_exhausted_row_refused
+test_gate_stepup_other_deepseek_model_refused
+test_gate_stepup_other_paid_model_refused
+test_gate_failed_stepup_still_refused
+test_gate_stepup_does_not_excuse_other_paid_unit
+test_gate_stepup_mixed_with_free_unit_passes
 test_gate_refuses_no_run_ids
 test_gate_refuses_free_exhausted_last
 test_gate_free_exhausted_then_free_pass_is_clean
