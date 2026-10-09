@@ -84,6 +84,18 @@
 # starting with # after the shebang, printed by --help the way bin/fm-brief.sh's usage() does).
 
 set -eu
+set -o pipefail
+
+# In gate mode any abort while the verdict is computed (a jq error under set -e) must refuse, never pass.
+FANOUT_GATE_ARMED=0
+fanout_gate_abort() {
+  local rc=$?
+  if [[ "${GATE:-0}" -eq 1 && "$FANOUT_GATE_ARMED" -eq 1 && $rc -ne 0 ]]; then
+    echo "REFUSED: fanout-gate: jq failed while computing the gate verdict (exit $rc)" >&2
+    exit 1
+  fi
+}
+trap fanout_gate_abort EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=bin/fm-timeout-lib.sh
@@ -140,6 +152,8 @@ if [[ -z "$TASK_ID" ]]; then
   echo "ERROR: missing required task-id" >&2
   exit 2
 fi
+
+FANOUT_GATE_ARMED=1
 
 # Collect run ids
 run_ids=()
@@ -223,7 +237,7 @@ else
     gate_data=$(jq -R 'fromjson? | select(type=="object")' "$UNITS_LEDGER" \
       | jq --argjson ids "$run_ids_json" '
           select(.run_id as $rid | ($ids | index($rid)) != null)
-          | {run_id, label, outcome, requested_model, served_model, at}
+          | {run_id: .run_id, label: .label, outcome: .outcome, requested_model: .requested_model, served_model: .served_model, at: .at}
         ' \
       | jq -s --argjson free "$free_models_json" "$FREE_JQ_DEF"'
           def model: if .served_model != "" and .served_model != null then .served_model else .requested_model end;
@@ -319,6 +333,7 @@ if [[ $GATE -eq 1 ]]; then
     echo "REFUSED: fanout-gate: unit(s) written by a paid model: $gate_paid" >&2
     refused=1
   fi
+  FANOUT_GATE_ARMED=0
   exit $refused
 fi
 
