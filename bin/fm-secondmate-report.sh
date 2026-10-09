@@ -103,3 +103,15 @@ else
   printf -v line '%s [%s]: %s (via-helper)' "$VERB" "$token" "$NOTE"
 fi
 printf '%s\n' "$(status_stamp_line "$line")" >> "$DESTINATION"
+
+# A finished report document is also posted to #research once (id sm-<corr>).
+# Fail-open: the correlated parent line above is already recorded, so a posting
+# failure must never change this helper's exit status.
+if [ "$DOC_MODE" = 1 ] && [ "$VERB" = done ] && [ -x "$SCRIPT_DIR/fm-research-post.sh" ]; then
+  case "$DOC_PATH" in
+    /*) RESEARCH_DOC=$DOC_PATH ;;
+    *) RESEARCH_DOC="$HOME_DIR/$DOC_PATH" ;;
+  esac
+  FM_HOME="$HOME_DIR" FM_STATE_OVERRIDE="$STATE_DIR" \
+    "$SCRIPT_DIR/fm-research-post.sh" "sm-$CORR" --report "$RESEARCH_DOC" >/dev/null 2>&1 || true
+fi
