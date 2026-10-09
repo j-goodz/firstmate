@@ -77,6 +77,13 @@ unset FM_TASK_ID
 # against an ambient override sets TASKS_AXI_FILE itself.
 unset TASKS_AXI_FILE TASKS_AXI_BACKEND
 
+# Pin the drain's acknowledgement line to WAKE_ACK_REQUIRED regardless of the
+# harness the suite was launched from. Under a Claude session the drain would
+# otherwise print WAKE_ACK, which the many suites that parse the
+# WAKE_ACK_REQUIRED command do not expect. A case that verifies the hook line
+# sets FM_STOP_HOOK_ACKS=1 itself (tests/fm-wake-drain-hook-ack.test.sh).
+export FM_STOP_HOOK_ACKS=0
+
 # Resolve the repo root from this library's own location. Consumed by sourcing
 # test files, not by this library, so it reads as "unused" here.
 # shellcheck disable=SC2034

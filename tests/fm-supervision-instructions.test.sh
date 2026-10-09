@@ -227,7 +227,7 @@ test_compact_claude_block_keeps_state_and_core_rules_and_stays_small() {
   assert_contains "$out" "- Away mode: active" "compact dropped the away state"
   assert_contains "$out" "- Ordinary wake: the Stop-owned auto-arm" "compact dropped the ordinary-wake rule"
   assert_contains "$out" "bin/fm-wake-drain.sh" "compact dropped the drain-first rule"
-  assert_contains "$out" "WAKE_ACK_REQUIRED" "compact dropped the acknowledgement rule"
+  assert_contains "$out" "the Stop hook acknowledges the drained rows" "compact dropped the acknowledgement rule"
   assert_contains "$out" "never run \`bin/fm-watch-arm.sh\`" "compact dropped the no-manual-arm rule"
   assert_contains "$out" "docs/supervision-protocols/claude.md" "compact lost the pointer to the full protocol"
   assert_not_contains "$out" "Treat \`watcher: started" "compact still carries the full protocol body"

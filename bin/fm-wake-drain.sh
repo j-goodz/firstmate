@@ -12,10 +12,12 @@
 # presentation-path locks (default 10); queue mutation locks remain blocking.
 #
 # Brain-cost contracts (bin/fm-wake-absorb-lib.sh owns the mechanics):
-# - A main drain that prints WAKE_ACK_REQUIRED records the printed cutoff and
-#   generation in state/.drain-delivered, so the Claude Stop hook can
-#   acknowledge a handling turn that ended normally; an acknowledgement at or
-#   above the recorded cutoff removes the record.
+# - A main drain records the cutoff and generation it delivered in
+#   state/.drain-delivered, so the Claude Stop hook can acknowledge a handling
+#   turn that ended normally; an acknowledgement at or above the recorded
+#   cutoff removes the record. Where that hook acknowledges
+#   (fm_stop_hook_acks) and the record was written, the drain prints WAKE_ACK
+#   and no --ack-through command; every other case prints WAKE_ACK_REQUIRED.
 # - The OPEN DECISIONS block prints in full only when its content changed since
 #   the last committed presentation (or its record is older than
 #   FM_DRAIN_SECTION_TTL_SECS, default 14400); otherwise one count line stands
@@ -904,6 +906,22 @@ if [ -n "$ACK_THROUGH" ]; then
   exit 0
 fi
 
+# emit_wake_ack <ack-through> <generation>
+# Record the delivered cutoff (main drains only) and print the acknowledgement
+# instruction on stderr. A recorded cutoff under a harness whose Stop hook
+# acknowledges gets the WAKE_ACK line; anything else keeps WAKE_ACK_REQUIRED.
+emit_wake_ack() {
+  local recorded=false
+  if [ "$ACTOR" = main ] && fm_wake_delivered_write "$1" "$2"; then
+    recorded=true
+  fi
+  if [ "$recorded" = true ] && fm_stop_hook_acks; then
+    printf 'WAKE_ACK: the Stop hook acknowledges through %s (generation %s) when this turn ends normally. Do not run --ack-through.\n' "$1" "$2" >&2
+  else
+    printf 'WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through %s --recovery-generation %s\n' "$1" "$2" >&2
+  fi
+}
+
 if [ ! -s "$FM_WAKE_QUEUE" ]; then
   : > "$FM_WAKE_QUEUE"
   fm_recovery_marker_snapshot "$RECOVERY_MARKER" || true
@@ -923,8 +941,7 @@ if [ ! -s "$FM_WAKE_QUEUE" ]; then
   DRAIN_LOCK_HELD=false
   (print_status_presentation) || true
   if [ "$RECOVERY_ACK_REQUIRED" = true ]; then
-    printf 'WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 0 --recovery-generation %s\n' "${RECOVERY_MARKER_TOKEN##*:}" >&2
-    [ "$ACTOR" != main ] || fm_wake_delivered_write 0 "${RECOVERY_MARKER_TOKEN##*:}" || true
+    emit_wake_ack 0 "${RECOVERY_MARKER_TOKEN##*:}"
   fi
   assert_watcher_liveness
   exit 0
@@ -1002,9 +1019,7 @@ case "$RECOVERY_MARKER_TOKEN" in
 esac
 fm_lock_release "$FM_WAKE_QUEUE_LOCK"
 DRAIN_LOCK_HELD=false
-printf 'WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through %s --recovery-generation %s\n' \
-  "$ACK_THROUGH" "${RECOVERY_MARKER_TOKEN##*:}" >&2
-[ "$ACTOR" != main ] || fm_wake_delivered_write "$ACK_THROUGH" "${RECOVERY_MARKER_TOKEN##*:}" || true
+emit_wake_ack "$ACK_THROUGH" "${RECOVERY_MARKER_TOKEN##*:}"
 
 (print_status_presentation "$RAW_ROWS") || true
 assert_watcher_liveness

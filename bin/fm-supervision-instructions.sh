@@ -251,7 +251,7 @@ printf '\n'
 if [ "$COMPACT" -eq 1 ] && [ "$HARNESS" = claude ]; then
   cat <<'EOF'
 Mode: Claude Stop-hook-owned supervision (compact; full protocol: docs/supervision-protocols/claude.md, read by line range when a wake needs it).
-- Drain first with `bin/fm-wake-drain.sh` on every wake. After handling all emitted wakes, open decisions and unread status lines, run the exact `--ack-through` command printed as `WAKE_ACK_REQUIRED`.
+- Drain first with `bin/fm-wake-drain.sh` on every wake. After handling all emitted wakes, open decisions and unread status lines, end the turn: the Stop hook acknowledges the drained rows (the drain prints `WAKE_ACK`), so never run `--ack-through` yourself unless the drain printed `WAKE_ACK_REQUIRED`.
 - The Stop `asyncRewake` hook (`bin/fm-claude-stop-autoarm.sh`) arms the watcher at every turn end; never run `bin/fm-watch-arm.sh` after an ordinary wake and never turn an auto-arm failure notice into a manual-arm loop.
 - A `Stop hook feedback` wake (`signal:`, `stale:`, `check:`, `heartbeat`): drain, then act only on real wake rows, `OPEN DECISIONS`, `UNREAD STATUS` or a real watcher reason line.
 - If the Stop hook does not claim the home or reports an exhausted failure, inspect its registration and watcher startup path before ending blind.
