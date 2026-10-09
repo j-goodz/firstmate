@@ -24,7 +24,8 @@ JSON
   fi
   expect_code 0 "$rc" "gate passes: u2 exhausted but cleared by split u2--a"
   assert_grep 'units=2 ' "$tmp/out" "units evaluated (greater than 0)"
-  assert_grep 'verdict=mixed' "$tmp/out" "verdict mixed"
+  assert_grep 'verdict=yes' "$tmp/out" "verdict yes: the exhausted unit is cleared by its split"
+  assert_grep 'paid_step_ups=0' "$tmp/out" "no paid step-ups remain"
   assert_no_grep 'REFUSED' "$tmp/err" "no refusal"
   pass "gate evaluates units on host jq"
 }
