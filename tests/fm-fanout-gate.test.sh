@@ -526,6 +526,250 @@ EOF
   expect_code 0 $rc "split resolves exhausted with router prefixed requested free"
 }
 
+test_gate_provider_swapped_gpt_oss_20b_passes() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"openai/gpt-oss-20b"},{"model":"openai/gpt-oss-120b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261005T010203Z-abc123" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1","outcome":"check_passed","requested_model":"openai/gpt-oss-20b","served_model":"ovh/gpt-oss-20b"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 0 $rc "provider swapped gpt-oss-20b passes"
+  assert_no_grep "REFUSED" "$tmp/err" "no REFUSED in err"
+}
+
+test_gate_provider_swapped_gpt_oss_120b_passes() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"openai/gpt-oss-20b"},{"model":"openai/gpt-oss-120b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261005T010203Z-abc123" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1","outcome":"check_passed","requested_model":"openai/gpt-oss-120b","served_model":"ovh/gpt-oss-120b"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 0 $rc "provider swapped gpt-oss-120b passes"
+  assert_no_grep "REFUSED" "$tmp/err" "no REFUSED in err"
+}
+
+test_gate_provider_swapped_different_model_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"openai/gpt-oss-20b"},{"model":"openai/gpt-oss-120b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261005T010203Z-abc123" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1","outcome":"check_passed","requested_model":"openai/gpt-oss-20b","served_model":"ovh/gpt-oss-120b"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 1 $rc "provider swapped different model refused"
+  assert_grep "REFUSED: fanout-gate" "$tmp/err" "REFUSED prefix"
+  assert_grep "ovh/gpt-oss-120b" "$tmp/err" "served model named"
+}
+
+test_gate_provider_swapped_requested_not_free_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"openai/gpt-oss-20b"},{"model":"openai/gpt-oss-120b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261005T010203Z-abc123" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1","outcome":"check_passed","requested_model":"acme/foo-1","served_model":"ovh/foo-1"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 1 $rc "provider swapped requested not free refused"
+  assert_grep "REFUSED: fanout-gate" "$tmp/err" "REFUSED prefix"
+  assert_grep "ovh/foo-1" "$tmp/err" "served model named"
+}
+
+test_gate_provider_swapped_requested_free_served_unrelated_paid_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"openai/gpt-oss-20b"},{"model":"openai/gpt-oss-120b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261005T010203Z-abc123" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261005T010203Z-abc123","label":"u1","outcome":"check_passed","requested_model":"openai/gpt-oss-20b","served_model":"ovh/claude-sonnet"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 1 $rc "provider swapped requested free served unrelated paid refused"
+  assert_grep "REFUSED: fanout-gate" "$tmp/err" "REFUSED prefix"
+  assert_grep "ovh/claude-sonnet" "$tmp/err" "served model named"
+}
+
+test_gate_real_ledger_rows_buzz_agents_lane_pass() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"openai/gpt-oss-120b"},{"model":"openai/gpt-oss-20b"},{"model":"qwen/qwen3.8-27b"},{"model":"dots-studio/dots-3-note-preview:free"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261009T142010Z-304328" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261009T142010Z-304328","label":"r-swift","outcome":"check_passed","requested_model":"openai/gpt-oss-120b","served_model":"groq/openai/gpt-oss-120b","at":"2026-10-09T14:20:12Z"}
+{"run_id":"fr-20261009T142010Z-304328","label":"r-argus","outcome":"check_passed","requested_model":"openai/gpt-oss-120b","served_model":"groq/openai/gpt-oss-120b","at":"2026-10-09T14:20:13Z"}
+{"run_id":"fr-20261009T142010Z-304328","label":"r-legion","outcome":"check_passed","requested_model":"openai/gpt-oss-20b","served_model":"ovh/gpt-oss-20b","at":"2026-10-09T14:20:13Z"}
+{"run_id":"fr-20261009T142010Z-304328","label":"i-triage","outcome":"check_passed","requested_model":"dots-studio/dots-3-note-preview:free","served_model":"kilo/dots-studio/dots-3-note-preview:free","at":"2026-10-09T14:21:12Z"}
+{"run_id":"fr-20261009T142010Z-304328","label":"i-feed","outcome":"check_passed","requested_model":"qwen/qwen3.8-27b","served_model":"ovh/Qwen3.8-27B","at":"2026-10-09T14:25:15Z"}
+{"run_id":"fr-20261009T142010Z-304328","label":"i-core","outcome":"check_passed","requested_model":"qwen/qwen3.8-27b","served_model":"ovh/Qwen3.8-27B","at":"2026-10-09T14:25:36Z"}
+{"run_id":"fr-20261009T142010Z-304328","label":"r-ovh120","outcome":"check_passed","requested_model":"openai/gpt-oss-120b","served_model":"ovh/gpt-oss-120b","at":"2026-10-09T14:56:35Z"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 0 $rc "real ledger rows buzz agents lane passes"
+  assert_no_grep "REFUSED" "$tmp/err" "no REFUSED in err"
+}
+
+test_gate_provider_swapped_case_differs_not_free_requested_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"openai/gpt-oss-120b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261009T142010Z-304328" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261009T142010Z-304328","label":"u1","outcome":"check_passed","requested_model":"qwen/qwen3.8-27b","served_model":"ovh/Qwen3.8-27B","at":"2026-10-09T14:25:15Z"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 1 $rc "case differs not free requested refused"
+  assert_grep "REFUSED: fanout-gate" "$tmp/err" "REFUSED prefix"
+}
+
+test_gate_auto_requested_served_empty_passes() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"openai/gpt-oss-120b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261009T142010Z-304328" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261009T142010Z-304328","label":"u1","outcome":"check_passed","requested_model":"auto","served_model":"","at":"2026-10-09T14:30:00Z"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 0 $rc "auto requested served empty passes"
+  assert_no_grep "REFUSED" "$tmp/err" "no REFUSED in err"
+}
+
+test_gate_auto_requested_served_unlisted_model_refused() {
+  local tmp
+  tmp=$(fm_test_tmproot)
+  mkdir -p "$tmp/state" "$tmp/data"
+  local models_file
+  models_file="$tmp/models.json"
+  FM_FANOUT_MODELS="$models_file"
+  export FM_FANOUT_MODELS
+  cat > "$models_file" <<'EOF'
+{"models":[{"model":"openai/gpt-oss-120b"}]}
+EOF
+  local state_file
+  state_file="$tmp/state/t1.status"
+  echo "working [at=1]: fan-out runs fr-20261009T142010Z-304328" > "$state_file"
+  local ledger
+  ledger="$tmp/units.jsonl"
+  cat > "$ledger" <<EOF
+{"run_id":"fr-20261009T142010Z-304328","label":"u1","outcome":"check_passed","requested_model":"auto","served_model":"ovh/some-unlisted-model","at":"2026-10-09T14:30:00Z"}
+EOF
+  local rc
+  run_gate "$tmp" "t1"
+  rc=$?
+  expect_code 1 $rc "auto requested served unlisted model refused"
+  assert_grep "REFUSED: fanout-gate" "$tmp/err" "REFUSED prefix"
+  assert_grep "ovh/some-unlisted-model" "$tmp/err" "served model mentioned"
+}
+
 # Run tests
 test_gate_clean_lane_passes
 test_gate_refuses_no_run_ids
@@ -547,3 +791,12 @@ test_gate_and_report_agree
 test_gate_requested_free_served_same_model_router_prefixed_passes
 test_gate_requested_free_served_different_paid_model_refused
 test_gate_split_resolves_exhausted_with_router_prefixed_requested_free
+test_gate_provider_swapped_gpt_oss_20b_passes
+test_gate_provider_swapped_gpt_oss_120b_passes
+test_gate_provider_swapped_different_model_refused
+test_gate_provider_swapped_requested_not_free_refused
+test_gate_provider_swapped_requested_free_served_unrelated_paid_refused
+test_gate_real_ledger_rows_buzz_agents_lane_pass
+test_gate_provider_swapped_case_differs_not_free_requested_refused
+test_gate_auto_requested_served_empty_passes
+test_gate_auto_requested_served_unlisted_model_refused
