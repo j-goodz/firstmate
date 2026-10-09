@@ -196,6 +196,33 @@ test_teardown_survives_post_failure() {
     pass "scout teardown is fail-open when the post fails"
 }
 
+new_mate_home() {  # sets TMP, HOME_DIR (the secondmate home) and a local parent home
+    new_home
+    mkdir -p "$TMP/parent/state" "$HOME_DIR/data/x"
+    printf 'mate1\n' > "$HOME_DIR/.fm-secondmate-home"
+    printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$TMP/parent" > "$HOME_DIR/.fm-secondmate-parent"
+    printf '# Mate report\nbody text\n' > "$HOME_DIR/data/x/report.md"
+}
+
+test_secondmate_done_doc_posts_report() {
+    new_mate_home
+    make_helper
+    FM_HOME=$HOME_DIR FM_RESEARCH_POST_CMD=$TMP/fake-helper "$ROOT/bin/fm-secondmate-report.sh" --doc done 0123456789abcdef data/x/report.md "audit clean" >/dev/null || fail "secondmate report helper failed"
+    assert_grep "--source scout --path $HOME_DIR/data/x/report.md --title Mate report" "$TMP/calls.log" "done --doc posted the report"
+    assert_grep 'sm-0123456789abcdef' "$HOME_DIR/state/research-post.posted" "post recorded under the correlation id"
+    assert_grep 'done [' "$TMP/parent/state/mate1.status" "the parent status line was still written"
+    pass "secondmate done --doc report is posted to research"
+}
+
+test_secondmate_non_done_or_failing_post_is_harmless() {
+    new_mate_home
+    make_helper
+    FM_HOME=$HOME_DIR FM_RESEARCH_POST_CMD=$TMP/fake-helper "$ROOT/bin/fm-secondmate-report.sh" --doc working 0123456789abcdef data/x/report.md "still going" >/dev/null || fail "working report failed"
+    assert_absent "$TMP/calls.log" "a non-done report must not post"
+    FAKE_RC=3 FM_HOME=$HOME_DIR FM_RESEARCH_POST_CMD=$TMP/fake-helper "$ROOT/bin/fm-secondmate-report.sh" --doc done 0123456789abcdef data/x/report.md "audit clean" >/dev/null || fail "a failing post changed the helper exit status"
+    pass "non-done secondmate reports do not post and a failing post is harmless"
+}
+
 test_help_and_usage
 test_posts_scout_report
 test_title_falls_back_to_task_id
@@ -208,3 +235,5 @@ test_log_has_latency
 test_no_secret_or_port_in_log
 test_teardown_posts_scout_report_once
 test_teardown_survives_post_failure
+test_secondmate_done_doc_posts_report
+test_secondmate_non_done_or_failing_post_is_harmless
