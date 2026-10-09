@@ -568,9 +568,182 @@ SH
   pass "fm-fanout-check.sh: pr-body runs line only case"
 }
 
+test_stepup_accepted_report() {
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local data_dir="$tmp_root/data"
+  local ledger_file="$tmp_root/units.jsonl"
+  local adoption_file="$data_dir/fanout-adoption.jsonl"
+  mkdir -p "$state_dir" "$data_dir"
+  local task_id="task-stepup-accepted-1"
+  local run_id="fr-20261009T041529Z-3addea"
+  echo "$run_id" > "$state_dir/${task_id}.status"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}' >> "$ledger_file"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u1","kind":"new","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","step_up_from":"free_exhausted","cost_usd":0.001235,"tokens_in":5466,"tokens_out":1200,"round":0,"checked":true,"reason":"","at":"2026-10-09T04:41:00Z","seq":84,"schema":1}' >> "$ledger_file"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u2","outcome":"check_passed","requested_model":"openai/gpt-oss-120b","served_model":"openai/gpt-oss-120b"}' >> "$ledger_file"
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
+  local rc=$?
+  expect_code 0 $rc "exit code"
+  assert_equals "fanout-check: $task_id free_written=no verdict=mixed units=1 paid_step_ups=1 runs=$run_id step_up_cost_usd=0.001235" "$out" "stdout"
+  local adoption_line
+  adoption_line=$(cat "$adoption_file")
+  assert_equals "1" "$(echo "$adoption_line" | jq -r '.paid_step_ups')" "adoption paid_step_ups"
+  assert_equals "1" "$(echo "$adoption_line" | jq -r '.units')" "adoption units"
+  assert_equals "mixed" "$(echo "$adoption_line" | jq -r '.verdict')" "adoption verdict"
+  assert_equals "0.001235" "$(echo "$adoption_line" | jq -r '.step_up_cost_usd')" "adoption step_up_cost_usd"
+  pass "fm-fanout-check.sh: stepup_accepted_report"
+}
+
+test_stepup_cost_is_summed() {
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local data_dir="$tmp_root/data"
+  local ledger_file="$tmp_root/units.jsonl"
+  local adoption_file="$data_dir/fanout-adoption.jsonl"
+  mkdir -p "$state_dir" "$data_dir"
+  local task_id="task-stepup-cost-sum-1"
+  local run_id="fr-20261009T041529Z-3addea"
+  echo "$run_id" > "$state_dir/${task_id}.status"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}' >> "$ledger_file"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u1","kind":"new","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","step_up_from":"free_exhausted","cost_usd":0.001,"tokens_in":100,"tokens_out":50,"round":0,"checked":true,"reason":"","at":"2026-10-09T04:41:00Z","seq":84,"schema":1}' >> "$ledger_file"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u2","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:55Z"}' >> "$ledger_file"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u2","kind":"new","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","step_up_from":"free_exhausted","cost_usd":0.002,"tokens_in":100,"tokens_out":50,"round":0,"checked":true,"reason":"","at":"2026-10-09T04:41:01Z","seq":85,"schema":1}' >> "$ledger_file"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u3","outcome":"check_passed","requested_model":"openai/gpt-oss-120b","served_model":"openai/gpt-oss-120b"}' >> "$ledger_file"
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
+  local rc=$?
+  expect_code 0 $rc "exit code"
+  assert_equals "fanout-check: $task_id free_written=no verdict=mixed units=1 paid_step_ups=2 runs=$run_id step_up_cost_usd=0.003" "$out" "stdout"
+  local adoption_line
+  adoption_line=$(cat "$adoption_file")
+  assert_equals "2" "$(echo "$adoption_line" | jq -r '.paid_step_ups')" "adoption paid_step_ups"
+  assert_equals "1" "$(echo "$adoption_line" | jq -r '.units')" "adoption units"
+  assert_equals "0.003" "$(echo "$adoption_line" | jq -r '.step_up_cost_usd')" "adoption step_up_cost_usd"
+  pass "fm-fanout-check.sh: stepup_cost_is_summed"
+}
+
+test_stepup_only_lane_verdict_no() {
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local data_dir="$tmp_root/data"
+  local ledger_file="$tmp_root/units.jsonl"
+  local adoption_file="$data_dir/fanout-adoption.jsonl"
+  mkdir -p "$state_dir" "$data_dir"
+  local task_id="task-stepup-only-1"
+  local run_id="fr-20261009T041529Z-3addea"
+  echo "$run_id" > "$state_dir/${task_id}.status"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}' >> "$ledger_file"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u1","kind":"new","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","step_up_from":"free_exhausted","cost_usd":0.001235,"tokens_in":5466,"tokens_out":1200,"round":0,"checked":true,"reason":"","at":"2026-10-09T04:41:00Z","seq":84,"schema":1}' >> "$ledger_file"
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
+  local rc=$?
+  expect_code 0 $rc "exit code"
+  assert_equals "fanout-check: $task_id free_written=no verdict=no units=0 paid_step_ups=1 runs=$run_id step_up_cost_usd=0.001235" "$out" "stdout"
+  local adoption_line
+  adoption_line=$(cat "$adoption_file")
+  assert_equals "1" "$(echo "$adoption_line" | jq -r '.paid_step_ups')" "adoption paid_step_ups"
+  assert_equals "0" "$(echo "$adoption_line" | jq -r '.units')" "adoption units"
+  assert_equals "no" "$(echo "$adoption_line" | jq -r '.verdict')" "adoption verdict"
+  assert_equals "0.001235" "$(echo "$adoption_line" | jq -r '.step_up_cost_usd')" "adoption step_up_cost_usd"
+  pass "fm-fanout-check.sh: stepup_only_lane_verdict_no"
+}
+
+test_no_stepup_line_unchanged_and_adoption_cost_zero() {
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local data_dir="$tmp_root/data"
+  local ledger_file="$tmp_root/units.jsonl"
+  local adoption_file="$data_dir/fanout-adoption.jsonl"
+  mkdir -p "$state_dir" "$data_dir"
+  local task_id="task-no-stepup-1"
+  local run_id="fr-20261009T041529Z-3addea"
+  echo "$run_id" > "$state_dir/${task_id}.status"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"check_passed","requested_model":"openai/gpt-oss-120b","served_model":"openai/gpt-oss-120b"}' >> "$ledger_file"
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
+  local rc=$?
+  expect_code 0 $rc "exit code"
+  assert_equals "fanout-check: $task_id free_written=yes verdict=yes units=1 paid_step_ups=0 runs=$run_id" "$out" "stdout"
+  assert_not_contains "$out" "step_up_cost_usd" "stdout has no step_up_cost_usd"
+  local adoption_line
+  adoption_line=$(cat "$adoption_file")
+  assert_equals "0" "$(echo "$adoption_line" | jq -r '.step_up_cost_usd')" "adoption step_up_cost_usd is 0"
+  pass "fm-fanout-check.sh: no_stepup_line_unchanged_and_adoption_cost_zero"
+}
+
+test_failed_stepup_not_counted() {
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local data_dir="$tmp_root/data"
+  local ledger_file="$tmp_root/units.jsonl"
+  local adoption_file="$data_dir/fanout-adoption.jsonl"
+  mkdir -p "$state_dir" "$data_dir"
+  local task_id="task-failed-stepup-1"
+  local run_id="fr-20261009T041529Z-3addea"
+  echo "$run_id" > "$state_dir/${task_id}.status"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u1","outcome":"free_exhausted","requested_model":"","served_model":"","at":"2026-10-09T04:39:54Z"}' >> "$ledger_file"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u1","kind":"new","outcome":"free_exhausted_after_stepup","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","step_up_from":"free_exhausted","cost_usd":0.001,"tokens_in":100,"tokens_out":50,"round":0,"checked":true,"reason":"","at":"2026-10-09T04:41:00Z","seq":84,"schema":1}' >> "$ledger_file"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u2","outcome":"check_passed","requested_model":"openai/gpt-oss-120b","served_model":"openai/gpt-oss-120b"}' >> "$ledger_file"
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
+  local rc=$?
+  expect_code 0 $rc "exit code"
+  assert_contains "$out" "verdict=mixed" "stdout verdict mixed"
+  assert_contains "$out" "units=1" "stdout units=1"
+  assert_contains "$out" "paid_step_ups=1" "stdout paid_step_ups=1"
+  assert_not_contains "$out" "step_up_cost_usd" "stdout has no step_up_cost_usd"
+  local adoption_line
+  adoption_line=$(cat "$adoption_file")
+  assert_equals "1" "$(echo "$adoption_line" | jq -r '.paid_step_ups')" "adoption paid_step_ups"
+  assert_equals "1" "$(echo "$adoption_line" | jq -r '.units')" "adoption units"
+  assert_equals "mixed" "$(echo "$adoption_line" | jq -r '.verdict')" "adoption verdict"
+  pass "fm-fanout-check.sh: failed_stepup_not_counted"
+}
+
+test_first_try_flash_is_paid_written() {
+  local tmp_root
+  tmp_root=$(fm_test_tmproot fm-fanout-check)
+  local state_dir="$tmp_root/state"
+  local data_dir="$tmp_root/data"
+  local ledger_file="$tmp_root/units.jsonl"
+  local adoption_file="$data_dir/fanout-adoption.jsonl"
+  mkdir -p "$state_dir" "$data_dir"
+  local task_id="task-first-try-flash-1"
+  local run_id="fr-20261009T041529Z-3addea"
+  echo "$run_id" > "$state_dir/${task_id}.status"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u1","kind":"new","outcome":"check_passed","requested_model":"deepseek-v4-flash","served_model":"deepseek/deepseek-v4-flash","cost_usd":0.001,"tokens_in":100,"tokens_out":50,"round":0,"checked":true,"reason":"","at":"2026-10-09T04:41:00Z","seq":84,"schema":1}' >> "$ledger_file"
+  printf '%s\n' '{"run_id":"fr-20261009T041529Z-3addea","label":"u2","outcome":"check_passed","requested_model":"openai/gpt-oss-120b","served_model":"openai/gpt-oss-120b"}' >> "$ledger_file"
+  local out errfile="$tmp_root/stderr.txt"
+  out=$(FM_HOME="$tmp_root" FM_STATE_OVERRIDE="$state_dir" FM_DATA_OVERRIDE="$data_dir" FM_FANOUT_LEDGER="$ledger_file" "$ROOT/bin/fm-fanout-check.sh" "$task_id" 2>"$errfile")
+  local rc=$?
+  expect_code 0 $rc "exit code"
+  assert_contains "$out" "verdict=mixed" "stdout verdict mixed"
+  assert_contains "$out" "units=1" "stdout units=1"
+  assert_contains "$out" "paid_step_ups=0" "stdout paid_step_ups=0"
+  assert_not_contains "$out" "step_up_cost_usd" "stdout has no step_up_cost_usd"
+  local adoption_line
+  adoption_line=$(cat "$adoption_file")
+  assert_equals "0" "$(echo "$adoption_line" | jq -r '.paid_step_ups')" "adoption paid_step_ups"
+  assert_equals "1" "$(echo "$adoption_line" | jq -r '.units')" "adoption units"
+  assert_equals "mixed" "$(echo "$adoption_line" | jq -r '.verdict')" "adoption verdict"
+  pass "fm-fanout-check.sh: first_try_flash_is_paid_written"
+}
+
 test_yes
 test_no
 test_missing_ledger
+test_stepup_accepted_report
+test_stepup_cost_is_summed
+test_stepup_only_lane_verdict_no
+test_no_stepup_line_unchanged_and_adoption_cost_zero
+test_failed_stepup_not_counted
+test_first_try_flash_is_paid_written
 test_no_runs
 test_multiple_ids_on_one_line
 test_paid_step_up
