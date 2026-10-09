@@ -45,8 +45,12 @@
 # or openrouter/). Report mode counts a check_passed row as free-written when either
 # requested_model or served_model passes. Gate mode calls a check_passed row free when
 # served_model passes, or when requested_model passes and served_model is the same model
-# once a router prefix is stripped; a different served model is paid. A split unit that
-# resolves a free_exhausted parent uses the same test.
+# once a router prefix is stripped, or once both names have their first path segment
+# stripped and are compared case-insensitively (requested openai/gpt-oss-20b served
+# ovh/gpt-oss-20b, requested qwen/qwen3.8-27b served ovh/Qwen3.8-27B); a different served
+# model, or a requested model that is not free, is paid. A requested "auto" counts as free
+# because "auto" is in the seed list: free-direct only reaches the free chain. A split unit
+# that resolves a free_exhausted parent uses the same test.
 #
 # Verdict, decided in this order:
 #   no-runs         no run id was found anywhere
@@ -245,7 +249,7 @@ else
           ' \
         | jq -s --argjson free "$free_models_json" "$FREE_JQ_DEF"'
             def model: if .served_model != "" and .served_model != null then .served_model else .requested_model end;
-            def rowfree: ((.served_model // "") as $sv | (.requested_model // "") as $rq | if $sv == "" then ($rq | isfree($free)) else ($sv | isfree($free)) or (($rq | isfree($free)) and (($rq | sub(":free$"; "")) as $r | ($sv | sub(":free$"; "")) as $s | $s == $r or ($s | endswith("/" + $r)))) end);
+            def rowfree: ((.served_model // "") as $sv | (.requested_model // "") as $rq | if $sv == "" then ($rq | isfree($free)) else ($sv | isfree($free)) or (($rq | isfree($free)) and (($rq | sub(":free$"; "")) as $r | ($sv | sub(":free$"; "")) as $s | $s == $r or ($s | endswith("/" + $r)) or (($rq | sub("^[^/]*/"; "") | ascii_downcase) == ($sv | sub("^[^/]*/"; "") | ascii_downcase)))) end);
             . as $rows
             | (reduce range(0; $rows | length) as $i ({};
                 $rows[$i] as $row |
