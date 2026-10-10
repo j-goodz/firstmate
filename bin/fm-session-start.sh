@@ -207,6 +207,7 @@
 #             same-session Claude id as its own, so the re-emit proceeds, while
 #             a lock another live session took meanwhile still produces the
 #             ordinary read-only path.
+#             A re-emit also arms the idle-capacity and backlog-overdue watcher checks like a full start does (arming is idempotent).
 #             The re-emitted digest is compact: counts and ids for the
 #             backlog, at most FM_SESSION_START_REEMIT_TASKS (default 12) task
 #             rows, size pointers instead of full context files, and, on
