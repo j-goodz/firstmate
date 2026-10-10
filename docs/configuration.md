@@ -554,6 +554,18 @@ The temperature is read fresh on every spawn, so a change takes effect on the ne
 The gate only decides whether and how much this home starts; changing the machine itself stays out of scope.
 [`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns the delivery mechanics, with regression coverage in [`tests/fm-host-temp.test.sh`](../tests/fm-host-temp.test.sh) and [`tests/fm-spawn-thermal-gate.test.sh`](../tests/fm-spawn-thermal-gate.test.sh).
 
+## Idle capacity check (bin/fm-idle-capacity.sh)
+
+Every session start in a locked home arms `state/idle-capacity.check.sh`, a watcher check that makes sure free worker capacity is used instead of waiting for a routed task.
+It reads only: it never surveys, never changes the backlog, and never spawns.
+Free worker slots are the cap minus this home's busy workers, using the thermal-gate rules in [`bin/fm-thermal-lib.sh`](../bin/fm-thermal-lib.sh), the same rules `bin/fm-spawn.sh` enforces: `max_workers`, `hot_c`, and `hold_c` from [`config/thermal-gate`](#thermal-gate-configthermal-gate) and the temperature from `bin/fm-host-temp.sh`, so a holding gate means zero slots.
+A home with no applicable cap uses `FM_IDLE_CAPACITY_DEFAULT_CAP` (default 3).
+Ready dispatchable items are the `ship`, `scout`, and `chore` rows of `bin/fm-tasks-axi.sh ready`, which already leaves out held and blocked work.
+When both counts stay above zero for ten minutes the check prints one line, `idle capacity: N slots, M ready`, and the watcher turns it into a `check:` wake; it wakes the same home again only after a sixty minute cooldown.
+The check prints nothing and changes nothing while the nexus hub is unreachable, probed by an ssh banner read bounded by a hard timeout, because a wake would only send the home to claim work from a dead store.
+`FM_IDLE_CAPACITY_THRESHOLD_SECS` (default 600), `FM_IDLE_CAPACITY_COOLDOWN_SECS` (default 3600), `FM_IDLE_CAPACITY_HUB_HOST` (default `cloud-server`), `FM_IDLE_CAPACITY_HUB_TIMEOUT` (default 4), and `FM_IDLE_CAPACITY_READY_TIMEOUT` (default 15) tune it, and `bin/fm-idle-capacity.sh disarm` removes the check.
+The continuity and cooldown record is `state/.idle-capacity`; [`bin/fm-idle-capacity.sh --help`](../bin/fm-idle-capacity.sh) owns the mechanics, with regression coverage in [`tests/fm-idle-capacity.test.sh`](../tests/fm-idle-capacity.test.sh).
+
 ## Suite slots (~/.config/firstmate/suite-slots)
 
 The optional machine file `${XDG_CONFIG_HOME:-$HOME/.config}/firstmate/suite-slots` sizes the machine-wide gate for whole-suite runs described in [test-capacity-standard.md](test-capacity-standard.md).
