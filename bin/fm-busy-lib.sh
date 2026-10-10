@@ -1189,9 +1189,16 @@ fm_busy_classify_live() {  # <backend> <target> <harness> <id> <state-dir> [expe
 fm_busy_classify_meta() {  # <meta-file> <id> <state-dir> [tail40]
   local meta=$1 id=$2 state=$3 tail40=${4-} backend target harness
   [ -f "$meta" ] || { printf 'unknown missing'; return 0; }
-  backend=$(fm_backend_of_meta "$meta")
-  target=$(fm_backend_target_of_meta "$meta")
-  harness=$(fm_meta_get "$meta" harness)
+  # Fork-free metadata reads: fm_meta_get_into reads the file directly
+  # without spawning a subshell, saving three forks per watcher poll.
+  fm_meta_get_into backend "$meta" backend
+  backend=${backend:-tmux}
+  target=''
+  if [ "$backend" = orca ]; then
+    fm_meta_get_into target "$meta" terminal
+  fi
+  [ -n "$target" ] || fm_meta_get_into target "$meta" window
+  fm_meta_get_into harness "$meta" harness
   if [ -z "$target" ]; then
     printf 'unknown no-target'
     return 0

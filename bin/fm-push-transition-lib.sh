@@ -73,15 +73,33 @@ watch_delivery_publish() {
 }
 
 # Append one bounded best-effort line for an absorbed supervision event.
+# The steady state spawns no processes (no date, no wc, no tr).
+_TRIAGE_LOG_BYTES=-1
+_TRIAGE_LOG_APPENDS=0
 triage_log() {
-  local sz
-  printf '[%s] %s\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$1" >> "$TRIAGE_LOG" 2>/dev/null || return 0
-  sz=$(wc -c < "$TRIAGE_LOG" 2>/dev/null | tr -d '[:space:]')
-  case "$sz" in ''|*[!0-9]*) return 0 ;; esac
-  if [ "$sz" -ge "$TRIAGE_LOG_MAX_BYTES" ]; then
+  local stamp line sz
+  if [ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -ge 2 ]; }; then
+    printf -v stamp '%(%Y-%m-%dT%H:%M:%S%z)T' -1
+  else
+    stamp=$(date '+%Y-%m-%dT%H:%M:%S%z')
+  fi
+  printf -v line '[%s] %s\n' "$stamp" "$1"
+  printf '%s' "$line" >> "$TRIAGE_LOG" 2>/dev/null || return 0
+  if [ "$_TRIAGE_LOG_BYTES" -ge 0 ] && [ "$_TRIAGE_LOG_APPENDS" -lt 200 ]; then
+    _TRIAGE_LOG_BYTES=$((_TRIAGE_LOG_BYTES + ${#line}))
+    _TRIAGE_LOG_APPENDS=$((_TRIAGE_LOG_APPENDS + 1))
+  else
+    sz=$(wc -c < "$TRIAGE_LOG" 2>/dev/null | tr -d '[:space:]')
+    case "$sz" in ''|*[!0-9]*) return 0 ;; esac
+    _TRIAGE_LOG_BYTES=$sz
+    _TRIAGE_LOG_APPENDS=0
+  fi
+  if [ "$_TRIAGE_LOG_BYTES" -ge "$TRIAGE_LOG_MAX_BYTES" ]; then
     tail -n 2000 "$TRIAGE_LOG" > "$TRIAGE_LOG.tmp" 2>/dev/null && mv -f "$TRIAGE_LOG.tmp" "$TRIAGE_LOG" 2>/dev/null
     rm -f "$TRIAGE_LOG.tmp" 2>/dev/null || true
+    _TRIAGE_LOG_BYTES=-1
   fi
+  return 0
 }
 
 # Exit after reporting one actionable wake. Tests override this callback.

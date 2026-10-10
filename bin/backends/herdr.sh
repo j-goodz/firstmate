@@ -1654,9 +1654,29 @@ fm_backend_herdr_projection_order_best_effort() {  # <session> <created-workspac
 # inherited from whichever agent happened to start it. Bounded poll for the
 # server to report running.
 fm_backend_herdr_server_ensure() {  # <session>
-  local session=$1 running out i client_bin
+  local session=$1 running out i client_bin memo now
+  # Memo: only the watcher sets FM_BACKEND_HERDR_ENSURE_MEMO_SECS, because a
+  # memo set inside a command substitution is lost, so the watcher calls
+  # ensure once in its main shell per poll.
+  memo=${FM_BACKEND_HERDR_ENSURE_MEMO_SECS:-0}
+  case "$memo" in ''|*[!0-9]*) memo=0 ;; esac
+  now=0
+  if [ "$memo" -gt 0 ] && printf -v now '%(%s)T' -1 2>/dev/null; then
+    if [ "${_FM_HERDR_ENSURED_SESSION:-}" = "$session" ] \
+      && [ $((now - ${_FM_HERDR_ENSURED_AT:-0})) -lt "$memo" ]; then
+      return 0
+    fi
+  else
+    memo=0
+  fi
   running=$(fm_backend_herdr_cli "$session" status --json 2>/dev/null | jq -r '.server.running // false' 2>/dev/null)
-  [ "$running" = "true" ] && return 0
+  if [ "$running" = "true" ]; then
+    if [ "$memo" -gt 0 ]; then
+      _FM_HERDR_ENSURED_SESSION=$session
+      _FM_HERDR_ENSURED_AT=$now
+    fi
+    return 0
+  fi
   (
     unset FM_HOME FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_PROJECTS_OVERRIDE FM_CONFIG_OVERRIDE \
       CURSOR_AGENT CURSOR_INVOKED_AS CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS GROK_AGENT FM_SUPERVISION_MODEL
@@ -1675,7 +1695,14 @@ fm_backend_herdr_server_ensure() {  # <session>
   ) || return 1
   for i in $(seq 1 20); do
     running=$(fm_backend_herdr_cli "$session" status --json 2>/dev/null | jq -r '.server.running // false' 2>/dev/null)
-    [ "$running" = "true" ] && return 0
+    if [ "$running" = "true" ]; then
+      if [ "$memo" -gt 0 ]; then
+        _FM_HERDR_ENSURED_SESSION=$session
+        printf -v now '%(%s)T' -1
+        _FM_HERDR_ENSURED_AT=$now
+      fi
+      return 0
+    fi
     sleep 0.5
   done
   echo "error: herdr server for session '$session' did not report running within 10s" >&2
@@ -3147,7 +3174,21 @@ fm_backend_herdr_capture() {  # <target> <lines>
   fetch=$lines
   case "$fetch" in ''|*[!0-9]*) fetch=200 ;; *) [ "$fetch" -ge 200 ] || fetch=200 ;; esac
   out=$(fm_backend_herdr_cli "$FM_BACKEND_HERDR_SESSION" pane read "$FM_BACKEND_HERDR_PANE" --source recent --lines "$fetch" 2>/dev/null) || return 1
-  printf '%s' "$out" | tail -n "$lines"
+  if [ "${BASH_VERSINFO[0]}" -ge 4 ]; then
+    # tail -n N without a pipeline: the last N lines, joined by newlines, no trailing newline (as tail printed it from input with none).
+    local -a _cap_lines
+    local IFS=$'\n'
+    if [ "$lines" -eq 0 ]; then
+      return 0
+    fi
+    mapfile -t _cap_lines <<<"$out"
+    if [ "${#_cap_lines[@]}" -gt "$lines" ]; then
+      _cap_lines=("${_cap_lines[@]: -$lines}")
+    fi
+    printf '%s' "${_cap_lines[*]}"
+  else
+    printf '%s' "$out" | tail -n "$lines"
+  fi
 }
 
 # fm_backend_herdr_visible_capture: the visible viewport only. `--source
@@ -3548,6 +3589,10 @@ fm_backend_herdr_classify_submit_agent_status() {  # <raw-agent_status>
 fm_backend_herdr_agent_status_raw() {  # <session> <pane_id>
   local session=$1 pane_id=$2 out
   out=$(fm_backend_herdr_cli "$session" agent get "$pane_id" 2>/dev/null) || { printf ''; return 0; }
+  if [[ "$out" =~ \"agent_status\"[[:space:]]*:[[:space:]]*\"([A-Za-z_-]*)\" ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
   printf '%s' "$out" | jq -r '.result.agent.agent_status // empty' 2>/dev/null
 }
 
