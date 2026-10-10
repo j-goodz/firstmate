@@ -42,6 +42,7 @@ Within a home's lane the worker preempts a running reply long-poll as soon as an
 `bin/fm-remote-job-lib.sh` owns that preemption contract and distinguishes preemption from a wait window that closes with no data, so only a genuinely quiet window proves channel freshness while either outcome can re-arm without losing data.
 A caller that disconnects or whose caller-side wait expires before its job completes cancels it instead of abandoning it: cancelled queued work is skipped, cancelled running work is stopped, and the finalized record is cleaned up, so retries never convoy behind abandoned work.
 Linux uses the same queue and worker protocol without the Aqua-session requirement.
+At most one serving loop runs per queue: a kernel `flock` on `worker.flock` guards it where `flock` exists, and a second worker exits once the holder verifies as the recorded live owner, so a duplicate can never reclaim and fail a job the live worker is running.
 A worker stops itself once its configured code root stops being a Firstmate checkout, so a worker started from a worktree cannot outlive that worktree, and `bin/fm-remote-job-reap-orphans.sh` clears any worker already left behind that way without ever touching one whose checkout still exists.
 The remote account must provide the required toolchain, the selected worker runtime, the selected session backend, and credentials that work on that host.
 The origin URL named for each project must be reachable from the remote account because projects are cloned on that host rather than copied from the primary.
