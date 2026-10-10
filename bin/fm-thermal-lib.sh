@@ -76,6 +76,7 @@ fm_thermal_gate_busy_count() {
 #     FM_THERMAL_TEMP       – integer temperature or empty
 #   The function never exits the shell; it only returns 0.
 # --------------------------------------------------------------------
+# shellcheck disable=SC2034  # FM_THERMAL_LIMIT, FM_THERMAL_TIER, FM_THERMAL_TEMP_DESC and FM_THERMAL_TEMP are outputs read by the sourcing script
 fm_thermal_gate_limit() {
     local gate_file=$1 host_temp_bin=$2
     local max_workers hot_c hold_c temp temp_rc limit tier temp_desc
