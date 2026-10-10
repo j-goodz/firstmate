@@ -44,6 +44,12 @@ Light work (investigation, docs, small pull requests) only needs load per CPU un
 Ties go to the first registered machine, then to the local one.
 The script only reports, and firstmate routes the lane to the machine it names.
 
+`bin/fm-spawn.sh` enforces this on the VPS (cloud-server, 8 GB RAM, hosts named by `FM_LIGHT_ONLY_HOSTS`, detected with `hostname -s` or the `FM_SELF_HOST` test seam).
+A fresh ship spawn there is refused with a message naming swift and `bin/fm-place.sh --class heavy`, so the lane must be routed to a machine with slots.
+Scouts, secondmates and relaunches stay allowed, and the only override is `FM_VPS_HEAVY_OK=OPERATOR_APPROVED` in the environment of that one spawn.
+`bin/fm-brief.sh` also adds `--workers 2` to the fan-out step of a ship brief written on such a machine.
+`bin/fm-vps-guard-lib.sh` owns the rules.
+
 ## Daily full run
 
 Each configured repo gets one whole-suite run a day in the quiet hours, so lanes never need one.
