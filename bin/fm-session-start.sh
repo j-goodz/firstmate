@@ -207,6 +207,7 @@
 #             same-session Claude id as its own, so the re-emit proceeds, while
 #             a lock another live session took meanwhile still produces the
 #             ordinary read-only path.
+#             A re-emit also arms the idle-capacity and backlog-overdue watcher checks like a full start does (arming is idempotent).
 #             The re-emitted digest is compact: counts and ids for the
 #             backlog, at most FM_SESSION_START_REEMIT_TASKS (default 12) task
 #             rows, size pointers instead of full context files, and, on
@@ -947,6 +948,12 @@ fi
 # truncated tail must never take.
 stage fleet-state
 section "FLEET STATE"
+# Armed on every start path, --reemit included: /clear takes the re-emit path, and arming is idempotent.
+# A locked session also arms the watcher check that raises one wake per overdue item per day.
+[ "$READ_ONLY" -ne 0 ] || FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-backlog-overdue.sh" arm >/dev/null 2>&1 || true
+# A locked session also arms the idle-capacity watcher check (bin/fm-idle-capacity.sh owns the rule): it wakes this home once per cooldown when
+# free worker slots and ready dispatchable backlog items have both been above zero for ten minutes.
+[ "$READ_ONLY" -ne 0 ] || FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/fm-idle-capacity.sh" arm >/dev/null 2>&1 || true
 if [ "$REEMIT" -eq 1 ]; then
   print_backlog_reemit_summary "$DATA/backlog.md" "data/backlog.md"
   subsection "Work under way (state/*.meta)"
@@ -963,11 +970,6 @@ print_backlog_compact "$DATA/backlog.md" "data/backlog.md"
 
 # Overdue holds, due dates and long-queued rows (bin/fm-backlog-overdue.sh owns the rules).
 # Bounded and silent when nothing is overdue; a scan failure never stops the digest.
-# A locked session also arms the watcher check that raises one wake per overdue item per day.
-[ "$READ_ONLY" -ne 0 ] || FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-backlog-overdue.sh" arm >/dev/null 2>&1 || true
-# A locked session also arms the idle-capacity watcher check (bin/fm-idle-capacity.sh owns the rule): it wakes this home once per cooldown when
-# free worker slots and ready dispatchable backlog items have both been above zero for ten minutes.
-[ "$READ_ONLY" -ne 0 ] || FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/fm-idle-capacity.sh" arm >/dev/null 2>&1 || true
 overdue_text=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA" "$SCRIPT_DIR/fm-backlog-overdue.sh" report 2>/dev/null) || overdue_text=''
 if [ -n "$overdue_text" ]; then
   subsection "Overdue backlog items (act on each: dispatch, re-hold with a new date, or close)"

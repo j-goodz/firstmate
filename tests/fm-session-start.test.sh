@@ -2167,6 +2167,33 @@ EOF
   pass "--reemit reprints the digest without repeating startup's mutating sweeps and still drains queued wakes"
 }
 
+test_reemit_arms_the_standing_checks() {
+  local rec root home fakebin check id
+  rec=$(new_world reemit-arms-checks)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$root" FM_FAKE_HARNESS_PID=$$ PATH="$fakebin:$BASE_PATH" env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT "$SESSION_START" --reemit --source clear >/dev/null
+  for id in idle-capacity backlog-overdue; do
+    [ -x "$home/state/$id.check.sh" ] || fail "--reemit did not arm state/$id.check.sh"
+    [ -s "$home/state/$id.check-trust" ] || fail "--reemit armed state/$id.check.sh but did not register it (no $id.check-trust)"
+  done
+  local before_idle before_backlog after_idle after_backlog
+  before_idle=$(cat "$home/state/idle-capacity.check.sh")
+  before_backlog=$(cat "$home/state/backlog-overdue.check.sh")
+  FM_HOME="$home" FM_ROOT_OVERRIDE="$root" FM_FAKE_HARNESS_PID=$$ PATH="$fakebin:$BASE_PATH" env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT "$SESSION_START" --reemit --source clear >/dev/null
+  after_idle=$(cat "$home/state/idle-capacity.check.sh")
+  after_backlog=$(cat "$home/state/backlog-overdue.check.sh")
+  for id in idle-capacity backlog-overdue; do
+    [ -x "$home/state/$id.check.sh" ] || fail "--reemit (second run) did not arm state/$id.check.sh"
+    [ -s "$home/state/$id.check-trust" ] || fail "--reemit (second run) armed state/$id.check.sh but did not register it (no $id.check-trust)"
+  done
+  assert_equals "$before_idle" "$after_idle" "idle-capacity check shim changed on second re-emit"
+  assert_equals "$before_backlog" "$after_backlog" "backlog-overdue check shim changed on second re-emit"
+  pass "--reemit arms and registers the idle-capacity and backlog-overdue checks, idempotently"
+}
 test_reemit_digest_is_capped_at_8kb_with_pointers_for_context() {
   local rec root home fakebin reemit captain_file learnings_file projects_file captain_shared_file
   local captain_bytes captain_lines projects_bytes projects_lines learnings_bytes learnings_lines
@@ -2979,6 +3006,7 @@ test_portable_timeout_escalates_term_resistant_process
 test_runtime_bound_leaves_a_healthy_digest_untouched
 test_runtime_bound_leaves_harness_ancestry_headroom
 test_reemit_skips_startup_sweeps_but_keeps_the_wake_drain
+test_reemit_arms_the_standing_checks
 test_reemit_digest_is_capped_at_8kb_with_pointers_for_context
 test_reemit_never_drops_or_caps_queued_wake_rows
 test_reemit_task_listing_is_bounded_and_discloses_the_remainder
