@@ -50,6 +50,7 @@ FM_REMOTE_JOB_ORPHAN_GRACE_SECONDS=$(worker_bounded_setting "${FM_REMOTE_JOB_ORP
 FM_REMOTE_JOB_SUPERVISOR_MAX_RESTARTS=$(worker_bounded_setting "${FM_REMOTE_JOB_SUPERVISOR_MAX_RESTARTS:-}" 20)
 FM_REMOTE_JOB_SUPERVISOR_MAX_BACKOFF_SECONDS=$(worker_bounded_setting "${FM_REMOTE_JOB_SUPERVISOR_MAX_BACKOFF_SECONDS:-}" 5)
 FM_REMOTE_JOB_SUPERVISOR_HEALTHY_SECONDS=$(worker_bounded_setting "${FM_REMOTE_JOB_SUPERVISOR_HEALTHY_SECONDS:-}" 10)
+FM_REMOTE_JOB_SERVE_GUARD_WAIT_SECONDS=$(worker_bounded_setting "${FM_REMOTE_JOB_SERVE_GUARD_WAIT_SECONDS:-}" 15)
 
 SCRIPT_DIR=$(CDPATH='' cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 FM_ROOT=${FM_ROOT_OVERRIDE:-$(CDPATH='' cd "$SCRIPT_DIR/.." && pwd -P)}
@@ -183,6 +184,25 @@ worker_recover_quarantine() { # <account-home>
   worker_quarantined_execution_stopped "$1" || return 1
   [ ! -L "$WORKER_LOCK/quarantine" ] || return 1
   rm -f -- "$WORKER_LOCK/quarantine"
+}
+
+# At most one serving loop may run per queue. The kernel releases this lock the
+# moment its holder dies and never reports a live holder as gone, which the
+# pid-and-start-time record in worker.lock cannot promise when ps fails or the
+# holder's heartbeat stalls under load. A contender that finds the guard held
+# exits (status 2) once the holder verifies as the recorded live owner, and
+# otherwise waits a bounded time for a holder that is shutting down. Without
+# flock (stock macOS, where launchd keeps one instance) the guard is skipped
+# and worker.lock alone applies.
+worker_acquire_serve_guard() { # <account-home>
+  local account_home=$1 guard
+  command -v flock >/dev/null 2>&1 || return 0
+  guard="$FM_REMOTE_JOB_STATE/worker.flock"
+  { exec 7>>"$guard"; } 2>/dev/null || return 1
+  flock -n 7 && return 0
+  if fm_remote_job_lock_owner_matches_process "$account_home"; then return 2; fi
+  flock -w "$FM_REMOTE_JOB_SERVE_GUARD_WAIT_SECONDS" 7 && return 0
+  return 2
 }
 
 worker_acquire_lock() {
@@ -986,7 +1006,7 @@ worker_lane_execute() { # <account-home> <job-dir>
 # has always run in.
 worker_start_lane() { # <job-dir> <home>
   local job=$1 home=$2 lane_pid lane_start
-  "$SCRIPT_DIR/fm-remote-job-worker.sh" --lane "${job##*/}" 8<&- &
+  "$SCRIPT_DIR/fm-remote-job-worker.sh" --lane "${job##*/}" 7<&- 8<&- &
   lane_pid=$!
   lane_start=$(fm_remote_job_process_start "$lane_pid" 2>/dev/null || true)
   WORKER_LANE_HOMES+=("$home")
@@ -1094,6 +1114,13 @@ main() {
   fm_remote_job_prepare_state "$account_home" || { worker_error "$FM_REMOTE_JOB_ERROR"; exit 1; }
   WORKER_LOCK=$(fm_remote_job_worker_lock_path)
   trap worker_exit_cleanup EXIT
+  worker_acquire_serve_guard "$account_home"
+  lock_status=$?
+  case "$lock_status" in
+    0) ;;
+    1) worker_error "cannot open the serving guard"; exit 1 ;;
+    *) exit 0 ;;
+  esac
   worker_acquire_lock "$account_home"
   lock_status=$?
   case "$lock_status" in
