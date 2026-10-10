@@ -897,7 +897,7 @@ scan_open_decisions() {  # <state>
   local state=$1 f task open line
   for f in "$state"/*.status; do
     [ -e "$f" ] || continue
-    task=$(basename "$f"); task="${task%.status}"
+    task=${f##*/}; task=${task%.status}
     open=$(status_open_decisions "$f") || continue
     [ -n "$open" ] || continue
     while IFS= read -r line; do
@@ -969,8 +969,9 @@ EOF
 # re-derives from whatever offset actually landed on disk.
 _fm_open_decisions_cursor_path() {  # <status-file>
   local f=$1 dir base
-  dir=$(dirname "$f")
-  base=$(basename "$f")
+  base=${f##*/}; dir=${f%/*}
+  [ "$dir" != "$f" ] || dir=.
+  [ -n "$dir" ] || dir=/
   printf '%s/.%s.open-decisions-cursor' "$dir" "${base%.status}"
 }
 
@@ -996,22 +997,24 @@ _fm_open_decisions_cursor_path() {  # <status-file>
 # discarded and rebuilt from byte 0 under the new reading.
 FM_OPEN_DECISIONS_FOLD_VERSION=9
 
+# Platform probe, once per process. The stat helpers below run inside command
+# substitutions, so a lazily cached value would be lost with every subshell and
+# each call would fork uname again.
+_FM_CLASSIFY_DARWIN=0
+if [ "$(uname -s 2>/dev/null)" = Darwin ]; then _FM_CLASSIFY_DARWIN=1; fi
 # Portable device:inode identity for the rotation/recreation check below.
 _fm_open_decisions_file_ident() {  # <file> -> strongest available identity
-  local f=$1 epoch birth ident
+  local f=$1 epoch birth ident out
   if [ -n "${FM_STATUS_IDENTITY_READER:-}" ]; then
     "$FM_STATUS_IDENTITY_READER" "$f"
     return
   fi
-  if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
-    ident=$(LC_ALL=C /usr/bin/stat -f '%d:%i' "$f" 2>/dev/null) || return 1
-    epoch=$(LC_ALL=C /usr/bin/stat -f '%B' "$f" 2>/dev/null) || epoch=0
-    if [ "$epoch" != 0 ]; then birth=$(LC_ALL=C /usr/bin/stat -f '%FB' "$f" 2>/dev/null) || birth=''; else birth=''; fi
+  if [ "$_FM_CLASSIFY_DARWIN" = 1 ]; then
+    out=$(LC_ALL=C /usr/bin/stat -f '%d:%i %B %FB' "$f" 2>/dev/null) || return 1
   else
-    ident=$(LC_ALL=C stat -c '%d:%i' "$f" 2>/dev/null) || return 1
-    epoch=$(LC_ALL=C stat -c '%W' "$f" 2>/dev/null) || epoch=0
-    if [ "$epoch" != 0 ]; then birth=$(LC_ALL=C stat -c '%w' "$f" 2>/dev/null) || birth=''; else birth=''; fi
+    out=$(LC_ALL=C stat -c '%d:%i %W %w' "$f" 2>/dev/null) || return 1
   fi
+  ident=${out%% *}; out=${out#* }; epoch=${out%% *}; birth=${out#* }; case "$epoch" in ''|*[!0-9]*) epoch=0 ;; esac; if [ "$epoch" = 0 ]; then birth=''; fi
   case "$ident$birth" in *$'\t'*|*$'\n'*|'') return 1 ;; esac
   if [ -n "$birth" ]; then printf 'strong:%s:%s' "$ident" "$birth"; else printf 'weak:%s' "$ident"; fi
 }
@@ -1022,16 +1025,44 @@ _fm_status_file_size() {  # <status-file>
     "$FM_STATUS_SIZE_READER" "$f"
     return
   fi
-  if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+  if [ "$_FM_CLASSIFY_DARWIN" = 1 ]; then
     LC_ALL=C /usr/bin/stat -f '%z' "$f" 2>/dev/null
   else
     LC_ALL=C stat -c '%s' "$f" 2>/dev/null
   fi
 }
 
+# Size and identity of a status file with ONE stat call: sets _FM_SSI_SIZE and
+# _FM_SSI_IDENT (the same strings _fm_status_file_size and
+# _fm_open_decisions_file_ident print) and returns 1 when either cannot be read.
+# The test override readers keep their own path through the two separate helpers.
+_fm_status_size_ident() {  # <status-file>
+  local f=$1 out size devino epoch birth
+  _FM_SSI_SIZE=
+  _FM_SSI_IDENT=
+  if [ -n "${FM_STATUS_IDENTITY_READER:-}" ] || [ -n "${FM_STATUS_SIZE_READER:-}" ]; then
+    _FM_SSI_SIZE=$(_fm_status_file_size "$f") || return 1
+    _FM_SSI_IDENT=$(_fm_open_decisions_file_ident "$f") || return 1
+    return 0
+  fi
+  if [ "$_FM_CLASSIFY_DARWIN" = 1 ]; then
+    out=$(LC_ALL=C /usr/bin/stat -f '%z %d:%i %B %FB' "$f" 2>/dev/null) || return 1
+  else
+    out=$(LC_ALL=C stat -c '%s %d:%i %W %w' "$f" 2>/dev/null) || return 1
+  fi
+  size=${out%% *}; out=${out#* }
+  devino=${out%% *}; out=${out#* }
+  epoch=${out%% *}; birth=${out#* }
+  case "$epoch" in ''|*[!0-9]*) epoch=0 ;; esac
+  if [ "$epoch" = 0 ]; then birth=''; fi
+  case "$devino$birth" in *$'\t'*|*$'\n'*|'') return 1 ;; esac
+  _FM_SSI_SIZE=$size
+  if [ -n "$birth" ]; then _FM_SSI_IDENT="strong:$devino:$birth"; else _FM_SSI_IDENT="weak:$devino"; fi
+}
+
 _fm_status_file_mtime() {  # <status-file>
   local f=$1
-  if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+  if [ "$_FM_CLASSIFY_DARWIN" = 1 ]; then
     LC_ALL=C /usr/bin/stat -f '%m' "$f" 2>/dev/null
   else
     LC_ALL=C stat -c '%Y' "$f" 2>/dev/null
@@ -1120,10 +1151,10 @@ status_open_decisions_incremental() {  # <status-file> [<captured-end-offset>]
   # A stat/size-read failure is a genuine I/O error, not "the file is empty" -
   # report the already-trusted persisted set unchanged rather than risking a
   # silent invalidation that would wipe it.
-  cur_ident=$(_fm_open_decisions_file_ident "$f") || { printf '%s' "$trusted_open"; return 0; }
+  _fm_status_size_ident "$f" || { printf '%s' "$trusted_open"; return 0; }
+  cur_ident=$_FM_SSI_IDENT
   [ -n "$cur_ident" ] || { printf '%s' "$trusted_open"; return 0; }
-  actual_size=$(_fm_status_file_size "$f") \
-    || { printf '%s' "$trusted_open"; return 0; }
+  actual_size=$_FM_SSI_SIZE
   actual_size=${actual_size//[[:space:]]/}
   case "$actual_size" in ''|*[!0-9]*) printf '%s' "$trusted_open"; return 0 ;; esac
   if [ -n "$captured_end" ]; then
@@ -1190,7 +1221,7 @@ scan_open_decisions_incremental() {  # <state>
   local state=$1 f task open line
   for f in "$state"/*.status; do
     [ -e "$f" ] || continue
-    task=$(basename "$f"); task="${task%.status}"
+    task=${f##*/}; task=${task%.status}
     open=$(status_open_decisions_incremental "$f") || continue
     [ -n "$open" ] || continue
     while IFS= read -r line; do
@@ -1208,10 +1239,11 @@ status_presentation_snapshot() {  # <state>
   for f in "$state"/*.status; do
     [ -e "$f" ] || continue
     [ -f "$f" ] && [ -r "$f" ] && [ ! -L "$f" ] || continue
-    task=$(basename "$f"); task="${task%.status}"
-    size=$(_fm_status_file_size "$f") || return 1
+    task=${f##*/}; task=${task%.status}
+    _fm_status_size_ident "$f" || return 1
+    size=$_FM_SSI_SIZE
+    ident=$_FM_SSI_IDENT
     size=${size//[[:space:]]/}
-    ident=$(_fm_open_decisions_file_ident "$f") || return 1
     case "$size" in ''|*[!0-9]*) return 1 ;; esac
     [ -n "$ident" ] || return 1
     printf '%s\t%s\t%s\n' "$task" "$size" "$ident" || return 1
@@ -1328,8 +1360,9 @@ EOF
     offset=0
     ident=$(_fm_open_decisions_file_ident "$f") || return 1
   fi
-  cur_ident=$(_fm_open_decisions_file_ident "$f") || return 1
-  size=$(_fm_status_file_size "$f") || return 1
+  _fm_status_size_ident "$f" || return 1
+  cur_ident=$_FM_SSI_IDENT
+  size=$_FM_SSI_SIZE
   size=${size//[[:space:]]/}
   case "$size:$offset" in *[!0-9:]*) return 1 ;; esac
   if [ "$ident" != "$cur_ident" ] || [ "$offset" -gt "$size" ]; then offset=0; fi
@@ -1352,8 +1385,9 @@ status_outcome_backstop_cursor_offset() {  # <status-file>
     case "$presented:$row_backstop" in *[!0-9:]*) return 1 ;; esac
     [ -n "$presented" ] && [ -n "$ident" ] || return 1
     if [ "$row_task" = "$task" ]; then
-      current=$(_fm_open_decisions_file_ident "$f") || return 1
-      size=$(_fm_status_file_size "$f") || return 1
+      _fm_status_size_ident "$f" || return 1
+      current=$_FM_SSI_IDENT
+      size=$_FM_SSI_SIZE
       size=${size//[[:space:]]/}
       case "$size" in ''|*[!0-9]*) return 1 ;; esac
       [ "$ident" = "$current" ] || { printf '0'; return 0; }
@@ -1373,11 +1407,11 @@ status_signal_seen_marker_path() {  # <state> <task-id>
 }
 
 status_heartbeat_seen_marker_path() {  # <state> <task-id>
-  printf '%s/.hb-surfaced-%s' "$1" "$(printf '%s' "$2" | tr ':/.' '___')"
+  printf '%s/.hb-surfaced-%s' "$1" "${2//[:\/.]/_}"
 }
 
 status_daemon_seen_marker_path() {  # <state> <task-id>
-  printf '%s/.subsuper-seen-status-%s' "$1" "$(printf '%s' "$2" | tr ':/.' '___')"
+  printf '%s/.subsuper-seen-status-%s' "$1" "${2//[:\/.]/_}"
 }
 
 _status_presentation_signature_valid() {
@@ -1424,7 +1458,7 @@ status_presentation_marker_parse() {
 }
 
 _status_observed_path_state() {
-  if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+  if [ "$_FM_CLASSIFY_DARWIN" = 1 ]; then
     LC_ALL=C /usr/bin/stat -f '%HT:%p' "$1" 2>/dev/null
   else
     LC_ALL=C stat -c '%F:%f' "$1" 2>/dev/null
@@ -1462,16 +1496,23 @@ status_observed_signature() {
   printf 'r1:%s' "$encoded"
 }
 
+# Whole file into the variable named by $2, trailing newlines trimmed like $(cat). Fails for a non-regular or unreadable file. No process.
+_fm_read_file() {  # <file> <var>
+  local _fm_content
+  [ -f "$1" ] && [ -r "$1" ] || return 1
+  { _fm_content=$(<"$1"); } 2>/dev/null || return 1
+  printf -v "$2" '%s' "$_fm_content"
+}
 status_presentation_marker_reported_matches() {
   local raw
-  raw=$(cat "$1" 2>/dev/null) || return 1
+  _fm_read_file "$1" raw || return 1
   status_presentation_marker_parse "$raw" || return 1
   [ "$STATUS_PRESENTATION_REPORTED" = "$2" ]
 }
 
 status_presentation_marker_offset() {
   local raw classified offset ident current
-  raw=$(cat "$1" 2>/dev/null) || { printf '0'; return 0; }
+  _fm_read_file "$1" raw || { printf '0'; return 0; }
   status_presentation_marker_parse "$raw" || { printf '0'; return 0; }
   classified=$STATUS_PRESENTATION_CLASSIFIED
   [ "$classified" != - ] || { printf '0'; return 0; }
@@ -1484,7 +1525,7 @@ status_presentation_marker_offset() {
 status_presentation_marker_report() {
   local marker=$1 reported=$2 raw classified=-
   _status_presentation_signature_valid "$reported" || return 1
-  if raw=$(cat "$marker" 2>/dev/null) && status_presentation_marker_parse "$raw"; then
+  if _fm_read_file "$marker" raw && status_presentation_marker_parse "$raw"; then
     classified=$STATUS_PRESENTATION_CLASSIFIED
   fi
   printf 'v2\t%s\t%s' "$reported" "$classified" > "$marker"
@@ -1617,8 +1658,9 @@ status_commit_presentation_snapshot() {  # <state> <snapshot>
     [ -n "$ident" ] || { rm -f "$tmp"; return 1; }
     f="$state/$task.status"
     [ -f "$f" ] && [ -r "$f" ] && [ ! -L "$f" ] || { rm -f "$tmp"; return 1; }
-    cur_ident=$(_fm_open_decisions_file_ident "$f") || { rm -f "$tmp"; return 1; }
-    size=$(_fm_status_file_size "$f") || { rm -f "$tmp"; return 1; }
+    _fm_status_size_ident "$f" || { rm -f "$tmp"; return 1; }
+    cur_ident=$_FM_SSI_IDENT
+    size=$_FM_SSI_SIZE
     size=${size//[[:space:]]/}
     case "$size" in ''|*[!0-9]*) rm -f "$tmp"; return 1 ;; esac
     [ "$cur_ident" = "$ident" ] && [ "$endpoint" -le "$size" ] \
@@ -1727,9 +1769,10 @@ status_open_decisions_cursor_offset() {  # <status-file>
       return 1
     fi
   fi
-  cur_ident=$(_fm_open_decisions_file_ident "$f") || return 1
+  _fm_status_size_ident "$f" || return 1
+  cur_ident=$_FM_SSI_IDENT
   [ -n "$cur_ident" ] || return 1
-  size=$(_fm_status_file_size "$f") || return 1
+  size=$_FM_SSI_SIZE
   size=${size//[[:space:]]/}
   case "$size" in ''|*[!0-9]*) return 1 ;; esac
   if [ -z "$version" ] || [ -z "$ident" ] || [ "$ident" != "$cur_ident" ] || [ "$offset" -gt "$size" ]; then
@@ -1816,7 +1859,7 @@ scan_unread_surface_lines() {  # <state>
   local state=$1 f task lines line
   for f in "$state"/*.status; do
     [ -e "$f" ] || continue
-    task=$(basename "$f"); task="${task%.status}"
+    task=${f##*/}; task=${task%.status}
     lines=$(status_new_lines_since_cursor "$f") || return 1
     [ -n "$lines" ] || continue
     while IFS= read -r line; do
@@ -1899,15 +1942,29 @@ status_open_activities() {  # <status-file-or-dash>
 
 # task id from a recorded window target, falling back to the tmux-shaped
 # "<session>:fm-<id>" form when no metadata state is available.
+# Last value of "key=" in a metadata file into the variable named by $3 (empty when the file or key is absent). No process.
+# Same result as: grep '^key=' file | tail -1 | cut -d= -f2-
+_fm_meta_value() {  # <meta-file> <key> <var>
+  local _fm_line _fm_val=''
+  if [ -f "$1" ]; then
+    while IFS= read -r _fm_line || [ -n "$_fm_line" ]; do
+      case "$_fm_line" in
+        "$2="*) _fm_val=${_fm_line#*=} ;;
+      esac
+    done 2>/dev/null < "$1" || :
+  fi
+  printf -v "$3" '%s' "$_fm_val"
+}
+
 window_to_task() {
   local w=$1 state=${2:-${STATE:-${FM_STATE_OVERRIDE:-}}} meta mw mt t
   if [ -n "$state" ]; then
     for meta in "$state"/*.meta; do
       [ -e "$meta" ] || continue
-      mw=$(grep '^window=' "$meta" 2>/dev/null | tail -1 | cut -d= -f2- || true)
-      mt=$(grep '^terminal=' "$meta" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+      _fm_meta_value "$meta" window mw
+      _fm_meta_value "$meta" terminal mt
       [ "$mw" = "$w" ] || [ "$mt" = "$w" ] || continue
-      t=$(basename "$meta")
+      t=${meta##*/}
       t=${t%.meta}
       printf '%s' "$t"
       return 0
@@ -1989,8 +2046,9 @@ status_span_first_actionable_record() {  # <status-file> <start-offset> [record-
   local line verb key origins='' folded=0 rc=1 failed=0 prefix_lines=0 line_number=0 live_line='' events='' _line _key _fm_span_needs_decision=0
   [ -e "$f" ] || { [ -L "$f" ] && return 2; return 1; }
   [ -f "$f" ] && [ -r "$f" ] && [ ! -L "$f" ] || return 2
-  ident=$(_fm_open_decisions_file_ident "$f") || return 2
-  size=$(_fm_status_file_size "$f") || return 2
+  _fm_status_size_ident "$f" || return 2
+  ident=$_FM_SSI_IDENT
+  size=$_FM_SSI_SIZE
   size=${size//[[:space:]]/}
   case "$size" in ''|*[!0-9]*) return 2 ;; esac
   case "$start" in ''|*[!0-9]*) start=0 ;; esac
@@ -2265,9 +2323,9 @@ crew_worktree_written_since() {  # <id> <state> <anchor-file>
   local -a names=() prune=()
   [ -n "$id" ] || return 1
   [ -f "$anchor" ] || return 1
-  wt=$(grep '^worktree=' "$state/$id.meta" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+  _fm_meta_value "$state/$id.meta" worktree wt
   [ -n "$wt" ] && [ -d "$wt" ] || return 1
-  kind=$(grep '^kind=' "$state/$id.meta" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+  _fm_meta_value "$state/$id.meta" kind kind
   [ "$kind" != secondmate ] || return 1
   if [ -e "$wt/.fm-secondmate-home" ] || [ -L "$wt/.fm-secondmate-home" ]; then
     return 1
@@ -2302,7 +2360,7 @@ crew_worktree_written_since() {  # <id> <state> <anchor-file>
 # more current, not less deliverable. Scoped to .status files - a mate's bare
 # turn-ended ping still uses the ordinary provably-working absorb.
 signal_crew_provably_working() {  # <file> ...
-  local f base dir task seen=""
+  local f base dir task meta_kind seen=""
   for f in "$@"; do
     base=${f##*/}
     dir=${f%/*}
@@ -2315,7 +2373,8 @@ signal_crew_provably_working() {  # <file> ...
     [ -n "$task" ] || continue
     case "$base" in
       *.status)
-        if [ "$(grep '^kind=' "$dir/$task.meta" 2>/dev/null | tail -1 | cut -d= -f2-)" = secondmate ]; then
+        _fm_meta_value "$dir/$task.meta" kind meta_kind
+        if [ "$meta_kind" = secondmate ]; then
           return 1
         fi
         ;;

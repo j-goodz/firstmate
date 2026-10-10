@@ -96,11 +96,13 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$CMD_SET" -eq 0 ]; then
-  PAYLOAD=$(cat 2>/dev/null || true)
+  IFS= read -r -d '' PAYLOAD 2>/dev/null || :
   [ -n "$PAYLOAD" ] || exit 0
   command -v jq >/dev/null 2>&1 || exit 0
+  HOOK_LIB_DIR=${BASH_SOURCE[0]%/*}
+  [ "$HOOK_LIB_DIR" != "${BASH_SOURCE[0]}" ] || HOOK_LIB_DIR=.
   # shellcheck source=bin/fm-hook-host-lib.sh
-  . "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/fm-hook-host-lib.sh"
+  . "$HOOK_LIB_DIR/fm-hook-host-lib.sh"
   # Cursor's own registration passes --cursor. Without it a Cursor-delivered
   # payload is the Claude-settings duplicate Cursor also loads, already
   # evaluated by that registration, so this copy allows without re-classifying.
@@ -140,7 +142,9 @@ case "$CMD" in
     ;;
 esac
 
-SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P) || exit 0
+SCRIPT_DIR=${BASH_SOURCE[0]%/*}
+[ "$SCRIPT_DIR" != "${BASH_SOURCE[0]}" ] || SCRIPT_DIR=.
+SCRIPT_DIR=$(CDPATH='' cd -- "$SCRIPT_DIR" 2>/dev/null && pwd -P) || exit 0
 FM_ROOT=${FM_ROOT_OVERRIDE:-$(CDPATH='' cd -- "$SCRIPT_DIR/.." 2>/dev/null && pwd -P)} || exit 0
 
 # Scope to a plain, non-worktree firstmate checkout, where git-dir equals

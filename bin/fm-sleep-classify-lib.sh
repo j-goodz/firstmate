@@ -11,6 +11,10 @@ function fm_sleep_classify {
     CODE=""
     SLEEP_SECONDS="null"
 
+    # Only a segment whose first word is exactly "sleep" can be flagged, so a
+    # command with no "sleep" text anywhere needs no segmenting (no process).
+    [[ "$cmd" == *sleep* ]] || return 0
+
     local seen_until_or_while=false
     local IFS=$' \t\n'   # ensure word splitting uses default IFS for reads
 

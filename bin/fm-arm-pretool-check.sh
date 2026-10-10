@@ -106,11 +106,13 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$CMD_SET" -eq 0 ]; then
-  PAYLOAD=$(cat 2>/dev/null || true)
+  IFS= read -r -d '' PAYLOAD 2>/dev/null || :
   [ -n "$PAYLOAD" ] || exit 0
   command -v jq >/dev/null 2>&1 || exit 0
+  HOOK_LIB_DIR=${BASH_SOURCE[0]%/*}
+  [ "$HOOK_LIB_DIR" != "${BASH_SOURCE[0]}" ] || HOOK_LIB_DIR=.
   # shellcheck source=bin/fm-hook-host-lib.sh
-  . "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/fm-hook-host-lib.sh"
+  . "$HOOK_LIB_DIR/fm-hook-host-lib.sh"
   # Cursor's own registration passes --cursor. Without it a Cursor-delivered
   # payload is the Claude-settings duplicate Cursor also loads, already
   # evaluated by that registration, so this copy allows without re-classifying.
@@ -121,7 +123,7 @@ if [ "$CMD_SET" -eq 0 ]; then
   [ -n "$CMD" ] || exit 0
   # Kept for transport parity only.
   # shellcheck disable=SC2034
-  BACKGROUND=$(printf '%s' "$PAYLOAD" | jq -r '(.toolInput.background // .tool_input.background // false)' 2>/dev/null) || BACKGROUND=false
+  BACKGROUND=false
 fi
 
 [ -n "$CMD" ] || exit 0
@@ -165,7 +167,9 @@ case "$CMD" in
     ;;
 esac
 
-SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P) || exit 0
+SCRIPT_DIR=${BASH_SOURCE[0]%/*}
+[ "$SCRIPT_DIR" != "${BASH_SOURCE[0]}" ] || SCRIPT_DIR=.
+SCRIPT_DIR=$(CDPATH='' cd -- "$SCRIPT_DIR" 2>/dev/null && pwd -P) || exit 0
 ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." 2>/dev/null && pwd -P) || exit 0
 ACTIVE_HOME=${FM_HOME:-$ROOT}
 POLICY="$ROOT/bin/fm-arm-command-policy.mjs"
