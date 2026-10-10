@@ -6,7 +6,8 @@
 #          FM_IDLE_CAPACITY_THRESHOLD_SECS, FM_IDLE_CAPACITY_COOLDOWN_SECS,
 #          FM_IDLE_CAPACITY_DEFAULT_CAP, FM_IDLE_CAPACITY_HUB_TIMEOUT,
 #          FM_IDLE_CAPACITY_READY_TIMEOUT, FM_IDLE_CAPACITY_HUB_PROBE,
-#          FM_IDLE_CAPACITY_HUB_HOST, FM_IDLE_CAPACITY_READY_CMD, etc.
+#          FM_IDLE_CAPACITY_HUB_HOST, FM_IDLE_CAPACITY_READY_CMD,
+#          FM_IDLE_CAPACITY_STORE_CMD, etc.
 # Never surveys or modifies anything except its own small state file.
 # The `check` action prints ONE line only when the home should be woken;
 # that line becomes a `check:` wake for the watcher.
@@ -58,13 +59,14 @@ Environment (all optional):
   FM_CONFIG_OVERRIDE          Override config directory
   FM_IDLE_CAPACITY_NOW        Epoch seconds override for “now”
   FM_IDLE_CAPACITY_THRESHOLD_SECS  Seconds condition must hold (default 600)
-  FM_IDLE_CAPACITY_COOLDOWN_SECS   Minimum seconds between wakes (default 3600)
+  FM_IDLE_CAPACITY_COOLDOWN_SECS   Minimum seconds between wakes (default 900)
   FM_IDLE_CAPACITY_DEFAULT_CAP    Worker cap when thermal gate yields none (default 3)
   FM_IDLE_CAPACITY_HUB_TIMEOUT    Probe timeout, 1‑20 s (default 4)
   FM_IDLE_CAPACITY_READY_TIMEOUT  Ready‑command timeout, 1‑25 s (default 15)
   FM_IDLE_CAPACITY_HUB_PROBE      Command string for custom hub probe
   FM_IDLE_CAPACITY_HUB_HOST       Host for built‑in probe (default “cloud-server”)
   FM_IDLE_CAPACITY_READY_CMD      Command string for ready query
+  FM_IDLE_CAPACITY_STORE_CMD      Command printing the nexus-store ready count (default: bin/fm-refill.sh count)
 EOF
 }
 
@@ -94,7 +96,7 @@ validate_whole() {
 
 # defaults
 THRESHOLD_SECS=${FM_IDLE_CAPACITY_THRESHOLD_SECS:-600}
-COOLDOWN_SECS=${FM_IDLE_CAPACITY_COOLDOWN_SECS:-3600}
+COOLDOWN_SECS=${FM_IDLE_CAPACITY_COOLDOWN_SECS:-900}
 DEFAULT_CAP=${FM_IDLE_CAPACITY_DEFAULT_CAP:-3}
 HUB_TIMEOUT=${FM_IDLE_CAPACITY_HUB_TIMEOUT:-4}
 READY_TIMEOUT=${FM_IDLE_CAPACITY_READY_TIMEOUT:-15}
@@ -155,7 +157,20 @@ ready_count() {
   ' <<<"$out")
   printf '%s' "$rc"
 }
-
+ 
+store_ready() {
+  local cmd=${FM_IDLE_CAPACITY_STORE_CMD:-"$SCRIPT_DIR/fm-refill.sh count"}
+  local out
+  out=$(fm_run_timed "$READY_TIMEOUT" bash -c "$cmd" 2>/dev/null) || out=
+  if [[ $out =~ ^([0-9]+)([[:space:]]+(.*))?$ ]]; then
+    STORE_N=${BASH_REMATCH[1]}
+    STORE_IDS=${BASH_REMATCH[3]:-}
+  else
+    STORE_N=0
+    STORE_IDS=
+  fi
+  return 0
+}
 # -------------------------------------------------------------------------
 # Record handling
 record_read() {
@@ -216,10 +231,13 @@ action_check() {
   (( slots < 0 )) && slots=0
 
   # 3. ready count
-  local ready
-  if ! ready=$(ready_count); then
-    return 0
+  local home_ready ready
+  store_ready
+  if ! home_ready=$(ready_count); then
+    home_ready=0
+    (( STORE_N > 0 )) || return 0
   fi
+  ready=$(( home_ready + STORE_N ))
 
   # 4. state handling
   record_read
@@ -234,7 +252,12 @@ action_check() {
     local since=$REC_SINCE woken=$REC_WOKEN
     if (( now - since >= THRESHOLD_SECS )) && \
        { [ -z "$woken" ] || (( now - woken >= COOLDOWN_SECS )); }; then
-      printf 'idle capacity: %s slots, %s ready\n' "$slots" "$ready"
+      if (( STORE_N == 0 )); then
+        printf 'idle capacity: %s slots, %s ready\n' "$slots" "$ready"
+      else
+        printf 'idle capacity: %s slots, %s ready (%s home, %s store): %s\n' \
+          "$slots" "$ready" "$home_ready" "$STORE_N" "$STORE_IDS"
+      fi
       record_write "$since" "$now"
     fi
   else

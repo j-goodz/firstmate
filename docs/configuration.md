@@ -560,10 +560,11 @@ Every session start in a locked home arms `state/idle-capacity.check.sh`, a watc
 It reads only: it never surveys, never changes the backlog, and never spawns.
 Free worker slots are the cap minus this home's busy workers, using the thermal-gate rules in [`bin/fm-thermal-lib.sh`](../bin/fm-thermal-lib.sh), the same rules `bin/fm-spawn.sh` enforces: `max_workers`, `hot_c`, and `hold_c` from [`config/thermal-gate`](#thermal-gate-configthermal-gate) and the temperature from `bin/fm-host-temp.sh`, so a holding gate means zero slots.
 A home with no applicable cap uses `FM_IDLE_CAPACITY_DEFAULT_CAP` (default 3).
-Ready dispatchable items are the `ship`, `scout`, and `chore` rows of `bin/fm-tasks-axi.sh ready`, which already leaves out held and blocked work.
-When both counts stay above zero for ten minutes the check prints one line, `idle capacity: N slots, M ready`, and the watcher turns it into a `check:` wake; it wakes the same home again only after a sixty minute cooldown.
+Ready work is the `ship`, `scout`, and `chore` rows of `bin/fm-tasks-axi.sh ready`, which already leaves out held and blocked work, plus the filtered nexus store list that `bin/fm-refill.sh count` prints (auto-mode bug, chore, and feature tasks in the home's registered projects).
+When both counts stay above zero for ten minutes the check prints one line, `idle capacity: N slots, M ready`, with ` (H home, S store): <top ids>` appended when the store contributes, and the watcher turns it into a `check:` wake; it wakes the same home again only after a fifteen minute cooldown.
+The woken home runs `bin/fm-refill.sh`, which claims each task in nexus and spawns it through the normal brief and spawn path, and appends one JSON row per decision to `~/.nexus/refill.jsonl`.
 The check prints nothing and changes nothing while the nexus hub is unreachable, probed by an ssh banner read bounded by a hard timeout, because a wake would only send the home to claim work from a dead store.
-`FM_IDLE_CAPACITY_THRESHOLD_SECS` (default 600), `FM_IDLE_CAPACITY_COOLDOWN_SECS` (default 3600), `FM_IDLE_CAPACITY_HUB_HOST` (default `cloud-server`), `FM_IDLE_CAPACITY_HUB_TIMEOUT` (default 4), and `FM_IDLE_CAPACITY_READY_TIMEOUT` (default 15) tune it, and `bin/fm-idle-capacity.sh disarm` removes the check.
+`FM_IDLE_CAPACITY_THRESHOLD_SECS` (default 600), `FM_IDLE_CAPACITY_COOLDOWN_SECS` (default 900), `FM_IDLE_CAPACITY_STORE_CMD` (default `bin/fm-refill.sh count`), `FM_IDLE_CAPACITY_HUB_HOST` (default `cloud-server`), `FM_IDLE_CAPACITY_HUB_TIMEOUT` (default 4), and `FM_IDLE_CAPACITY_READY_TIMEOUT` (default 15) tune it, and `bin/fm-idle-capacity.sh disarm` removes the check.
 The continuity and cooldown record is `state/.idle-capacity`; [`bin/fm-idle-capacity.sh --help`](../bin/fm-idle-capacity.sh) owns the mechanics, with regression coverage in [`tests/fm-idle-capacity.test.sh`](../tests/fm-idle-capacity.test.sh).
 
 ## Suite slots (~/.config/firstmate/suite-slots)

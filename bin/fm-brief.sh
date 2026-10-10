@@ -322,6 +322,7 @@ Do not invent a second delegation system.
 You do not generate your own work.
 Drain your own existing ready backlog, broken-first, and ask only for genuine captain calls; an empty queue still never authorizes a survey.
 Tasks the main firstmate routes to you join that backlog.
+On an \`idle capacity:\` wake, run \`bin/fm-refill.sh\`: it fills every free worker slot from the nexus store's ready list for your projects (auto build work only), and \`bin/fm-refill.sh --dry-run\` previews it. That store list is part of your ready backlog.
 Never start a survey, audit, or "find improvements" sweep on your own initiative; that is not your job and it is unwanted.
 
 # The captain and the parent channel
@@ -369,6 +370,7 @@ Routine internal supervision, heartbeats, retries, and crewmate churn stay insid
 You are persistent by default. Do not exit just because your queue is empty.
 On startup and restart, run normal firstmate bootstrap and recovery through \`bin/fm-session-start.sh\` for your own home, but only to RECONCILE work that is already yours: in-flight crewmates, tracked backlog items, and durable watches recorded in this home.
 When your own ready backlog is empty and nothing is in flight after that reconciliation, go idle and wait silently for the main firstmate to route you a task.
+An empty home backlog is not a resting state while the nexus store has ready work for your projects: run \`bin/fm-refill.sh\` when the idle capacity wake arrives. Filling slots from that list is not a survey, because the work already exists and was approved as auto.
 An empty queue is a healthy resting state, not a cue to invent work: never spawn a survey, audit, or any self-directed "find work" task on your own initiative.
 If this charter cannot be carried out, append \`blocked [at=<epoch>]: {why}\` or \`failed [at=<epoch>]: {why}\` to the main status file and stop.
 EOF

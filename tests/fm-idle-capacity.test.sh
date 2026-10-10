@@ -15,6 +15,7 @@ run_check() {
     FM_IDLE_CAPACITY_NOW="$now" \
     FM_IDLE_CAPACITY_READY_CMD="$READY_CMD" \
     FM_IDLE_CAPACITY_HUB_PROBE="$HUB_PROBE" \
+    FM_IDLE_CAPACITY_STORE_CMD="${STORE_CMD:-echo 0}" \
     FM_THERMAL_SYSFS="$THERMAL_ROOT" \
     FM_HWMON_SYSFS="$HWMON_ROOT" \
     ${EXTRA_ENV[@]+"${EXTRA_ENV[@]}"} \
@@ -166,12 +167,12 @@ test_cooldown_is_honored() {
   run_check "$home" $((1800000000+600))
   assert_equals "idle capacity: 4 slots, 2 ready" "$OUT" "first wake"
   # within cooldown
-  for delta in 660 1200 4100; do
+  for delta in 660 1200 1499; do
     run_check "$home" $((1800000000+delta))
     assert_equals "" "$OUT" "still cooldown at +$delta"
   done
-  # after cooldown (600+3600 = 4200)
-  run_check "$home" $((1800000000+4200))
+  # after cooldown (600+900 = 1500)
+  run_check "$home" $((1800000000+1500))
   assert_equals "idle capacity: 4 slots, 2 ready" "$OUT" "second wake after cooldown"
   pass "cooldown_is_honored"
 }
@@ -550,6 +551,145 @@ test_decimal_threshold_override() {
   pass "decimal_threshold_override"
 }
 
+test_store_work_adds_to_ready_and_names_ids() {
+  local TMP_ROOT
+  TMP_ROOT=$(fm_test_tmproot "store_work")
+  local case=$TMP_ROOT/case1
+  local home=$case/home
+  mkdir -p "$home/state" "$home/config" "$home/data"
+
+  printf 'max_workers=4\n' > "$home/config/thermal-gate"
+  write_ready "$case" ship
+  READY_CMD="cat $case/ready.txt"
+  HUB_PROBE=true
+  THERMAL_ROOT="$case/sysfs"
+  write_sysfs "$THERMAL_ROOT" "x86_pkg_temp:55000"
+  HWMON_ROOT="$case/hwmon"
+  mkdir -p "$HWMON_ROOT"
+
+  STORE_CMD='echo "3 aaa,bbb,ccc"'
+  # priming run at T0
+  run_check "$home" 1800000000
+  assert_equals "" "$OUT" "priming run silent"
+  # run at +600
+  run_check "$home" $((1800000000+600))
+  assert_equals "idle capacity: 4 slots, 4 ready (1 home, 3 store): aaa,bbb,ccc" "$OUT" "wake with store ready"
+  unset STORE_CMD
+  pass "store_work_adds_to_ready_and_names_ids"
+}
+
+test_store_only_work_wakes_when_home_is_empty() {
+  local TMP_ROOT
+  TMP_ROOT=$(fm_test_tmproot "store_only_empty")
+  local case=$TMP_ROOT/case2
+  local home=$case/home
+  mkdir -p "$home/state" "$home/config" "$home/data"
+
+  printf 'max_workers=4\n' > "$home/config/thermal-gate"
+  write_ready "$case"
+  READY_CMD="cat $case/ready.txt"
+  HUB_PROBE=true
+  THERMAL_ROOT="$case/sysfs"
+  write_sysfs "$THERMAL_ROOT" "x86_pkg_temp:55000"
+  HWMON_ROOT="$case/hwmon"
+  mkdir -p "$HWMON_ROOT"
+
+  STORE_CMD='echo "2 x1,x2"'
+  # priming run at T0
+  run_check "$home" 1800000000
+  assert_equals "" "$OUT" "priming run silent"
+  # run at +600
+  run_check "$home" $((1800000000+600))
+  assert_equals "idle capacity: 4 slots, 2 ready (0 home, 2 store): x1,x2" "$OUT" "wake with store only"
+  unset STORE_CMD
+  pass "store_only_work_wakes_when_home_is_empty"
+}
+
+test_store_failure_counts_as_zero() {
+  local TMP_ROOT
+  TMP_ROOT=$(fm_test_tmproot "store_fail")
+  local case=$TMP_ROOT/case3
+  local home=$case/home
+  mkdir -p "$home/state" "$home/config" "$home/data"
+
+  printf 'max_workers=4\n' > "$home/config/thermal-gate"
+  write_ready "$case" ship ship
+  READY_CMD="cat $case/ready.txt"
+  HUB_PROBE=true
+  THERMAL_ROOT="$case/sysfs"
+  write_sysfs "$THERMAL_ROOT" "x86_pkg_temp:55000"
+  HWMON_ROOT="$case/hwmon"
+  mkdir -p "$HWMON_ROOT"
+
+  STORE_CMD='echo boom; exit 1'
+  # priming run at T0
+  run_check "$home" 1800000000
+  assert_equals "" "$OUT" "priming run silent"
+  # run at +600
+  run_check "$home" $((1800000000+600))
+  assert_equals "idle capacity: 4 slots, 2 ready" "$OUT" "store failure counts as zero"
+  unset STORE_CMD
+  pass "store_failure_counts_as_zero"
+}
+
+test_home_ready_failure_is_soft_when_store_has_work() {
+  local TMP_ROOT
+  TMP_ROOT=$(fm_test_tmproot "home_fail_soft")
+  local case=$TMP_ROOT/case4
+  local home=$case/home
+  mkdir -p "$home/state" "$home/config" "$home/data"
+
+  printf 'max_workers=4\n' > "$home/config/thermal-gate"
+  write_ready "$case" ship ship
+  READY_CMD='exit 1'
+  HUB_PROBE=true
+  THERMAL_ROOT="$case/sysfs"
+  write_sysfs "$THERMAL_ROOT" "x86_pkg_temp:55000"
+  HWMON_ROOT="$case/hwmon"
+  mkdir -p "$HWMON_ROOT"
+
+  STORE_CMD='echo "1 only1"'
+  # priming run at T0
+  run_check "$home" 1800000000
+  assert_equals "" "$OUT" "priming run silent"
+  # run at +600
+  run_check "$home" $((1800000000+600))
+  assert_equals "idle capacity: 4 slots, 1 ready (0 home, 1 store): only1" "$OUT" "home ready failure soft"
+  unset STORE_CMD
+  pass "home_ready_failure_is_soft_when_store_has_work"
+}
+
+test_default_cooldown_is_900_seconds() {
+  local TMP_ROOT
+  TMP_ROOT=$(fm_test_tmproot "default_cooldown_900")
+  local case=$TMP_ROOT/case5
+  local home=$case/home
+  mkdir -p "$home/state" "$home/config" "$home/data"
+
+  printf 'max_workers=4\n' > "$home/config/thermal-gate"
+  write_ready "$case" ship ship
+  READY_CMD="cat $case/ready.txt"
+  HUB_PROBE=true
+  THERMAL_ROOT="$case/sysfs"
+  write_sysfs "$THERMAL_ROOT" "x86_pkg_temp:55000"
+  HWMON_ROOT="$case/hwmon"
+  mkdir -p "$HWMON_ROOT"
+
+  # priming at T0
+  run_check "$home" 1800000000
+  assert_equals "" "$OUT" "priming silent"
+  # wake at +600
+  run_check "$home" $((1800000000+600))
+  assert_equals "idle capacity: 4 slots, 2 ready" "$OUT" "first wake"
+  # silent at +1499
+  run_check "$home" $((1800000000+1499))
+  assert_equals "" "$OUT" "still cooldown at 1499"
+  # wake again at +1500
+  run_check "$home" $((1800000000+1500))
+  assert_equals "idle capacity: 4 slots, 2 ready" "$OUT" "second wake after cooldown"
+  pass "default_cooldown_is_900_seconds"
+}
+
 # ----------------------------------------------------------------------
 # Execute all tests
 # ----------------------------------------------------------------------
@@ -567,3 +707,8 @@ test_condition_break_resets_the_clock
 test_arm_registers_a_trusted_silent_shim
 test_help_and_usage
 test_decimal_threshold_override
+test_store_work_adds_to_ready_and_names_ids
+test_store_only_work_wakes_when_home_is_empty
+test_store_failure_counts_as_zero
+test_home_ready_failure_is_soft_when_store_has_work
+test_default_cooldown_is_900_seconds
