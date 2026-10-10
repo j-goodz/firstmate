@@ -2832,8 +2832,11 @@ test_secondmate_charter_brief_is_idle_by_default() {
   # Idle contract: waits for routed work, never self-initiates.
   grep -F 'go idle and wait silently for the main firstmate' "$brief" >/dev/null \
     || fail "charter brief does not tell the secondmate to go idle and wait for routed work"
-  grep -F 'Act only on tasks the main firstmate routes to you' "$brief" >/dev/null \
-    || fail "charter brief does not restrict work to routed tasks"
+  grep -F 'Drain your own existing ready backlog, broken-first, and ask only for genuine captain calls; an empty queue still never authorizes a survey.' "$brief" >/dev/null \
+    || fail "charter brief does not tell the secondmate to drain its own ready backlog"
+  if grep -F 'Act only on tasks the main firstmate routes to you' "$brief" >/dev/null; then
+    fail "charter brief still carries the old idle-until-routed wording"
+  fi
   grep -F 'never spawn a survey, audit, or any self-directed' "$brief" >/dev/null \
     || fail "charter brief does not forbid self-initiated survey/audit work"
   # Reconcile-on-startup must remain: bootstrap and recovery still run, scoped to own work.

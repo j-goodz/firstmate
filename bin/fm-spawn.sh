@@ -656,6 +656,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-gate-refuse-lib.sh"
 # shellcheck source=bin/fm-busy-lib.sh
 . "$SCRIPT_DIR/fm-busy-lib.sh"
+# shellcheck source=bin/fm-thermal-lib.sh
+. "$SCRIPT_DIR/fm-thermal-lib.sh"
 # shellcheck source=bin/fm-cursor-lib.sh
 . "$SCRIPT_DIR/fm-cursor-lib.sh"
 # shellcheck source=bin/fm-pr-lib.sh
@@ -1582,82 +1584,26 @@ spawn_refuse_if_away_spend_cap() {
 # docs/configuration.md "Thermal gate". A relaunch is exempt from the refusal
 # because it replaces an existing worker rather than adding one, and a
 # secondmate is a persistent home rather than a fan-out worker.
-spawn_thermal_gate_value() {  # <file> <key> -> trimmed value, empty when absent
-  local file=$1 key=$2 line
-  [ -f "$file" ] || return 0
-  line=$(grep -E "^[[:space:]]*${key}[[:space:]]*=" "$file" 2>/dev/null | tail -n1) || return 0
-  [ -n "$line" ] || return 0
-  line=${line#*=}
-  printf '%s' "$line" | tr -d '[:space:]'
-}
-spawn_thermal_gate_int() {  # <file> <key> -> non-negative integer, else empty
-  local value
-  value=$(spawn_thermal_gate_value "$1" "$2")
-  case "$value" in
-    '' | *[!0-9]*) return 0 ;;
-  esac
-  printf '%s' "$value"
-}
-spawn_thermal_gate_live_count() {  # -> this home's BUSY non-secondmate workers
-  local busy=0 meta id kind verdict
-  for meta in "$STATE"/*.meta; do
-    [ -f "$meta" ] || continue
-    kind=$(grep '^kind=' "$meta" 2>/dev/null | tail -1 | cut -d= -f2-)
-    [ "$kind" != secondmate ] || continue
-    id=$(basename "$meta" .meta)
-    # Only a record whose semantic busy state classifies as busy is a worker
-    # actually running work. An idle, done, missing, or stale-generation record
-    # - the shape a finished or waiting task leaves behind - must not consume
-    # the cap, or an idle home could hold every spawn forever. bin/fm-busy-lib.sh
-    # owns that classification.
-    verdict=$(fm_busy_classify_meta "$meta" "$id" "$STATE" 2>/dev/null || true)
-    [ "${verdict%% *}" = busy ] || continue
-    busy=$((busy + 1))
-  done
-  printf '%s' "$busy"
-}
+# The rules themselves live in bin/fm-thermal-lib.sh, shared with bin/fm-idle-capacity.sh.
 spawn_apply_thermal_gate() {
-  local gate_file temp temp_rc limit live max_workers hot_c hold_c tier jobs line temp_desc
+  local gate_file limit tier temp_desc live jobs
   THERMAL_GATE_JOBS=
   [ "$KIND" = ship ] || [ "$KIND" = scout ] || return 0
   gate_file="$CONFIG/thermal-gate"
   [ -f "$gate_file" ] || return 0
-  max_workers=$(spawn_thermal_gate_int "$gate_file" max_workers)
-  hot_c=$(spawn_thermal_gate_int "$gate_file" hot_c)
-  hold_c=$(spawn_thermal_gate_int "$gate_file" hold_c)
-  jobs=$(spawn_thermal_gate_int "$gate_file" jobs)
+  jobs=$(fm_thermal_gate_int "$gate_file" jobs)
   case "$jobs" in
     '' | 0) ;;
     *) THERMAL_GATE_JOBS=$jobs ;;
   esac
   [ "$RELAUNCH" -ne 1 ] || return 0
-  temp_rc=0
-  temp=$("$SCRIPT_DIR/fm-host-temp.sh" 2>/dev/null) || temp_rc=$?
-  [ "$temp_rc" -eq 0 ] && [ -n "$temp" ] || temp=
-  if [ -n "$temp" ]; then
-    if [ -n "$hold_c" ] && [ "$temp" -ge "$hold_c" ]; then
-      limit=0
-      tier=hold
-    elif [ -n "$hot_c" ] && [ "$temp" -ge "$hot_c" ]; then
-      limit=1
-      tier=hot
-    elif [ -n "$max_workers" ]; then
-      limit=$max_workers
-      tier=cool
-    else
-      return 0
-    fi
-    temp_desc="${temp}C"
-  else
-    if [ -z "$max_workers" ]; then
-      return 0
-    fi
-    limit=$max_workers
-    tier=fallback
-    temp_desc=unreadable
+  fm_thermal_gate_limit "$gate_file" "$SCRIPT_DIR/fm-host-temp.sh"
+  [ -n "$FM_THERMAL_LIMIT" ] || return 0      # tier none: no applicable limit
+  limit=$FM_THERMAL_LIMIT; tier=$FM_THERMAL_TIER; temp_desc=$FM_THERMAL_TEMP_DESC
+  if [ "$tier" = fallback ]; then
     printf 'warning: thermal gate: host temperature is unreadable; applying max_workers=%s (config/thermal-gate)\n' "$limit" >&2
   fi
-  live=$(spawn_thermal_gate_live_count)
+  live=$(fm_thermal_gate_busy_count "$STATE")
   if [ "$tier" != hold ] && [ "$live" -lt "$limit" ]; then
     return 0
   fi
