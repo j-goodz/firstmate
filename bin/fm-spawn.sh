@@ -291,6 +291,8 @@
 #   This is an exec environment boundary, not a sandbox for the pane's startup
 #   shell, credential files, same-user processes, or later shell initialization.
 #   See docs/configuration.md for provider/Git setup and supported limits.
+# Light-work-only machine guard (FM_LIGHT_ONLY_HOSTS, default cloud-server; host from FM_SELF_HOST else hostname -s):
+#   a fresh ship spawn on the VPS is refused with a message naming swift and `bin/fm-place.sh --class heavy`; scouts, secondmates and relaunches stay allowed. The only override is the operator token FM_VPS_HEAVY_OK=OPERATOR_APPROVED in the environment of that one spawn. See docs/test-capacity-standard.md "Placement".
 # Thermal gate (config/thermal-gate):
 #   Optional per-home integer key=value thresholds on fresh ship and scout
 #   spawns. max_workers caps concurrent workers while cool, hot_c caps the home
@@ -658,6 +660,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-busy-lib.sh"
 # shellcheck source=bin/fm-thermal-lib.sh
 . "$SCRIPT_DIR/fm-thermal-lib.sh"
+# shellcheck source=bin/fm-vps-guard-lib.sh
+. "$SCRIPT_DIR/fm-vps-guard-lib.sh"
 # shellcheck source=bin/fm-cursor-lib.sh
 . "$SCRIPT_DIR/fm-cursor-lib.sh"
 # shellcheck source=bin/fm-pr-lib.sh
@@ -1624,6 +1628,10 @@ spawn_apply_thermal_gate() {
 # costs nothing to unwind; rechecked after the task-set lock so two fresh
 # spawns cannot both publish from a stale count.
 spawn_refuse_if_away_spend_cap
+# Light-work-only machines (bin/fm-vps-guard-lib.sh): a fresh ship spawn on the VPS is refused before any endpoint, worktree, or record exists; a relaunch replaces an existing worker and is exempt.
+if [ "$RELAUNCH" -ne 1 ]; then
+  fm_vps_heavy_refusal "$KIND" || exit 1
+fi
 # The thermal gate reads its config and the current temperature once, here,
 # before any endpoint, worktree, or record exists, and records the jobs value
 # for the launch below. A secondmate home that holds work also reports the pause
