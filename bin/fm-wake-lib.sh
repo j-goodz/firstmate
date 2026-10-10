@@ -448,6 +448,13 @@ fm_watcher_supervision_verdict() {
   return 0
 }
 
+# First line of a file into the variable named by $2 (empty when the file is missing or empty). No process.
+_fm_read_first_line() {  # <file> <var>
+  local _fm_line=''
+  { IFS= read -r _fm_line < "$1"; } 2>/dev/null || :
+  printf -v "$2" '%s' "$_fm_line"
+}
+
 fm_lock_clean_known_files() {
   local lockdir=$1
   rm -f \
@@ -479,8 +486,10 @@ fm_lock_role() {
 
 fm_lock_abs_path() {
   local path=$1 dir base
-  dir=$(dirname "$path")
-  base=$(basename "$path")
+  base=${path##*/}
+  dir=${path%/*}
+  [ "$dir" != "$path" ] || dir=.
+  [ -n "$dir" ] || dir=/
   dir=$(cd "$dir" 2>/dev/null && pwd -P) || return 1
   printf '%s/%s\n' "$dir" "$base"
 }
@@ -495,7 +504,7 @@ fm_lock_prepare_owner() {
   local ownerdir=$1 mypid back
   fm_current_pid mypid || return 1
   printf '%s\n' "$mypid" > "$ownerdir/pid" 2>/dev/null || return 1
-  back=$(cat "$ownerdir/pid" 2>/dev/null || true)
+  _fm_read_first_line "$ownerdir/pid" back
   [ "$back" = "$mypid" ]
 }
 
@@ -505,7 +514,7 @@ fm_lock_link_owner() {
   [ -n "$owner" ] || return 1
   case "$owner" in
     /*) printf '%s\n' "$owner" ;;
-    *) printf '%s/%s\n' "$(dirname "$lockdir")" "$owner" ;;
+    *) printf '%s/%s\n' "${lockdir%/*}" "$owner" ;;
   esac
 }
 
@@ -524,7 +533,7 @@ fm_lock_discard_owner() {
 
 fm_lock_remove_stray_owner_link() {
   local lockdir=$1 ownerdir=$2 stray
-  stray="$lockdir/$(basename "$ownerdir")"
+  stray="$lockdir/${ownerdir##*/}"
   if [ -L "$stray" ] && [ "$(readlink "$stray" 2>/dev/null || true)" = "$ownerdir" ]; then
     rm -f "$stray" 2>/dev/null || true
   fi
@@ -547,7 +556,7 @@ fm_lock_claim() {
     fm_lock_discard_owner "$ownerdir"
     return 1
   fi
-  back=$(cat "$ownerdir/pid" 2>/dev/null || true)
+  _fm_read_first_line "$ownerdir/pid" back
   if [ "$back" != "$mypid" ]; then
     fm_lock_discard_owner "$ownerdir"
     return 1
@@ -643,12 +652,10 @@ FM_RECOVERY_MARKER_ACTION='none'
 # docs/watcher-continuity.md owns the recovery-episode contract, including the
 # once-per-generation announcement rule for unacknowledged downtime.
 fm_recovery_marker_read() {
-  local marker=$1 line count
+  local marker=$1 line _fm_extra
   FM_RECOVERY_MARKER_TOKEN=
   [ -f "$marker" ] && [ ! -L "$marker" ] || return 1
-  count=$(wc -l < "$marker" 2>/dev/null | tr -d '[:space:]') || return 1
-  [ "$count" = 1 ] || return 1
-  IFS= read -r line < "$marker" || return 1
+  { IFS= read -r line || return 1; if IFS= read -r _fm_extra; then return 1; fi; } 2>/dev/null < "$marker" || return 1
   case "$line" in
     pending:handling:*|pending:downtime:*|announced:handling:*|announced:downtime:*|acked:handling:*|acked:downtime:*) ;;
     *) return 1 ;;
@@ -1147,14 +1154,14 @@ fm_lock_release() {
   if [ -L "$lockdir" ]; then
     ownerdir=$(fm_lock_link_owner "$lockdir" 2>/dev/null || true)
     [ -n "$ownerdir" ] || return 0
-    pid=$(cat "$ownerdir/pid" 2>/dev/null || true)
+    _fm_read_first_line "$ownerdir/pid" pid
     [ "$pid" = "$current" ] || return 0
     fm_lock_points_to_owner "$lockdir" "$ownerdir" || return 0
     rm -f "$lockdir" 2>/dev/null || return 0
     fm_lock_discard_owner "$ownerdir"
     return 0
   fi
-  pid=$(cat "$lockdir/pid" 2>/dev/null || true)
+  _fm_read_first_line "$lockdir/pid" pid
   [ "$pid" = "$current" ] || return 0
   fm_lock_clean_known_files "$lockdir"
   rmdir "$lockdir" 2>/dev/null || true
@@ -1857,8 +1864,8 @@ fm_wake_append_locked() {
     *) printf 'fm_wake_append: invalid wake kind: %s\n' "$kind" >&2; return 2 ;;
   esac
 
-  clean_key=$(printf '%s' "$key" | fm_wake_clean_field)
-  clean_payload=$(printf '%s' "$payload" | fm_wake_clean_field)
+  clean_key=${key//[$'\t\r\n']/ }
+  clean_payload=${payload//[$'\t\r\n']/ }
   epoch=$(date +%s)
   seq_file="$STATE/.wake-queue.seq"
   recovery_marker="$STATE/.watcher-down"
@@ -1866,7 +1873,8 @@ fm_wake_append_locked() {
 
   _fm_recovery_marker_publish "$recovery_marker" downtime || status=$?
   if [ "$status" -eq 0 ]; then
-    seq=$(cat "$seq_file" 2>/dev/null || echo 0)
+    _fm_read_first_line "$seq_file" seq
+    [ -n "$seq" ] || seq=0
     case "$seq" in
       ''|*[!0-9]*) seq=0 ;;
     esac
@@ -2119,14 +2127,8 @@ fm_wake_signal_sig() {  # <file> -> reported-state signature
 }
 
 fm_wake_signal_seen_path() {  # <state> <file>
-  local task
-  case "$2" in
-    *.status)
-      task=$(basename "$2"); task=${task%.status}
-      printf '%s/.seen-%s' "$1" "$(printf '%s.status' "$task" | tr '.' '_')"
-      ;;
-    *) printf '%s/.seen-%s' "$1" "$(basename "$2" | tr '.' '_')" ;;
-  esac
+  local base=${2##*/}
+  printf '%s/.seen-%s' "$1" "${base//./_}"
 }
 
 # The byte size recorded in <file>'s seen marker, or 0 when no marker exists, it

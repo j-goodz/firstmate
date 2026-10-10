@@ -395,7 +395,7 @@ window_kind() {
   local w=$1 meta kind
   meta=$(fm_backend_meta_for_window "$w" "$STATE" 2>/dev/null || true)
   if [ -n "$meta" ]; then
-    kind=$(grep '^kind=' "$meta" | cut -d= -f2- || true)
+    kind=$(fm_meta_get "$meta" kind)
     [ -n "$kind" ] || kind=ship
     echo "$kind"
     return 0
@@ -410,7 +410,7 @@ window_backend() {
   local w=$1 meta backend
   meta=$(fm_backend_meta_for_window "$w" "$STATE" 2>/dev/null || true)
   if [ -n "$meta" ]; then
-    backend=$(grep '^backend=' "$meta" | cut -d= -f2- || true)
+    backend=$(fm_meta_get "$meta" backend)
     [ -n "$backend" ] || backend=tmux
     echo "$backend"
     return 0
@@ -422,7 +422,7 @@ window_harness() {
   local w=$1 meta
   meta=$(fm_backend_meta_for_window "$w" "$STATE" 2>/dev/null || true)
   [ -n "$meta" ] || return 0
-  grep '^harness=' "$meta" | cut -d= -f2- || true
+  fm_meta_get "$meta" harness
 }
 
 window_label() {
@@ -2038,7 +2038,7 @@ signal_files_actionable() {  # <status-file> ...
   for f in "$@"; do
     case "$f" in *.status) ;; *) continue ;; esac
     [ -e "$f" ] || [ -L "$f" ] || continue
-    task=$(basename "$f"); task="${task%.status}"
+    task=${f##*/}; task=${task%.status}
     record=''; needs_decision=0
     status_span_first_actionable_record "$f" \
       "$(fm_wake_signal_seen_size "$STATE" "$f")" record needs_decision
@@ -2099,7 +2099,7 @@ heartbeat_scan_finds_actionable() {
   FM_HEARTBEAT_SURFACE_ENDPOINTS=''
   for f in "$STATE"/*.status; do
     [ -e "$f" ] || [ -L "$f" ] || continue
-    task=$(basename "$f"); task="${task%.status}"
+    task=${f##*/}; task=${task%.status}
     record=$(status_span_first_actionable_record "$f" "$(hb_surfaced_offset "$task")")
     rc=$?
     [ "$rc" -eq 1 ] && [ -z "$record" ] && continue
@@ -2698,7 +2698,7 @@ while :; do
     for c in "$STATE"/*.check.sh; do
       [ -e "$c" ] || continue
       is_pr_poll=0
-      if [ "$(basename "$c")" = x-watch.check.sh ]; then
+      if [ "${c##*/}" = x-watch.check.sh ]; then
         if fmx_poll_shim_valid "$c" "$FM_HOME" "$FM_ROOT" \
           && [ -f "$FM_ROOT/bin/fm-x-poll.sh" ] && [ ! -L "$FM_ROOT/bin/fm-x-poll.sh" ]; then
           FM_HOME="$FM_HOME" run_check_capture "$FM_ROOT/bin/fm-x-poll.sh" || exit 1
@@ -2708,7 +2708,8 @@ while :; do
           continue
         fi
       else
-        id=$(basename "$c" .check.sh)
+        id=${c##*/}
+        id=${id%.check.sh}
         if fm_pr_poll_snapshot_capture "$STATE" "$id" "$SCRIPT_DIR/fm-pr-poll.sh" \
           || { rerecord_device_shifted_pr_poll "$id" \
             && fm_pr_poll_snapshot_capture "$STATE" "$id" "$SCRIPT_DIR/fm-pr-poll.sh"; }; then
@@ -2740,7 +2741,7 @@ while :; do
         fi
       fi
       if [ -n "$out" ]; then
-        if [ "$(basename "$c")" = contributions.check.sh ]; then
+        if [ "${c##*/}" = contributions.check.sh ]; then
           contribution_check_output=
           contribution_check_diagnostics=
           while IFS= read -r contribution_check_line; do
@@ -2881,7 +2882,7 @@ EOF
         [ -n "$sf" ] || continue
         file_reason="$reason"
         case " $FM_SIGNAL_NEEDS_DECISION_FILES " in *" $f "*) file_reason="needs-decision:$files" ;; esac
-        fm_wake_append signal "$(basename "$f")" "$file_reason" || exit 1
+        fm_wake_append signal "${f##*/}" "$file_reason" || exit 1
       done <<EOF
 $pending
 EOF
@@ -2928,7 +2929,7 @@ EOF
       if [ "$signal_commit_error" -ne 0 ]; then
         while IFS=$(printf '\t') read -r sf sig f; do
           [ -n "$sf" ] || continue
-          fm_wake_append signal "$(basename "$f")" "$reason" || exit 1
+          fm_wake_append signal "${f##*/}" "$reason" || exit 1
         done <<EOF
 $pending
 EOF

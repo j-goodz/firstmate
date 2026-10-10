@@ -128,13 +128,13 @@ hb_surfaced_offset() {  # <task>
 mark_surfaced() {  # <status-file> <captured-end-offset> <captured-identity>
   local f=$1 task
   case "$f" in *.status) ;; *) return 0 ;; esac
-  task=$(basename "$f"); task="${task%.status}"
+  task=${f##*/}; task=${task%.status}
   status_presentation_marker_commit "$(_hb_surfaced_path "$task")" "$f" "$2" "$3"
 }
 
 mark_surface_reported() {  # <status-file> <reported-signature>
   local f=$1 task
-  task=$(basename "$f"); task="${task%.status}"
+  task=${f##*/}; task=${task%.status}
   status_presentation_marker_report "$(_hb_surfaced_path "$task")" "$2"
 }
 

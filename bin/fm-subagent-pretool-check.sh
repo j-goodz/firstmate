@@ -134,7 +134,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$TOOL_SET" -eq 0 ]; then
-  PAYLOAD=$(cat 2>/dev/null || true)
+  IFS= read -r -d '' PAYLOAD 2>/dev/null || :
   [ -n "$PAYLOAD" ] || exit 0
   command -v jq >/dev/null 2>&1 || exit 0
   TOOL=$(printf '%s' "$PAYLOAD" | jq -r '(.tool_name // .toolName // empty)' 2>/dev/null) || exit 0
@@ -142,7 +142,13 @@ fi
 
 [ -n "$TOOL" ] || exit 0
 
-LC_ALL=C NORMALIZED=$(printf '%s' "$TOOL" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')
+# Lowercase and keep only a-z0-9 without the two tr processes (bash 4+; older bash keeps the pipeline).
+if [ "${BASH_VERSINFO[0]:-0}" -ge 4 ]; then
+  NORMALIZED=${TOOL,,}
+  NORMALIZED=${NORMALIZED//[!abcdefghijklmnopqrstuvwxyz0123456789]/}
+else
+  LC_ALL=C NORMALIZED=$(printf '%s' "$TOOL" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')
+fi
 
 # An MCP tool belongs to an external integration, not to the harness's own
 # delegation surface, and its name is chosen by that server. Never classify one

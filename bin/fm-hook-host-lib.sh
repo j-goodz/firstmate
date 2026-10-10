@@ -29,6 +29,11 @@
 fm_hook_payload_is_foreign_host() {  # <payload>
   local payload=${1-}
   [ -n "$payload" ] || return 1
+  # A Cursor payload carries the literal key text; any other payload cannot match, so skip the jq process.
+  case "$payload" in
+    *cursor_version*) ;;
+    *) return 1 ;;
+  esac
   command -v jq >/dev/null 2>&1 || return 1
   printf '%s' "$payload" | jq -e '
     type == "object" and has("cursor_version") and (.cursor_version | type) == "string"

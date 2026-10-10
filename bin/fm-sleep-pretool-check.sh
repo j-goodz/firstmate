@@ -84,7 +84,7 @@ if [[ $COUNT -eq 1 ]]; then
 fi
 
 # Read stdin payload
-PAYLOAD=$(cat 2>/dev/null || true)
+IFS= read -r -d '' PAYLOAD 2>/dev/null || :
 if [[ -z "$PAYLOAD" ]]; then
   exit 0
 fi
@@ -93,8 +93,12 @@ fi
 command -v jq >/dev/null 2>&1 || exit 0
 
 # Extract tool name and command
-TOOL_NAME=$(echo "$PAYLOAD" | jq -r '.tool_name // empty' 2>/dev/null || true)
-CMD=$(echo "$PAYLOAD" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
+JQ_OUT=$(printf '%s' "$PAYLOAD" | jq -r '[(.tool_name // ""), (.tool_input.command // "")] | .[0], .[1]' 2>/dev/null || true)
+TOOL_NAME=${JQ_OUT%%$'\n'*}
+case "$JQ_OUT" in
+  *$'\n'*) CMD=${JQ_OUT#*$'\n'} ;;
+  *) CMD='' ;;
+esac
 
 if [[ -z "$TOOL_NAME" || -z "$CMD" ]]; then
   exit 0
@@ -105,7 +109,10 @@ if [[ "$TOOL_NAME" != "Bash" ]]; then
 fi
 
 # Source classification library
-LIB_PATH="$(dirname "${BASH_SOURCE[0]}")/fm-sleep-classify-lib.sh"
+LIB_PATH="${BASH_SOURCE[0]%/*}/fm-sleep-classify-lib.sh"
+if [[ "${BASH_SOURCE[0]}" != */* ]]; then
+  LIB_PATH="./fm-sleep-classify-lib.sh"
+fi
 if [[ ! -f "$LIB_PATH" ]]; then
   exit 0
 fi
